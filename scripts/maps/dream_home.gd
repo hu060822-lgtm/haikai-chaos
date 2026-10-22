@@ -2,7 +2,7 @@ class_name DreamHome
 extends Node3D
 ## 夢核之家 DREAM HOME: the second team map. A house you half remember from childhood,
 ## too big and too quiet: pastel rooms, carpet, a tiled pool with no water, doors in the
-## sky, a hallway that doesn't end. Soft, overexposed light and pastel haze.
+## sky, a hallway that doesn't end. A low, endless late-afternoon sun and pastel haze.
 ##
 ##   south (blue spawn)   the nursery: sky-blue walls, cloud wallpaper, giant crib bars
 ##   north (red spawn)    the pink living room: a giant TV full of static, sofa walls
@@ -12,8 +12,11 @@ extends Node3D
 ##                        doors; its inner wall is runnable, its roof is a walkway
 ##   east                 the dining hall: a giant table to jump on and slide under, giant
 ##                        chairs as steps, bookshelves to climb to the mezzanine
-##   up (y 4.5–5)         west roof walkway, east mezzanine, and the north beam that
-##                        crosses over the pool between them
+##   up (y 4.5–5)         west roof walkway, east mezzanine, and the north and south
+##                        beams that cross the house between them
+##   movement (C4)        wallpaper panels floating over the pool to wall-run across it,
+##                        floating toy blocks that step up to each beam, two giant
+##                        playground slides from the walkways down to the deck
 ##
 ## Gameplay space is the same size as FOLDED WORKS (68 × 52 m). Everything here builds
 ## its own materials (clean pastel paint, carpet, tile, checker), not the concrete kit.
@@ -30,11 +33,11 @@ const BABY_PINK := Color("#F3AFC6")
 const MINT := Color("#A6E3C4")
 const LILAC := Color("#BBA6EE")
 const BUTTER := Color("#F7DE86")
-const CREAM := Color("#F4EDE0")
+const CREAM := Color("#DDD0BF")
 const PEACH := Color("#F7C7A8")
 const TILE_AQUA := Color("#7FD0D8")
 const CARPET := Color("#CBB2CF")
-const DOOR_WHITE := Color("#FBF8F2")
+const DOOR_WHITE := Color("#E9E3D8")
 const TOY_RED := Color("#F08A8A")
 
 var player_spawn := Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 21.5))
@@ -43,6 +46,8 @@ var waypoints: Array[Vector3] = []
 var range_targets: Array[Transform3D] = []
 ## Team match: each team's spawn zone centre and spawn points (blue south, red north).
 var team_zones: Array[Vector3] = [Vector3(0, 0, 21.5), Vector3(0, 0, -21.5)]
+## 預算戰's overclock zone: the bottom of the empty pool.
+var mid_zone := Vector3(0, -POOL_DEPTH, 0)
 var team_spawns: Array = [
 	[Vector3(0, 0.1, 21.5), Vector3(-3, 0.1, 21.5), Vector3(3, 0.1, 21.5), Vector3(-1.5, 0.1, 23.5), Vector3(1.5, 0.1, 23.5)],
 	[Vector3(0, 0.1, -21.5), Vector3(-3, 0.1, -21.5), Vector3(3, 0.1, -21.5), Vector3(-1.5, 0.1, -23.5), Vector3(1.5, 0.1, -23.5)],
@@ -65,6 +70,7 @@ func _ready() -> void:
 	_upper()
 	_middle_cover()
 	_dream_sky()
+	_movement()
 	bot_spawns = [Vector3(-14, 0.1, 12), Vector3(14, 0.1, -12), Vector3(0, -1.5, 0), Vector3(-28, 0.1, 0), Vector3(22, 0.1, 10)]
 	waypoints = [Vector3(-14, 0, 12), Vector3(14, 0, 12), Vector3(-14, 0, -12), Vector3(14, 0, -12),
 		Vector3(-8, 0, 0), Vector3(8, 0, 0), Vector3(0, -POOL_DEPTH, 0), Vector3(-28, 0, -10), Vector3(-28, 0, 10),
@@ -266,11 +272,11 @@ func ramp(low: Vector3, high: Vector3, width: float, material: Material, thick :
 
 func _environment() -> void:
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color("#8EC9F7")
-	sky_mat.sky_horizon_color = Color("#FCE3EE")
+	sky_mat.sky_top_color = Color("#6A9BD3")
+	sky_mat.sky_horizon_color = Color("#F2C6CF")
 	sky_mat.sky_curve = 0.18
-	sky_mat.ground_horizon_color = Color("#FCE3EE")
-	sky_mat.ground_bottom_color = Color("#F3D9E6")
+	sky_mat.ground_horizon_color = Color("#F2C6CF")
+	sky_mat.ground_bottom_color = Color("#D9B8C8")
 	sky_mat.sun_angle_max = 30.0
 	sky_mat.sun_curve = 0.08
 	var sky := Sky.new()
@@ -279,32 +285,33 @@ func _environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = 0.38
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.8
+	env.tonemap_exposure = 0.58
 	env.tonemap_white = 4.0
 	env.fog_enabled = true
-	env.fog_light_color = Color("#FBE6F0")
-	env.fog_light_energy = 1.0
+	env.fog_light_color = Color("#E9C9D6")
+	env.fog_light_energy = 0.8
 	env.fog_density = 0.0045
 	env.fog_sky_affect = 0.2
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = 0.35
 	env.glow_bloom = 0.08
 	env.glow_hdr_threshold = 0.95
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.2
-	env.adjustment_contrast = 1.05
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.12
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-58, -30, 0)
-	sun.light_color = Color("#FFF1DC")
-	sun.light_energy = 1.1
+	# Low and warm: the afternoon that never ends, with long shadows across the carpet.
+	sun.rotation_degrees = Vector3(-34, -30, 0)
+	sun.light_color = Color("#FFD8B0")
+	sun.light_energy = 0.95
 	sun.shadow_enabled = true
 	sun.shadow_blur = 3.0
 	sun.directional_shadow_max_distance = 110.0
@@ -314,7 +321,7 @@ func _environment() -> void:
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-25, 150, 0)
 	fill.light_color = Color("#D8E4FF")
-	fill.light_energy = 0.35
+	fill.light_energy = 0.25
 	fill.light_specular = 0.0
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
@@ -322,7 +329,7 @@ func _environment() -> void:
 
 func _floors() -> void:
 	var carpet := mat("carpet", CARPET)
-	var checker := mat("checker", CREAM, Color("#E8C9D6"), 1.0)
+	var checker := mat("checker", CREAM, Color("#C9A7B8"), 1.0)
 	# Ground around the pool hole, then special floors laid on top (2 cm).
 	floor_at(Vector2(-HALF.x, -HALF.y), Vector2(HALF.x, POOL.position.y), 0.0, carpet)
 	floor_at(Vector2(-HALF.x, POOL.end.y), Vector2(HALF.x, HALF.y), 0.0, carpet)
@@ -399,7 +406,7 @@ func _outer_walls() -> void:
 		var z := -20.0 + i * 8.0
 		for x in [-HALF.x + 0.02, HALF.x - 0.02]:
 			var w := deco(QuadMesh.new(), Transform3D(Basis(Vector3.UP, PI / 2.0 if x < 0 else -PI / 2.0).scaled(Vector3(2.4, 3.0, 1)),
-				Vector3(x, 6.6, z)), mat("glow", Color("#CFEAFF"), Color.WHITE, 0.6), false)
+				Vector3(x, 6.6, z)), mat("glow", Color("#CFEAFF"), Color.WHITE, 0.35), false)
 			w.name = "SkyWindow"
 
 
@@ -529,8 +536,8 @@ func _dining_hall() -> void:
 	floor_at(Vector2(26.0, -20.0), Vector2(HALF.x, 16.5), UP, mat("carpet", Color("#E4D6F2")), 0.5)
 	for z in [-19.8, 16.3]:
 		box(Vector3(0.4, UP - 0.5, 0.4), Vector3(26.2, (UP - 0.5) / 2.0, z), wood)
-	# A rail with gaps where the bookshelves come up.
-	for seg in [[-20.0, -13.8], [-10.2, -1.8], [1.8, 10.2], [13.8, 16.5]]:
+	# A rail with gaps where the bookshelves come up (and where the slide leaves, z -8).
+	for seg in [[-20.0, -13.8], [-10.2, -9.4], [-6.6, -1.8], [1.8, 10.2], [13.8, 16.5]]:
 		box(Vector3(0.12, 1.0, seg[1] - seg[0]), Vector3(26.1, UP + 0.5, (seg[0] + seg[1]) / 2.0), mat("paint", DOOR_WHITE))
 	for z in [-12.0, 0.0, 12.0]:
 		_bookshelf(Vector3(25.0, 0, z))
@@ -610,3 +617,51 @@ func _dream_sky() -> void:
 	var light := QuadMesh.new()
 	light.size = Vector2(2.0, 2.9)
 	deco(light, Transform3D(Basis.IDENTITY, Vector3(0, 1.5, -10.0)), mat("glow", Color("#FFF6E8"), Color.WHITE, 1.4), false)
+
+
+# --- Movement (C4) ----------------------------------------------------------------------
+
+func _movement() -> void:
+	# Wallpaper panels floating over the pool: wall-run across it instead of going down
+	# and up. 2.4 m of room under them on the pool floor.
+	var panel_paper := [mat("stripes", LILAC, Color("#DCD0F7")), mat("stripes", PEACH, Color("#FBE0CF"))]
+	for i in 2:
+		var z := -4.0 if i == 0 else 4.0
+		wall(Vector2(-6.0, z), Vector2(6.0, z), 3.0, panel_paper[i], 0.4, 0.8, true)
+	# The south beam, the north one's twin over the nursery side, so both teams have a
+	# high lane.
+	var beam := mat("paint", Color("#E6F1FA"))
+	box(Vector3(51.0, 0.5, 1.6), Vector3(0.5, UP + 0.25, 12.0), beam)
+	for x in [-12.0, 0.0, 12.0]:
+		box(Vector3(0.6, UP, 0.6), Vector3(x, UP / 2.0, 12.0), mat("paint", DOOR_WHITE))
+	for side in [-0.75, 0.75]:
+		deco(LowPoly.chamfer_box(Vector3(51.0, 0.05, 0.06), 0.01), LowPoly.at(Vector3(0.5, UP + 0.53, 12.0 + side)),
+			mat("glow", Color("#CFE6FF"), Color.WHITE, 0.5), false)
+	# Floating toy blocks: three hops from the pool deck up to each beam.
+	var colors := [BUTTER, MINT, BABY_PINK]
+	for k in 3:
+		var top := 1.3 + 1.2 * k
+		_float_block(Vector3(5.0 + 2.5 * k, top, -8.3 - 1.0 * k), colors[k], 15.0 * k)
+		_float_block(Vector3(-5.0 - 2.5 * k, top, 8.3 + 1.0 * k), colors[2 - k], -15.0 * k)
+	# Two giant playground slides: off the west walkway and the east mezzanine, down to the
+	# deck at speed (slide down them for a free boost into the middle).
+	_slide(Vector3(-24.6, UP + 0.5, 8.0), Vector3(-15.0, 0.0, 8.0))
+	_slide(Vector3(25.9, UP, -8.0), Vector3(16.2, 0.0, -8.0))
+
+
+## A toy block hanging in the air, top at `top`: a step you jump to.
+func _float_block(at: Vector3, color: Color, yaw: float) -> void:
+	var s := 1.6
+	_toy_block(at - Vector3(0, s, 0), s, color, yaw)
+
+
+func _slide(high: Vector3, low: Vector3) -> void:
+	var yellow := mat("paint", BUTTER)
+	var body := ramp(low, high, 2.4, yellow, 0.4)
+	# Side rails (decoration; the slide itself is the collision).
+	for side in [-1.25, 1.25]:
+		var rail := MeshInstance3D.new()
+		rail.mesh = LowPoly.chamfer_box(Vector3(0.12, 0.5, (high - low).length()), 0.02)
+		rail.position = Vector3(side, 0.45, 0)
+		rail.material_override = mat("paint", Color("#F59A8B"))
+		body.add_child(rail)

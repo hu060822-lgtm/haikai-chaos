@@ -543,6 +543,7 @@ func _chain(shooter: Node3D, from_target: Node, point: Vector3, info: Dictionary
 		var chained := info.duplicate()
 		chained.damage = info.damage * 0.5
 		chained.zone = "body"
+		chained.chained = true
 		best.take_hit(chained)
 	if points.size() > 1:
 		PrintFx.zigzag(shooter.get_tree().current_scene, points)

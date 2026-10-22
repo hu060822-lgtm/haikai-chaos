@@ -3,7 +3,16 @@
 HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架），核心是自由、不講道理的改槍和高上限身法。
 美術風格：**Counterform Industrial**（正式風格，規範見 [`docs/COUNTERFORM.md`](docs/COUNTERFORM.md)）；舊的 FAULTPRINT 印刷風保留為設定裡的選項。引擎：Godot 4.3（GL Compatibility）。
 
-目前是 **C3 原型**：三張地圖（灰盒對戰圖 FOLDED WORKS、夢核地圖「夢核之家」、移動測試場 MOVEMENT LAB）、完整的前端（主畫面、快速配對、自訂房間、房間大廳、計分板、結算畫面）、原創配樂（大廳、對戰、結算）、單機練習（陪練機器人、靶場）、**連線團隊模式「改版死鬥 PATCH WAR」**（最多 10 人，空位補機器人）、改槍工作台（223 個零件）、換彈手部動作、擊殺列表、死亡畫面、移動除錯面板。
+目前是 **C4 原型**：兩種連線模式（改版死鬥、回合制「預算戰」）、**中繼伺服器**（五碼房間碼，不同網路直接連）、主機判定＋延遲補償、擊殺回放、重做的第一人稱手臂。三張地圖（灰盒對戰圖 FOLDED WORKS、夢核地圖「夢核之家」、移動測試場 MOVEMENT LAB）、完整的前端（主畫面、快速配對、自訂房間、房間大廳、計分板、結算畫面）、原創配樂（大廳、對戰、結算）、單機練習（陪練機器人、靶場）、**連線團隊模式「改版死鬥 PATCH WAR」**（最多 10 人，空位補機器人）、改槍工作台（223 個零件）、換彈手部動作、擊殺列表、死亡畫面、移動除錯面板。
+
+## C4 新東西
+
+- **中繼伺服器**（`relay/`）：房主和玩家都只連到中繼伺服器，它在同一間房裡轉送封包，所以不同網路的人用 **5 個字的房間碼**（例如 `7AN68`）就能連，不用開埠、不用 Radmin。遊戲內建 `wss://haikai-relay.hu060822.workers.dev`（Cloudflare Workers 免費方案，部署方式見 [`relay/README.md`](relay/README.md)）；設定（Esc）→「中繼伺服器」可以換成別台。自訂房間預設開在中繼伺服器上（另有「只在區網開房」），快速配對也會找中繼伺服器上的房間。舊的 10 字區網房間碼照樣能用。
+- **預算戰 BUDGET WAR**（回合制，房間大廳選模式）：每回合一條命，先贏 N 回合（2–9，預設 5）。開頭 15 秒備戰，被關在重生圈裡，**工作台就是商店**：槍身和零件都有價錢，加上去付全價、拆下來退一半。活下來的人槍留著，陣亡就沒了，下回合從左輪重來。起始 $800；贏 $1500、輸 $1000（連輸每次多 $400，最多 +$800）；擊殺 +$100 再加對方槍價的 25%（拆件，上限 $1000）；助攻 +$50。回合結束條件：一隊全滅、時間到（剩下的總血量多的贏）、或最後 40 秒中央「超頻區」打開，只有一隊站在裡面 6 秒。機器人也會在預算內買槍。金錢和槍由主機記帳，客戶端花錢主機會再核一次。
+- **主機判定與延遲補償**：客戶端照樣自己找命中（看到打到就是打到），但每一發都送到主機，主機用過去 1.2 秒的位置紀錄倒帶到射手看到的時間，檢查：射手是誰、受害者當時在不在那裡、子彈是不是從射手的位置射出、直線射擊中間有沒有牆（穿牆子彈除外）、傷害有沒有超過那把槍的上限、命中次數有沒有超過射速。通過才轉給受害者那台電腦。主機每秒 ping 每個人，計分板的延遲在中繼連線下也看得到。
+- **擊殺回放**：一直在錄所有人的位置和彈道（最後 6 秒）。陣亡時死亡畫面先播最後 4 秒，鏡頭在殺手的肩膀後面看著你，最後 0.7 秒放慢；播完換成殺手的槍，R 鍵切換。
+- **第一人稱手臂**：有關節的手指、指節護板、綁帶護手、有皺褶的袖子、手腕上的終端機，和槍的精細度一致。
+- **夢核之家**：改成傍晚的光（暗很多），加了可牆跑的壁紙板（泳池上方）、浮空玩具方塊、南側橫梁、兩條溜滑梯。
 
 ## 配對與房間（C3）
 
@@ -97,6 +106,10 @@ C3 調整（參考 ULTRAKILL 和 Apex）：跑速 7.9、衝刺跑 11.0、地面�
 | `scripts/net/avatar.gd` | 別台電腦上的玩家（或房主的機器人）：狀態插值、判定框、命中轉給擁有者 |
 | `scripts/match/team_match.gd` | 改版死鬥：重生、狀態同步、命中與死亡、版本新鮮度計分、版本答案 |
 | `scripts/match/safe_zone.gd` | 重生安全圈與「脫離戰鬥」規則 |
+| `scripts/match/round_rules.gd` | 預算戰：回合、商店價格、金錢、超頻區 |
+| `scripts/match/hit_judge.gd` | 主機的命中判定（倒帶驗證、射速桶） |
+| `scripts/fx/kill_cam.gd` | 擊殺回放（錄影、鬼影、肩後鏡頭） |
+| `scripts/net/relay_peer.gd`, `relay/` | 中繼連線（MultiplayerPeer）與中繼伺服器（Node／Cloudflare Worker） |
 | `scripts/ui/lobby.gd` | 房間大廳（房間碼、隊伍、準備、地圖、規則） |
 | `scripts/ui/front_end.gd` | 主畫面、練習場、自訂房間、快速配對頁 |
 | `scripts/ui/scoreboard.gd` | 計分板（按住 Tab、結算畫面） |
@@ -115,7 +128,12 @@ C3 調整（參考 ULTRAKILL 和 Apex）：跑速 7.9、衝刺跑 11.0、地面�
 
 ```
 tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、槍與零件、C2 零件與計分、手感 20 項、三條路線（60/120/240 Hz）、連線
-tools/net_test.sh <godot 路徑>     # 連線測試：同一台電腦開房主＋用戶端兩個程序，各自檢查自己那邊
+tools/net_test.sh <godot 路徑>     # 連線測試：同一台電腦開房主＋用戶端兩個程序，各自檢查自己那邊（第三個參數 relay＝透過本機中繼伺服器）
+godot --headless --path . --script res://tests/rounds_test.gd   # 預算戰
+godot --headless --path . --script res://tests/judge_test.gd    # 主機命中判定
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/rounds_shots.gd -- <資料夾>   # 預算戰（大廳、備戰、商店、超頻區）
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/killcam_shots.gd -- <資料夾>  # 擊殺回放
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/arms_shots.gd -- <資料夾>     # 第一人稱手臂
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c3_shots.gd -- <資料夾>      # C3 截圖（主畫面、配對、大廳、夢核之家、HUD、計分板、結算）
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/dream_shots.gd -- <資料夾>   # 夢核之家各區域
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c2_shots.gd -- <資料夾>      # C2 截圖（大廳、對戰、結算）

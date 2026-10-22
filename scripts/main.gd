@@ -31,6 +31,7 @@ var lobby: Lobby
 var results: Control
 var front_end: FrontEnd
 var scoreboard: Scoreboard
+var killcam: KillCam
 var _menu_cam: Camera3D
 var _menu_t := 0.0
 var _tab_down := -1.0
@@ -71,6 +72,9 @@ func _ready() -> void:
 		t.global_transform = xf
 	player = Player.new()
 	add_child(player)
+	player.camera.cull_mask &= ~KillCam.GHOST_LAYER
+	killcam = KillCam.new()
+	add_child(killcam)
 	var start := Blueprints.load_all()
 	if not start.is_empty():
 		player.equip(start[0].build, start[0].name)
@@ -135,6 +139,9 @@ func _ready() -> void:
 		add_child(team_match)
 		hud.team_match = team_match
 		scoreboard.team_match = team_match
+		if team_match.rules != null:
+			var rules := team_match.rules
+			bench.budget_text = func(from: Dictionary, to: Dictionary) -> String: return rules.budget_line(from, to)
 	if title_message != "":
 		hud.show_hint(title_message, 5.0)
 		title_message = ""
@@ -182,7 +189,7 @@ func _process(delta: float) -> void:
 
 ## Back to the title from anywhere (the host left, or you quit a match), offline.
 func back_to_title(message := "") -> void:
-	if net.multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+	if NetSession.active:
 		net.leave()
 	map_id = "folded"
 	team_mode = false
@@ -324,6 +331,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _try_bench() -> void:
+	if team_match != null and team_match.rules != null:
+		if not team_match.rules.can_buy():
+			hud.show_hint("預算戰：只有每回合開頭的備戰時間能改槍")
+			return
+		bench.open(player.weapon.build, player.weapon.name, false)
+		hud.visible = false   # the money line sits where the score bar is
+		player.input_enabled = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_viewport().set_input_as_handled()
+		return
 	if not player.can_mod():
 		hud.show_hint("戰鬥中不能改槍：%.1f 秒沒有交火，或回到重生區" % player.combat_left)
 		return
@@ -341,10 +358,14 @@ func _on_settings_closed() -> void:
 
 
 func _on_bench_closed(build: Dictionary, gun_name: String) -> void:
-	player.equip(build, gun_name)
+	hud.visible = true
+	if team_match != null and team_match.rules != null:
+		team_match.rules.request_buy(build, gun_name)
+	else:
+		player.equip(build, gun_name)
+		hud.show_hint("%s　重量 %.1f kg　機動性 %d%%" % [gun_name, player.weapon.stats.weight, roundi(player.mobility * 100)])
 	player.input_enabled = player.alive
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	hud.show_hint("%s　重量 %.1f kg　機動性 %d%%" % [gun_name, player.weapon.stats.weight, roundi(player.mobility * 100)])
 
 
 const STREAK_WINDOW := 4.0
@@ -419,12 +440,18 @@ func _on_player_died(info: Dictionary) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var dealt: float = player.damage_dealt.get(killer, 0.0)
 	var taken: float = player.damage_taken.get(killer, 0.0)
-	get_tree().create_timer(0.6).timeout.connect(func() -> void: death.show_death(info, dealt, taken))
+	var clip := killcam.clip(player, info.get("attacker"), info.get("build", {}))
+	get_tree().create_timer(0.6).timeout.connect(func() -> void:
+		if player.alive:
+			return
+		death.show_death(info, dealt, taken, clip)
+		if team_match != null and team_match.rules != null:
+			death.set_note("這回合只有一條命：等下一回合"))
 
 
 func _respawn() -> void:
 	if team_match:
-		if team_match.over:
+		if team_match.over or team_match.rules != null:
 			return
 		if team_match.respawn_wait() > 0.0:
 			team_match.respawn_local()

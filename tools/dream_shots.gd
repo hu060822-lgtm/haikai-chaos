@@ -11,6 +11,9 @@ const VIEWS := {
 	"dining": [Vector3(8, 1.8, 10), Vector3(22, 2.0, 0)],
 	"beam": [Vector3(-24, 6.6, -12), Vector3(10, 5.5, -12)],
 	"mezzanine": [Vector3(30, 6.2, -16), Vector3(0, 1.0, 4)],
+	"panels": [Vector3(-14, 2.0, 0), Vector3(4, 1.5, 0)],
+	"blocks": [Vector3(-2, 1.8, 2), Vector3(-10, 3.0, 11)],
+	"slide": [Vector3(-8, 2.0, 2), Vector3(-22, 2.5, 8)],
 }
 
 

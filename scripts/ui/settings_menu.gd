@@ -152,6 +152,15 @@ func _general() -> Control:
 				CameraFx.cycle()
 			for j in fx_buttons.size():
 				fx_buttons[j].set_pressed_no_signal(j == i))
+	box.add_child(FpUi.label("中繼伺服器（空白＝遊戲內建的）", 16))
+	var relay := LineEdit.new()
+	relay.text = Settings.relay_url
+	relay.placeholder_text = Matchmaker.DEFAULT_RELAY if Matchmaker.DEFAULT_RELAY != "" else "wss://haikai-relay.你的帳號.workers.dev"
+	relay.custom_minimum_size = Vector2(420, 34)
+	relay.text_changed.connect(func(t: String) -> void:
+		Settings.relay_url = t.strip_edges()
+		Settings.save())
+	box.add_child(relay)
 	_refresh_labels()
 	return box
 

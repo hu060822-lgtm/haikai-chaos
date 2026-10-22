@@ -4,7 +4,9 @@ extends SceneTree
 ## the lobby, starts 改版死鬥, and checks its side: the other player shows up and moves,
 ## a hit decided by the host lands on the client, the kill scores on the host and the
 ## score reaches the client, the client respawns, and the match ends back in the lobby.
-##   godot --headless --path . --script res://tests/net_test.gd -- host|client [port]
+##   godot --headless --path . --script res://tests/net_test.gd -- host|client [port] [--relay=ws://…]
+## With --relay the two meet on a relay server (relay/node_server.js) instead of ENet: the
+## host writes its room code to a file the client reads.
 
 const TIMEOUT := 40.0
 
@@ -13,6 +15,8 @@ var port := NetSession.PORT + 7
 var failures := 0
 var _t0 := 0.0
 var _finished := false
+## Meeting through a relay: only when the test was given one (--relay=), never the built-in.
+var via_relay := false
 
 
 func _init() -> void:
@@ -21,6 +25,7 @@ func _init() -> void:
 		role = args[0]
 	if args.size() > 1:
 		port = int(args[1])
+	via_relay = Array(args).any(func(a: String) -> bool: return a.begins_with("--relay="))
 	_t0 = Time.get_ticks_msec() / 1000.0
 	NetSession.my_name = "主機" if role == "host" else "訪客"
 	change_scene_to_file("res://scenes/main.tscn")
@@ -72,9 +77,22 @@ func _quiet_bots() -> void:
 		b.passive = true
 
 
+func _code_file() -> String:
+	return OS.get_cache_dir().path_join("haikai_relay_code_%d" % port)
+
+
 func _host() -> void:
 	var m := main()
-	check(m.net.host(port) == OK, "opened a room on port %d" % port)
+	if via_relay:
+		DirAccess.remove_absolute(_code_file())
+		check(m.net.host_relay() == OK, "opened a room on the relay")
+		var coded := await _until(func() -> bool: return NetSession.room_code.length() == 5, 8.0)
+		check(coded, "the relay gave the room a code (%s)" % NetSession.room_code)
+		var f := FileAccess.open(_code_file(), FileAccess.WRITE)
+		f.store_string(NetSession.room_code)
+		f.close()
+	else:
+		check(m.net.host(port) == OK, "opened a room on port %d" % port)
 	var joined := await _until(func() -> bool: return NetSession.roster.size() == 2, 15.0)
 	check(joined, "the client joined the lobby (roster %s)" % str(NetSession.roster))
 	if not joined:
@@ -125,6 +143,7 @@ func _host() -> void:
 	check(m.hud.kills == 1, "the host's HUD counts the kill")
 	var back := await _until(func() -> bool: return avatar.alive, 12.0)
 	check(back, "the client respawned")
+	check(tm.judge.rejected >= 1, "the host threw out the client's impossible hit (%d thrown out: %s)" % [tm.judge.rejected, tm.judge.last_reason])
 	await _wait(1.5)
 	tm._end.rpc(me.team, tm.scores)
 	await _wait(0.5)
@@ -139,7 +158,13 @@ func _host() -> void:
 
 func _client() -> void:
 	var m := main()
-	var ok := await _until(func() -> bool: return m.net.join("127.0.0.1", port) == OK and true, 1.0)
+	var ok := false
+	if via_relay:
+		var have := await _until(func() -> bool: return FileAccess.file_exists(_code_file()), 15.0)
+		var code := FileAccess.get_file_as_string(_code_file()) if have else ""
+		ok = have and m.net.join_code(code) == OK
+	else:
+		ok = await _until(func() -> bool: return m.net.join("127.0.0.1", port) == OK and true, 1.0)
 	var joined := await _until(func() -> bool: return NetSession.roster.size() == 2, 15.0)
 	check(ok and joined, "joined the host's lobby")
 	if not joined:
@@ -164,6 +189,7 @@ func _client() -> void:
 	check(me.is_on_floor() and absf(me.global_position.y) < 0.3, "the client's player stands on the floor at its spawn (%s)" % str(me.global_position))
 	check(SafeZone.is_safe(me.global_position, 1), "the client spawned inside red's safe zone")
 	check(me.can_mod(), "the bench opens at spawn")
+	await _claims(tm, me)
 	# Walk forward (toward the middle) out of the zone, then stand still to be shot.
 	await _wait(2.0)
 	me.global_position = Vector3(0, 0.1, -10.0)
@@ -188,6 +214,43 @@ func _client() -> void:
 	await _until(func() -> bool: return not NetSession.active, 6.0)
 	check(true, "the host closed the room")
 	_finished = true
+
+
+## Hits from the client go through the host's judge: a forged one (in the host's name)
+## and an impossible one (nowhere near the bot) do nothing, a fair one lands.
+func _claims(tm: TeamMatch, me: Player) -> void:
+	var found := []   # (a lambda can't assign an outer local)
+	var out := await _until(func() -> bool:
+		for id in tm.entities:
+			var e = tm.entities[id]
+			if str(id).begins_with("b") and e is Avatar and e.team == 0 and e.alive and not SafeZone.is_safe(e.global_position, 0):
+				found.append(e)
+				return true
+		return false, 8.0)
+	check(out, "an enemy bot walked out of its zone")
+	if not out:
+		return
+	var bot: Avatar = found[0]
+	# Out of our own zone (shots from inside it don't hurt anyone), not far enough for the
+	# host's test to start shooting us; then back.
+	var home := me.global_position
+	me.global_position = home + Vector3(0, 0, 7.2)
+	await _wait(0.4)
+	var eye := me.global_position + Vector3(0, 1.5, 0)
+	var make := func(point: Vector3, attacker_id: String) -> Dictionary:
+		return {"attacker_id": attacker_id, "attacker_name": me.display_name, "team": me.team, "damage": 10.0, "zone": "body",
+			"point": point, "dir": (point - eye).normalized(), "distance": eye.distance_to(point), "gun_name": me.weapon.name,
+			"build": me.weapon.build.duplicate(true), "effects": {}, "moves": [], "version": me.weapon.version, "through_wall": true,
+			"zone_hit": true}
+	var hp := bot.health
+	tm._claim.rpc_id(1, bot.id, make.call(bot.global_position + Vector3(0, 1, 0), "p1"))
+	tm._claim.rpc_id(1, bot.id, make.call(bot.global_position + Vector3(0, 1, 30), tm.my_id))
+	await _wait(0.6)
+	check(absf(bot.health - hp) < 0.5, "forged and impossible hits did nothing (bot hp %.0f)" % bot.health)
+	tm._claim.rpc_id(1, bot.id, make.call(bot.global_position + Vector3(0, 1, 0), tm.my_id))
+	var landed := await _until(func() -> bool: return bot.health <= hp - 9.5, 3.0)
+	check(landed, "a fair hit passed the host's judge (bot hp %.0f → %.0f)" % [hp, bot.health])
+	me.global_position = home
 
 
 ## A host alone with bots, live (they fight each other and you) for a while: the match keeps
