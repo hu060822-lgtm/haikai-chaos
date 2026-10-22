@@ -17,6 +17,8 @@ var _map_buttons := {}
 var _mode_buttons := {}
 var _rounds_label: Label
 var _rules: Label
+var _title: Label
+var _subtitle: Label
 var _size_label: Label
 var _score_label: Label
 var _time_label: Label
@@ -63,8 +65,10 @@ func _ready() -> void:
 	var title_col := VBoxContainer.new()
 	title_col.add_theme_constant_override("separation", -6)
 	head.add_child(title_col)
-	title_col.add_child(FrontEnd.heading("改版死鬥", 56))
-	title_col.add_child(FpUi.label("PATCH WAR　團隊死鬥", 16, Color(Counterform.DUST_WHITE, 0.6), FpUi.bold()))
+	_title = FrontEnd.heading("改版死鬥", 56)
+	title_col.add_child(_title)
+	_subtitle = FpUi.label("", 16, Color(Counterform.DUST_WHITE, 0.6), FpUi.bold())
+	title_col.add_child(_subtitle)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 	head.add_child(spacer)
@@ -278,6 +282,8 @@ func _refresh() -> void:
 	_rounds_label.get_parent().visible = rounds
 	_rounds_label.text = "先贏　%d 回合" % int(cfg.get("rounds", 5))
 	_rules.text = RULES_ROUNDS if rounds else RULES_PATCH
+	_title.text = "預算戰" if rounds else "改版死鬥"
+	_subtitle.text = "BUDGET WAR　回合制" if rounds else "PATCH WAR　團隊死鬥"
 	_host_box.modulate.a = 1.0 if host else 0.55
 	_bots.disabled = not host
 	_size_label.text = "每隊人數　%d" % int(cfg.get("team_size", 4))

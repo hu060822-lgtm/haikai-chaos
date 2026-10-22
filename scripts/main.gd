@@ -336,6 +336,7 @@ func _try_bench() -> void:
 			hud.show_hint("預算戰：只有每回合開頭的備戰時間能改槍")
 			return
 		bench.open(player.weapon.build, player.weapon.name, false)
+		hud.visible = false   # the money line sits where the score bar is
 		player.input_enabled = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
@@ -357,6 +358,7 @@ func _on_settings_closed() -> void:
 
 
 func _on_bench_closed(build: Dictionary, gun_name: String) -> void:
+	hud.visible = true
 	if team_match != null and team_match.rules != null:
 		team_match.rules.request_buy(build, gun_name)
 	else:
