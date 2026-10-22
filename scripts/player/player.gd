@@ -150,6 +150,7 @@ func _ready() -> void:
 	camera.near = 0.03
 	camera.far = 500.0
 	head.add_child(camera)
+	Faultprint.post(camera)
 	view = ViewModel.new()
 	camera.add_child(view)
 	_wind = AudioStreamPlayer.new()

@@ -58,6 +58,10 @@ func _ready() -> void:
 	_lane_a()
 	_lane_b()
 	_lane_c()
+	# Each route has its own colour of light (dark look only).
+	for spec in [[-60.0, Color("#F07A3A")], [-25.0, Color("#3FC6C0")], [20.0, Color("#E6C25A")]]:
+		for z in [24.0, -16.0]:
+			Faultprint.zone_light(self, Vector3(spec[0], 7.0, z), spec[1], 22.0)
 	_practice()
 	_make_hud()
 

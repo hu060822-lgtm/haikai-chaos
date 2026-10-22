@@ -194,7 +194,9 @@ void light() {
 		c = mix(c, mix(paper.rgb, SOFT_PAPER, soft), v_fade);
 		DIFFUSE_LIGHT += c * LIGHT_COLOR / PI;
 	} else {
-		// Local lights (muzzle flashes, lamps) add one flat step of their colour.
-		DIFFUSE_LIGHT += v_paint * LIGHT_COLOR * step(0.15, ndl) * ATTENUATION * 0.35 / PI;
+		// Local lights (muzzle flashes, zone lights) add two flat steps of their colour: a
+		// wide faint pool and a brighter core, like two passes of a translucent ink.
+		float a = step(0.1, clamp(dot(NORMAL, LIGHT), 0.0, 1.0)) * ATTENUATION;
+		DIFFUSE_LIGHT += v_paint * LIGHT_COLOR * (step(0.03, a) * 0.07 + step(0.3, a) * 0.09) / PI;
 	}
 }

@@ -53,6 +53,16 @@ func _init() -> void:
 		main.lab.restart("C")
 		await frames(10)
 		await shot("%s_start" % tag)
+	# The dark look with chunky pixels (3×).
+	Settings.pixels = 2
+	Faultprint.apply_post()
+	cam.global_position = Vector3(-48, 14, 52)
+	cam.rotation_degrees = Vector3(-22, 20, 0)
+	p.camera.current = true
+	main.lab.restart("C")
+	await frames(10)
+	await shot("dark_pixels")
+	Settings.pixels = 0
 	quit()
 
 

@@ -95,6 +95,26 @@ func _general() -> Control:
 			Faultprint.set_look(i)
 			for j in look_buttons.size():
 				look_buttons[j].set_pressed_no_signal(j == i))
+	box.add_child(_toggle("描邊（物件輪廓的墨線）", Settings.ink_lines, func(on: bool) -> void:
+		Settings.ink_lines = on
+		Settings.save()
+		Faultprint.apply_post()))
+	box.add_child(FpUi.label("像素化（低解析度的顆粒感）", 16))
+	var px_row := HBoxContainer.new()
+	box.add_child(px_row)
+	var px_buttons: Array[Button] = []
+	for i in Faultprint.PIXEL_NAMES.size():
+		var pb := FpUi.button(Faultprint.PIXEL_NAMES[i], 16)
+		pb.toggle_mode = true
+		pb.button_pressed = Settings.pixels == i
+		px_buttons.append(pb)
+		px_row.add_child(pb)
+		pb.pressed.connect(func() -> void:
+			Settings.pixels = i
+			Settings.save()
+			Faultprint.apply_post()
+			for j in px_buttons.size():
+				px_buttons[j].set_pressed_no_signal(j == i))
 	box.add_child(_toggle("顯示 FPS", Settings.show_fps, func(on: bool) -> void:
 		Settings.show_fps = on
 		Settings.save()))

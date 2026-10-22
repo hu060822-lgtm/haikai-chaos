@@ -34,6 +34,9 @@ const INFO_HIT := Color("#FFFFFF")
 const SURFACE := preload("res://shaders/faultprint.gdshader")
 const OUTLINE := preload("res://shaders/fp_outline.gdshader")
 const MISREG := preload("res://shaders/fp_misreg.gdshader")
+const POST := preload("res://shaders/fp_post.gdshader")
+const PIXEL_SIZES := [1.0, 2.0, 3.0, 4.0]
+const PIXEL_NAMES := ["關", "2×", "3×", "4×"]
 
 # Looks (Settings.look): 0 the original light print, 1 soft (darker paper, calmer ink),
 # 2 dark print (dark paper, pale inks). The surfaces switch live through the fp_soft and
@@ -47,6 +50,8 @@ static var ui_ink := CARBON        # UI text, borders
 static var ui_paper := BONE        # UI panels
 static var ui_dust := DUST         # UI preview panels
 static var _cache := {}
+static var _post: ShaderMaterial
+static var _zone_lights: Array[OmniLight3D] = []
 static var _envs: Array[Environment] = []
 
 
@@ -201,3 +206,52 @@ static func set_look(look: int) -> void:
 	for e in _envs:
 		if is_instance_valid(e):
 			e.background_color = PAPERS[look]
+	for z in _zone_lights:
+		if is_instance_valid(z):
+			z.visible = dark
+	apply_post()
+
+
+## The full-screen pass (ink lines, chunky pixels, a little more colour) on `camera`.
+static func post(camera: Camera3D) -> void:
+	if _post == null:
+		_post = ShaderMaterial.new()
+		_post.shader = POST
+		_post.set_shader_parameter("line_color", linear(CARBON.darkened(0.3)))
+	var q := MeshInstance3D.new()
+	q.name = "FpPost"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1, 1)
+	q.mesh = quad
+	q.material_override = _post
+	q.extra_cull_margin = 16384.0
+	q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	q.position = Vector3(0, 0, -0.2)
+	camera.add_child(q)
+	apply_post()
+
+
+static func apply_post() -> void:
+	if _post == null:
+		return
+	_post.set_shader_parameter("line_strength", 0.85 if Settings.ink_lines else 0.0)
+	_post.set_shader_parameter("pixel_size", PIXEL_SIZES[Settings.pixels])
+	_post.set_shader_parameter("saturation", 1.18 if Settings.look == 2 else 1.0)
+
+
+## A coloured pool of light that marks an area (ULTRAKILL-style), only in the dark look.
+## The surface shader lays it down as one flat step of its colour. Keep at most 8 per map:
+## the compatibility renderer lights each mesh with 8 at most.
+static func zone_light(parent: Node, pos: Vector3, color: Color, reach := 16.0, energy := 1.0) -> OmniLight3D:
+	var l := OmniLight3D.new()
+	l.position = pos
+	l.light_color = color
+	l.omni_range = reach
+	l.light_energy = energy
+	l.omni_attenuation = 0.6
+	l.shadow_enabled = false
+	l.visible = Settings.look == 2
+	parent.add_child(l)
+	_zone_lights = _zone_lights.filter(func(z: OmniLight3D) -> bool: return is_instance_valid(z))
+	_zone_lights.append(l)
+	return l

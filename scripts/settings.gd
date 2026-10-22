@@ -9,6 +9,8 @@ static var sens := 1.0          # × the base mouse sensitivity
 static var fov := 100.0         # horizontal-ish degrees (Godot's vertical FOV keeps aspect)
 static var vsync := false       # off by default: V-Sync adds frames of input delay
 static var show_fps := true
+static var ink_lines := true    # outlines on every edge
+static var pixels := 0          # Faultprint.PIXEL_SIZES index: chunky low-res pixels
 static var look := 2            # Faultprint.LOOKS: 0 original, 1 soft, 2 dark print
 static var _loaded := false
 
@@ -23,6 +25,8 @@ static func load_all() -> void:
 		fov = float(cfg.get_value("game", "fov", fov))
 		vsync = bool(cfg.get_value("game", "vsync", vsync))
 		show_fps = bool(cfg.get_value("game", "show_fps", show_fps))
+		ink_lines = bool(cfg.get_value("game", "ink_lines", ink_lines))
+		pixels = clampi(int(cfg.get_value("game", "pixels", pixels)), 0, 3)
 		look = clampi(int(cfg.get_value("game", "look", look)), 0, 2)
 	CameraFx.load_settings()
 	apply_display()
@@ -36,6 +40,8 @@ static func save() -> void:
 	cfg.set_value("game", "vsync", vsync)
 	cfg.set_value("game", "show_fps", show_fps)
 	cfg.set_value("game", "look", look)
+	cfg.set_value("game", "ink_lines", ink_lines)
+	cfg.set_value("game", "pixels", pixels)
 	cfg.save(FILE)
 
 
