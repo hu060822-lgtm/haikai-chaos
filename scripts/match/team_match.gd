@@ -18,9 +18,11 @@ extends Node
 ##               there, elsewhere only out of combat (Player.can_mod).
 ##
 ## Networking: every machine simulates its own player and sends its state SEND_RATE apart;
-## the host simulates the bots. Others are Avatars. A hit is decided by the shooter and
-## sent to the victim's owner (send_hit), who applies it and announces a death to all.
-## The host keeps the score. Node path /root/Main/Match on every machine.
+## the host simulates the bots. Others are Avatars. A hit is found by the shooter (what
+## you saw is what you hit) and judged by the host (send_hit): HitJudge rewinds to where
+## everyone was as the shooter saw them and checks it, and only then is it passed to the
+## victim's owner, who applies it and announces a death to all. The host keeps the score
+## and pings everyone (PING_EVERY) for the rewind and the scoreboard. Node path /root/Main/Match on every machine.
 ##
 ## config.mode "rounds" plays 預算戰 instead: rounds with one life and a part-buying
 ## economy, run by a RoundRules child (`rules`); the scoring above is off.
@@ -40,6 +42,7 @@ const BOT_DAMAGE := 0.7
 const ASSIST_DAMAGE := 25.0   # damage on a victim that makes you share the kill (+1 personal)
 const MAX_HIT := 600.0        # one hit over this is a bad packet, not a gun
 const LOAD_TIMEOUT := 8.0
+const PING_EVERY := 1.0
 const BOT_NAMES := ["灰板", "模具", "套色", "網點", "鉚釘", "楔形", "印版", "斷層", "鋼架", "骨白"]
 
 var main: Main
@@ -71,6 +74,11 @@ var _bot_seed := 17
 var _dmg_log := {}        # victim id -> {attacker id: damage}, on the victim's owner, cleared on death
 ## 預算戰 (config.mode "rounds"), else null.
 var rules: RoundRules
+## The host's hit referee (lag compensation lives here).
+var judge := HitJudge.new()
+## peer -> round trip to the host in ms (from the host's pings; everyone gets the table).
+var pings := {}
+var _ping_t := 0.0
 
 
 func _init() -> void:
@@ -247,6 +255,16 @@ func _physics_process(delta: float) -> void:
 					list.append([b.id, b.global_position, b.rotation.y, int(b.move), b.velocity, b.health, b.marked])
 			if not list.is_empty():
 				_bot_states.rpc(list)
+	if net.is_host():
+		var now := Time.get_ticks_msec() / 1000.0
+		for id in entities:
+			var e = entities[id]
+			if e != null and is_instance_valid(e) and e.alive:
+				judge.record(id, (e as Node3D).global_position, now)
+		_ping_t -= delta
+		if _ping_t <= 0.0:
+			_ping_t = PING_EVERY
+			_ping.rpc(Time.get_ticks_msec(), pings)
 	if net.is_host() and not over and time_left <= 0.0 and rules == null:
 		var winner := -1 if scores[0] == scores[1] else (0 if scores[0] > scores[1] else 1)
 		_end.rpc(winner, scores)
@@ -301,9 +319,57 @@ func id_of(node: Object) -> String:
 	return ""
 
 
-## A hit decided on this machine for `victim_id`: to its owner (or straight in, if ours).
+## A hit found on this machine for `victim_id`. Our own blasts on ourselves go straight
+## in; the host's own hits (its player, its bots) are passed on; a client's go to the host
+## to be judged (_claim).
 func send_hit(victim_id: String, info: Dictionary) -> void:
 	var wire := to_wire(info)
+	var attacker_id := str(wire.get("attacker_id", ""))
+	if victim_id == attacker_id and owner_of(victim_id) == net.my_id():
+		_apply_hit(victim_id, wire)
+	elif net.is_host():
+		_forward(victim_id, wire)
+	else:
+		_claim.rpc_id(1, victim_id, wire)
+
+
+## Host: a client says it hit someone. Judged, then passed on (or dropped).
+@rpc("any_peer", "reliable")
+func _claim(victim_id: String, wire: Dictionary) -> void:
+	if not net.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var attacker_id := str(wire.get("attacker_id", ""))
+	# Only the machine that owns the shooter may say it hit; none from teammates.
+	if owner_of(attacker_id) != sender or not entities.has(attacker_id) or not entities.has(victim_id):
+		return
+	if team_of(attacker_id) == team_of(victim_id) or float(wire.get("damage", 0.0)) > MAX_HIT:
+		return
+	var shooter = entities[attacker_id]
+	var victim = entities[victim_id]
+	# Flags that bend the safe zones are the host's to set, not the shooter's.
+	wire.erase("zone_hit")
+	if victim_id != attacker_id:
+		wire.erase("self_hit")
+	if SafeZone.is_safe((shooter as Node3D).global_position, team_of(attacker_id)):
+		wire.from_safe = true
+	# (A dead shooter's last bullets still count: trades.)
+	if not victim.alive:
+		return
+	var build: Dictionary = shooter.build if shooter is Avatar else (shooter.weapon.build if shooter.get("weapon") else {})
+	var now := Time.get_ticks_msec() / 1000.0
+	var space := get_viewport().get_world_3d().direct_space_state
+	var verdict := judge.judge(attacker_id, sender, victim_id, wire, build, now, func(a: Vector3, b: Vector3) -> bool:
+		return not space.intersect_ray(PhysicsRayQueryParameters3D.create(a, b, Geo.WORLD)).is_empty())
+	if verdict != "":
+		if OS.is_debug_build():
+			print_verbose("hit from %s on %s thrown out: %s" % [attacker_id, victim_id, verdict])
+		return
+	_forward(victim_id, wire)
+
+
+## Host: a hit that stands, to the victim's owner (or straight in, if the host owns it).
+func _forward(victim_id: String, wire: Dictionary) -> void:
 	var owner := owner_of(victim_id)
 	if owner == net.my_id():
 		_apply_hit(victim_id, wire)
@@ -311,21 +377,29 @@ func send_hit(victim_id: String, info: Dictionary) -> void:
 		_hit.rpc_id(owner, victim_id, wire)
 
 
-@rpc("any_peer", "reliable")
+## From the host only: a judged hit on something this machine owns.
+@rpc("authority", "reliable")
 func _hit(victim_id: String, wire: Dictionary) -> void:
 	if owner_of(victim_id) != net.my_id():
 		return
-	# Only the machine that owns the shooter may say it hit: no hits forged in someone
-	# else's name, none from teammates, none past any gun's damage. A dead shooter's last bullets still count (trades).
-	var attacker_id := str(wire.get("attacker_id", ""))
-	if owner_of(attacker_id) != multiplayer.get_remote_sender_id():
-		return
-	var shooter = entities.get(attacker_id)
-	if shooter == null or team_of(attacker_id) == team_of(victim_id):
-		return
-	if float(wire.get("damage", 0.0)) > MAX_HIT:
-		return
 	_apply_hit(victim_id, wire)
+
+
+@rpc("authority", "unreliable")
+func _ping(sent_ms: int, table: Dictionary) -> void:
+	pings = table
+	_pong.rpc_id(1, sent_ms)
+
+
+@rpc("any_peer", "unreliable")
+func _pong(sent_ms: int) -> void:
+	if not net.is_host():
+		return
+	var peer := multiplayer.get_remote_sender_id()
+	var rtt := (Time.get_ticks_msec() - sent_ms) / 1000.0
+	judge.set_rtt(peer, rtt)
+	pings[peer] = roundi(float(judge.rtt[peer]) * 1000.0)
+	pings[1] = 0
 
 
 func _apply_hit(victim_id: String, wire: Dictionary) -> void:

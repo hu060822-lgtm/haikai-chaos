@@ -115,6 +115,9 @@ func _row(r: Array, you: bool, color: Color) -> Control:
 func _ping(id: String) -> String:
 	var mp := team_match.multiplayer.multiplayer_peer
 	var peer := int(id.substr(1))
+	# The host pings everyone and shares the table (TeamMatch.pings).
+	if team_match.pings.has(peer):
+		return str(int(team_match.pings[peer]))
 	if mp is RelayPeer:
 		# Through the relay this machine only knows its own round trip (to the relay).
 		var rtt := (mp as RelayPeer).rtt_ms
