@@ -11,6 +11,8 @@ extends Control
 var player: Player
 var kills := 0
 var deaths := 0
+## The team match, when there is one (its score goes in the score line).
+var team_match: Node
 var feed: KillFeed
 
 var _hp: FpUi.PrintText
@@ -54,6 +56,10 @@ func _ready() -> void:
 	_cross = Crosshair.new()
 	_cross.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(_cross)
+	var marks := Marks.new()
+	marks.player = player
+	marks.set_anchors_preset(PRESET_FULL_RECT)
+	add_child(marks)
 	# Bottom left: health and movement.
 	var left := VBoxContainer.new()
 	left.position = Vector2(28, 0)
@@ -150,8 +156,8 @@ func _ready() -> void:
 	_score.align = HORIZONTAL_ALIGNMENT_CENTER
 	_score.anchor_left = 0.5
 	_score.anchor_right = 0.5
-	_score.offset_left = -200
-	_score.offset_right = 200
+	_score.offset_left = -480
+	_score.offset_right = 480
 	_score.offset_top = 14
 	_score.offset_bottom = 50
 	add_child(_score)
@@ -247,7 +253,10 @@ func _process(delta: float) -> void:
 		mode_text = "蓄力 %d%%" % roundi(w.charge * 100)
 	_mode.text = "%s　%s" % [mode_text, Arsenal.caliber_name(w.stats.cal)]
 	_weight.text = "重量 %.1f kg　機動性 %d%%" % [w.stats.weight, roundi(player.mobility * 100)]
-	_score.set_text("擊殺 %d　/　陣亡 %d" % [kills, deaths])
+	if team_match != null:
+		_score.set_text("%s　擊殺 %d / 陣亡 %d" % [team_match.score_text(), kills, deaths])
+	else:
+		_score.set_text("擊殺 %d　/　陣亡 %d" % [kills, deaths])
 	_cross.spread = player.current_spread()
 	_cross.fov = player.camera.fov
 	_cross.off = player.weapon.stats.zoom >= 2.0 and player._aim > 0.9
@@ -328,3 +337,36 @@ class Crosshair:
 				var a := ang - w + 2.0 * w * i / 6.0
 				pts.append(c + Vector2(cos(a), sin(a)) * (r + 14.0))
 			draw_colored_polygon(pts, Color(FpUi.enemy_color(), float(h[1]) * 0.85))
+
+
+## Enemies tagged by a "mark" part (tracker dart, bounty scope): a sulfur diamond over
+## their heads, drawn through walls, while the mark lasts.
+class Marks:
+	extends Control
+	var player: Player
+
+	func _init() -> void:
+		mouse_filter = MOUSE_FILTER_IGNORE
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		if player == null or not player.is_inside_tree():
+			return
+		var cam := player.camera
+		for t in player.get_tree().get_nodes_in_group("hittable"):
+			if not (t is Node3D) or t.get("marked") == null or float(t.marked) <= 0.0 or not t.get("alive"):
+				continue
+			if t.get("team") != null and int(t.team) == player.team:
+				continue
+			var at: Vector3 = (t as Node3D).global_position + Vector3(0, 2.15, 0)
+			if cam.is_position_behind(at):
+				continue
+			var p := cam.unproject_position(at)
+			var r := 9.0
+			var pts := PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0), p + Vector2(0, -r)])
+			draw_polyline(pts, Counterform.SULFUR, 2.5)
+			draw_circle(p, 2.5, Counterform.SULFUR)
+			var left := float(t.marked)
+			draw_line(p + Vector2(-r, r + 5), p + Vector2(-r + 2.0 * r * clampf(left / 6.0, 0.0, 1.0), r + 5), Counterform.SULFUR, 2.0)

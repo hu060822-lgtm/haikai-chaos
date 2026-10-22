@@ -75,6 +75,9 @@ const AMMO_LOOK := {
 	"sky_rounds": [Color(0.91, 0.89, 0.85), Color.BLACK],
 	"momentum_rounds": [Color(0.85, 0.78, 0.36), Color.BLACK],
 	"cluster_rockets": [Color(0.65, 0.33, 0.22), Color(0.2, 0.06, 0.0)],
+	"volatile_rounds": [Color(0.75, 0.3, 0.18), Color(0.45, 0.12, 0.0)],
+	"adrenaline_rounds": [Color(0.9, 0.85, 0.35), Color(0.15, 0.12, 0.0)],
+	"smart_rounds": [Color(0.4, 0.5, 0.55), Color(0.05, 0.2, 0.3)],
 }
 
 
@@ -143,6 +146,7 @@ static func _assemble(build: Dictionary) -> Node3D:
 	r.root.add_child(marker)
 	r.root.set_meta("muzzle", r.muzzle)
 	r.root.set_meta("frame", r.frame)
+	r.root.set_meta("mag_style", r.mag_style)
 	return r.root
 
 
@@ -230,6 +234,7 @@ class Rig:
 	var device_start := Vector3.INF        # where the muzzle device starts (a can slides over it)
 	var device_len := 0.0
 	var has_buffer := false
+	var mag_root: Node3D = null            # the "Magazine" node (see _into_mag)
 	var barrel_end := Vector3.ZERO         # the bare muzzle, before devices and cans                # an AR buffer tube is already there for stocks
 
 
@@ -503,8 +508,29 @@ static func _pic(r: Rig, centre: Vector3, length: float, roll := 0.0, width := 0
 		_box(r.root, Vector3(width + 0.002, 0.004, 0.005), centre + up * 0.0062 + Vector3(0, 0, z), bar, Vector3(0, 0, roll), 0.0008)
 
 
+## Magazine drawing goes into one "Magazine" node (at the gun's origin), so the view
+## model can pull it out and slot a fresh one in on a reload. Returns the node to draw
+## into afterwards; nested calls keep drawing into the magazine.
+static func _into_mag(r: Rig) -> Node3D:
+	var keep := r.root
+	if r.mag_root == null:
+		r.mag_root = Node3D.new()
+		r.mag_root.name = "Magazine"
+		r.root.add_child(r.mag_root)
+	r.root = r.mag_root
+	return keep
+
+
 ## A box magazine (optionally curved like a banana) hanging from `top`; returns its bottom.
 static func _mag_body(r: Rig, top: Vector3, length: float, w: float, d: float, tilt: float, curve: float,
+		m: Material, plate := true) -> Vector3:
+	var keep := _into_mag(r)
+	var out := _mag_body_draw(r, top, length, w, d, tilt, curve, m, plate)
+	r.root = keep
+	return out
+
+
+static func _mag_body_draw(r: Rig, top: Vector3, length: float, w: float, d: float, tilt: float, curve: float,
 		m: Material, plate := true) -> Vector3:
 	# The magazine's side silhouette along a curve (a banana when curve > 0), with stiffening
 	# ribs down its side and a flared base plate.
@@ -548,6 +574,13 @@ static func _mag_body(r: Rig, top: Vector3, length: float, w: float, d: float, t
 
 ## The frame's own magazine, in its usual shape, with the top round showing.
 static func _std_mag(r: Rig, m: Material, length_scale := 1.0) -> Vector3:
+	var keep := _into_mag(r)
+	var out := _std_mag_draw(r, m, length_scale)
+	r.root = keep
+	return out
+
+
+static func _std_mag_draw(r: Rig, m: Material, length_scale := 1.0) -> Vector3:
 	_box(r.root, Vector3(r.mag_w + 0.008, 0.014, r.mag_d + 0.008), r.mag + Vector3(0, -0.004, 0), mat("panel", DARK))
 	_round(r, _rod(r.root, 0.0055, 0.0055, minf(r.mag_d * 0.8, 0.06), r.mag + Vector3(0, 0.004, -0.002), mat("brass"), 5))
 	return _mag_body(r, r.mag, r.mag_len * length_scale, r.mag_w, r.mag_d, r.mag_tilt, r.mag_curve, m)
@@ -595,6 +628,12 @@ static func _barrel(r: Rig, start: Vector3, length: float, radius: float, m: Mat
 			_rod(r.root, rad * 1.6, rad * 1.6, 0.02, joint, mat("panel", TAPE), 8)
 			_rod(r.root, rad * 1.15, rad * 1.15, len - length, joint + Vector3(0, 0, -(len - length) / 2.0),
 					mat("rust_metal", RUST), 6)
+		"red_hot_barrel":
+			# Heat-blued rings along the barrel, glowing toward the front end.
+			for n in 6:
+				var hot := float(n) / 5.0
+				_turn(r.root, [Vector2(-0.003, rad * 1.25), Vector2(0.003, rad * 1.25)], start + Vector3(0, 0, -len * (0.2 + 0.72 * hot)),
+						fin("rust", Color(0.9, 0.18, 0.02) * hot * 1.4), 14)
 		"short_barrel":
 			_rod(r.root, rad * 1.4, rad * 1.4, 0.012, start + Vector3(0, 0, -len + 0.006), mat("brass", COPPER), 6)
 		"heavy_barrel":
@@ -691,7 +730,7 @@ static func _barrel(r: Rig, start: Vector3, length: float, radius: float, m: Mat
 		r.done["barrel"] = true
 		if not id in ["long_barrel", "short_barrel", "heavy_barrel", "fluted_barrel", "match_barrel", "polygonal_barrel",
 				"threaded_barrel", "integral_suppressor", "bbl_338", "rifled_slug_barrel", "nail_guide", "corkscrew_barrel",
-				"glass_barrel", "telescoping_barrel", "twin_linked", "organ_pipes"]:
+				"glass_barrel", "telescoping_barrel", "twin_linked", "organ_pipes", "red_hot_barrel"]:
 			_generic(r, start + Vector3(0, rad + 0.006, -len * 0.5), id)
 	r.barrel_start = start
 	r.barrel_r = rad
@@ -707,6 +746,12 @@ static func _round(r: Rig, node: MeshInstance3D) -> MeshInstance3D:
 
 ## A straight box magazine hanging from `top`, with the top round showing.
 static func _box_mag(r: Rig, top: Vector3, length: float, m: Material, width := 0.022, depth := 0.034, tilt := 8.0) -> void:
+	var keep := _into_mag(r)
+	_box_mag_draw(r, top, length, m, width, depth, tilt)
+	r.root = keep
+
+
+static func _box_mag_draw(r: Rig, top: Vector3, length: float, m: Material, width := 0.022, depth := 0.034, tilt := 8.0) -> void:
 	var down := Vector3(0, -cos(deg_to_rad(tilt)), -sin(deg_to_rad(tilt)))
 	_box(r.root, Vector3(width + 0.008, 0.02, depth + 0.008), top + Vector3(0, -0.006, 0), mat("panel", DARK))
 	_box(r.root, Vector3(width, length, depth), top + down * length * 0.5, m, Vector3(tilt, 0, 0))
@@ -718,6 +763,12 @@ static func _box_mag(r: Rig, top: Vector3, length: float, m: Material, width := 
 # --- Frames ---------------------------------------------------------------------------
 
 static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Material) -> void:
+	var keep := _into_mag(r)
+	_tank_draw(r, pos, radius, length, m)
+	r.root = keep
+
+
+static func _tank_draw(r: Rig, pos: Vector3, radius: float, length: float, m: Material) -> void:
 	var h := length / 2.0
 	_lathe_z(r.root, [Vector2(0, -h), Vector2(radius * 0.7, -h + 0.008), Vector2(radius, -h + 0.03),
 			Vector2(radius, h - 0.03), Vector2(radius * 0.7, h - 0.008), Vector2(0, h)], pos, m, 10)
@@ -730,6 +781,12 @@ static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Materia
 
 
 static func _cells(r: Rig, top: Vector3, count: int, radius: float, length: float, m: Material) -> void:
+	var keep := _into_mag(r)
+	_cells_draw(r, top, count, radius, length, m)
+	r.root = keep
+
+
+static func _cells_draw(r: Rig, top: Vector3, count: int, radius: float, length: float, m: Material) -> void:
 	for i in count:
 		var x := (i - (count - 1) / 2.0) * radius * 2.1
 		var pos := top + Vector3(x, -radius, 0)
@@ -764,6 +821,12 @@ static func _blade(p: Node3D, pos: Vector3, radius: float) -> void:
 
 ## Spare blades stacked in a little cage under the body.
 static func _blade_stack(r: Rig, top: Vector3, count: int) -> void:
+	var keep := _into_mag(r)
+	_blade_stack_draw(r, top, count)
+	r.root = keep
+
+
+static func _blade_stack_draw(r: Rig, top: Vector3, count: int) -> void:
 	for i in count:
 		_put(r.root, LowPoly.prism(12, 0.045, 0.045, 0.004), top + Vector3(0, -0.006 - i * 0.008, 0), mat("panel", STEEL))
 	for sx: float in [-1.0, 1.0]:
@@ -782,6 +845,12 @@ static func _ring(centre: Vector3, radius: float, segments: int) -> Array:
 # --- Handguns (gunsmith v2) --------------------------------------------------------
 
 static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
+	var keep := _into_mag(r)
+	_pistol_mag_draw(r, stick, m)
+	r.root = keep
+
+
+static func _pistol_mag_draw(r: Rig, stick := 0.0, m: Material = null) -> void:
 	r.mag = _grip_bottom(r)
 	r.mag_style = "pistol"
 	r.mag_tilt = r.grip_rake
@@ -801,6 +870,12 @@ static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
 # --- PDW -----------------------------------------------------------------------------
 
 static func _top_mag(r: Rig, length: float, m: Material, width := 0.044) -> void:
+	var keep := _into_mag(r)
+	_top_mag_draw(r, length, m, width)
+	r.root = keep
+
+
+static func _top_mag_draw(r: Rig, length: float, m: Material, width := 0.044) -> void:
 	_box(r.root, Vector3(width, 0.026, length), r.mag + Vector3(0, 0.013, 0), m, Vector3.ZERO, 0.006)
 	# Two staggered rows of rounds inside (seen through a clear body), the feed lips in black.
 	for sx: float in [-1.0, 1.0]:
@@ -819,6 +894,12 @@ static func _lever(r: Rig, s: float) -> void:
 
 
 static func _belt_box(r: Rig, size: Vector3, m: Material) -> void:
+	var keep := _into_mag(r)
+	_belt_box_draw(r, size, m)
+	r.root = keep
+
+
+static func _belt_box_draw(r: Rig, size: Vector3, m: Material) -> void:
 	var c := r.mag + Vector3(0, -size.y / 2.0 - 0.004, 0)
 	_box(r.root, Vector3(0.03, 0.01, 0.04), r.mag + Vector3(0, -0.002, 0), mat("panel", BLACK), Vector3.ZERO, 0.002)
 	_box(r.root, size, c, m, Vector3.ZERO, 0.006)
@@ -962,6 +1043,14 @@ static func _barrel_part(r: Rig, id: String) -> void:
 			_rod(r.root, 0.012, 0.012, 0.05, start + Vector3(0, r.barrel_r * 0.6 + 0.024, -0.05), mat("panel", BLUE, Color(0.05, 0.15, 0.4)), 8)
 			_rod(r.root, 0.007, 0.007, 0.104, start + Vector3(0, 0, -0.052), mat("panel", BLACK, ZAP * 0.5), 6)
 			r.muzzle = start + Vector3(0, 0, -0.104)
+		"red_hot_barrel":
+			# Heat-blued rings along the barrel, glowing toward the front end.
+			var count := 7
+			for n in count:
+				var z := r.barrel_start.z + (r.muzzle.z - r.barrel_start.z) * (0.2 + 0.75 * n / float(count - 1))
+				var hot := float(n) / (count - 1)
+				_turn(r.root, [Vector2(-0.003, r.barrel_r * 1.25), Vector2(0.003, r.barrel_r * 1.25)], Vector3(r.muzzle.x, r.barrel_start.y, z),
+						fin("rust", Color(0.9, 0.18, 0.02) * hot * 1.4), 14)
 		_:
 			_generic(r, r.barrel_start.lerp(r.muzzle, 0.5) + Vector3(0, r.barrel_r + 0.008, 0), id)
 
@@ -1170,6 +1259,11 @@ static func _silencer(r: Rig, id: String) -> void:
 					_turn(r.root, [Vector2(-0.0012, rad * 1.012), Vector2(0.0012, rad * 1.012)], b + Vector3(0, 0, -0.04 - i * 0.014), fin("copper"), 22)
 			"can_wet":
 				_cyl_y(r.root, 0.004, 0.012, b + Vector3(0, rad + 0.004, -length * 0.5), fin("sulfur"), 10)
+			"echo_can":
+				# Skewed baffles show through a side window; a brass ring at the front.
+				for i in 4:
+					_box(r.root, Vector3(0.003, rad * 1.5, 0.0025), b + Vector3(rad * 0.98, 0, -0.03 - i * 0.022), fin("brass"), Vector3(0, 0, 20), 0.0)
+				_turn(r.root, [Vector2(-0.003, rad * 1.03), Vector2(0.003, rad * 1.03)], b + Vector3(0, 0, -length + 0.008), fin("brass"), 22)
 	r.muzzle = Vector3(0, back.y, back.z - length - 0.002)
 
 
@@ -1252,6 +1346,14 @@ static func _handguard(r: Rig, id: String) -> void:
 			_pic(r, Vector3(-hr * 1.05, y, (a + b) / 2.0), len - 0.02, 90.0, 0.018)
 			_pic(r, Vector3(0, y - hr, (a + b) / 2.0), len - 0.02, 180.0, 0.018)
 			outer = hr * 1.05 + 0.007
+		"vent_handguard":
+			# A round handguard bristling with heat-sink fins all along it.
+			GunFrames._mlok_tube(r, y, a, b, hr + 0.002, fin("black"))
+			outer = hr + 0.012
+			var count := int((a - b) / 0.012)
+			for i in count:
+				var z := a - 0.008 - i * 0.012
+				_turn(r.root, [Vector2(-0.002, hr + 0.012), Vector2(0.002, hr + 0.012)], Vector3(0, y, z), fin("bare"), 18)
 		_:
 			GunFrames._mlok_tube(r, y, a, b, hr + 0.002, fin("oxide"))
 	r.hg_end = b
@@ -1314,6 +1416,13 @@ static func _rail_part(r: Rig, slot: String, id: String) -> void:
 			_slab(r.root, [Vector2(c.z + 0.015, c.y + 0.009), Vector2(c.z - 0.015, c.y + 0.009), Vector2(c.z - 0.015, c.y - 0.009),
 					Vector2(c.z + 0.015, c.y - 0.009)], 0.016, black, c.x - dir.x * 0.005, 0.002)
 			_box(r.root, Vector3(0.012, 0.002, 0.02), c - dir * 0.005 + Vector3(0, 0.0095, 0.002), fin("bore", Color(0.2, 0.9, 0.3)), Vector3.ZERO, 0.0)
+		"dash_feed":
+			# A spring-loaded side feeder: a short rounds tube on a coil, with a brass cap.
+			var tube_at := c + dir * 0.002
+			_cyl(r.root, 0.007, 0.06, tube_at, fin("black"), 12)
+			_cyl(r.root, 0.0075, 0.004, tube_at + Vector3(0, 0, -0.03), fin("brass"), 12)
+			for i in 4:
+				_turn(r.root, [Vector2(-0.001, 0.008), Vector2(0.001, 0.008)], tube_at + Vector3(0, 0, -0.016 + i * 0.01), fin("sulfur"), 12)
 		_:
 			_generic(r, c, id)
 
@@ -1358,6 +1467,13 @@ static func _foregrip(r: Rig, id: String) -> void:
 				_rod_between(r.root, f + Vector3(sx * 0.008, 0, 0), foot, 0.0045 if id == "grip_pod" else 0.0055, black, 10)
 				_rod_between(r.root, (f + Vector3(sx * 0.008, 0, 0)).lerp(foot, 0.55), foot, 0.0036, fin("bare"), 10)
 				_ball(r.root, 0.006, foot, fin("rubber"), Vector3(1, 0.6, 1.2))
+		"riot_foregrip":
+			# A vertical grip with a small steel plate in front of the hand, a slot cut in it.
+			_slab(r.root, [Vector2(f.z + 0.012, f.y - 0.004), Vector2(f.z - 0.012, f.y - 0.004), Vector2(f.z - 0.012, f.y - 0.075),
+					Vector2(f.z + 0.012, f.y - 0.075)], 0.022, fin("polymer"), 0.0, 0.004)
+			_box(r.root, Vector3(0.09, 0.08, 0.006), f + Vector3(0, -0.04, -0.026), fin("steel"), Vector3(-6, 0, 0), 0.002)
+			_box(r.root, Vector3(0.05, 0.008, 0.007), f + Vector3(0, -0.012, -0.0265), fin("bore"), Vector3(-6, 0, 0), 0.0)
+			_box(r.root, Vector3(0.092, 0.01, 0.0065), f + Vector3(0, -0.078, -0.026), fin("sulfur"), Vector3(-6, 0, 0), 0.001)
 		_:
 			_generic(r, f + Vector3(0, -0.015, 0), id)
 
@@ -1425,6 +1541,18 @@ static func _underbarrel(r: Rig, id: String) -> void:
 			_cyl_x(r.root, 0.007, 0.006, c + Vector3(0.02, 0.006, 0.0), fin("black"), 14)
 			_cyl_x(r.root, 0.0055, 0.002, c + Vector3(0.024, 0.006, 0.0), fin("dust"), 14)
 			_box(r.root, Vector3(0.012, 0.016, 0.02), u + Vector3(0, -0.006, 0.02), fin("black"), Vector3.ZERO, 0.002)
+		"tracker_dart":
+			# A slim dart tube under the barrel, three fletched darts clipped to its side.
+			var c := u + Vector3(0, -0.022, 0.0)
+			_cyl(r.root, 0.011, 0.12, c, fin("black"), 14)
+			_turn(r.root, [Vector2(-0.066, 0.0125), Vector2(-0.06, 0.0125)], c, fin("sulfur"), 14)
+			_cyl(r.root, 0.006, 0.002, c + Vector3(0, 0, -0.061), fin("bore"), 10)
+			for i in 3:
+				var d := c + Vector3(0.016, -0.006 + i * 0.006, 0.02)
+				_cyl(r.root, 0.0018, 0.07, d, fin("chrome"), 6)
+				_box(r.root, Vector3(0.006, 0.0008, 0.012), d + Vector3(0, 0, 0.03), fin("oxide"), Vector3.ZERO, 0.0)
+			_box(r.root, Vector3(0.006, 0.02, 0.03), c + Vector3(0.012, 0, 0.02), fin("black"), Vector3.ZERO, 0.001)
+			_box(r.root, Vector3(0.012, 0.026, 0.02), u + Vector3(0, -0.006, 0.02), fin("black"), Vector3.ZERO, 0.002)
 		_:
 			_generic(r, u + Vector3(0, -0.012, 0), id)
 
@@ -1599,6 +1727,28 @@ static func _sight(r: Rig, id: String) -> void:
 			_turn(r.root, [Vector2(-0.028, 0.008), Vector2(0.024, 0.008)], c + Vector3(-0.03, -0.004, -0.02), black, 14)
 			_cyl(r.root, 0.007, 0.002, c + Vector3(-0.03, -0.004, -0.048), fin("bore", Color(0.25, 0.0, 0.05)), 12)
 			_box(r.root, Vector3(0.012, 0.006, 0.01), c + Vector3(-0.02, -0.004, -0.02), black, Vector3.ZERO, 0.0)
+		"bounty_scope":
+			# A long scope with a wanted-poster tag hung off the turret and a red ring.
+			var c := t + Vector3(0, 0.03, 0)
+			for z: float in [-0.03, 0.03]:
+				_slab(r.root, [Vector2(t.z + z + 0.008, t.y), Vector2(t.z + z - 0.008, t.y), Vector2(t.z + z - 0.008, c.y), Vector2(t.z + z + 0.008, c.y)],
+						0.018, black, 0.0, 0.001)
+			_turn(r.root, [Vector2(-0.11, 0.024), Vector2(-0.106, 0.026), Vector2(-0.07, 0.026), Vector2(-0.05, 0.013), Vector2(0.05, 0.013),
+					Vector2(0.065, 0.017), Vector2(0.09, 0.017), Vector2(0.094, 0.015)], c, black, 22)
+			_turn(r.root, [Vector2(-0.104, 0.022), Vector2(-0.1, 0.022)], c, lens, 18)
+			_turn(r.root, [Vector2(-0.072, 0.0265), Vector2(-0.066, 0.0265)], c, fin("shell_red"), 22)
+			_cyl_y(r.root, 0.008, 0.016, c + Vector3(0, 0.018, 0), black, 12)
+			_box(r.root, Vector3(0.002, 0.03, 0.024), c + Vector3(0.016, -0.008, 0.01), fin("sand"), Vector3(0, 0, -8), 0.0)
+			_box(r.root, Vector3(0.0022, 0.008, 0.016), c + Vector3(0.0165, -0.002, 0.01), fin("oxide"), Vector3(0, 0, -8), 0.0)
+		"juggler_sight":
+			# An open ring sight with three juggling balls stuck on its posts.
+			for z: float in [-0.012, 0.012]:
+				_slab(r.root, [Vector2(t.z + z + 0.005, t.y), Vector2(t.z + z - 0.005, t.y), Vector2(t.z + z - 0.004, t.y + 0.028), Vector2(t.z + z + 0.004, t.y + 0.028)],
+						0.006, black, 0.0, 0.0008)
+			_turn(r.root, [Vector2(-0.002, 0.014), Vector2(0.002, 0.014)], t + Vector3(0, 0.032, 0), fin("chrome"), 22)
+			var cols := ["oxide", "sulfur", "green"]
+			for i in 3:
+				_ball(r.root, 0.0045, t + Vector3(-0.012 + i * 0.012, 0.05 + (i % 2) * 0.006, 0.0), fin(cols[i]))
 		_:
 			_generic(r, t + Vector3(0, 0.02, 0), id)
 
@@ -1652,6 +1802,19 @@ static func _grip_part(r: Rig, id: String) -> void:
 				var a := TAU * i / 8.0
 				_box(r.root, Vector3(0.002, 0.012, 0.003), heel + Vector3(size.x * 0.5 + 0.004, cos(a) * 0.008, sin(a) * 0.008), fin("brass"),
 						Vector3(-rad_to_deg(a), 0, 0), 0.0)
+		"berserker_grip":
+			# A rubber grip studded with steel spikes down its back.
+			_grip_shape(r, top, fin("rubber"), size, rake, false, true)
+			for i in 5:
+				var at := top + down * size.y * (0.15 + i * 0.17) - fwd * size.z * 0.55
+				_cyl(r.root, 0.0035, 0.008, at - fwd * 0.004, fin("chrome"), 6)
+				_ball(r.root, 0.003, at - fwd * 0.009, fin("chrome"))
+		"leech_grip":
+			# A glossy dark-red grip with ringed segments, like something alive.
+			_grip_shape(r, top, fin("shell_red"), size, rake, false, false)
+			for i in 6:
+				var at := top + down * size.y * (0.12 + i * 0.15)
+				_box(r.root, Vector3(size.x + 0.004, 0.003, size.z + 0.004), at, fin("rust"), Vector3(-rake, 0, 0), 0.001)
 		_:
 			_grip_shape(r, top, fin("oxide"), size, rake, true)
 
@@ -1692,6 +1855,16 @@ static func _trigger_part(r: Rig, id: String) -> void:
 			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("oxide"))
 			for i in 5:
 				_box(r.root, Vector3(0.004, 0.014, 0.0016), side + Vector3(0.002, 0.0, -0.012 + i * 0.006), fin("bare"), Vector3.ZERO, 0.0)
+		"spool_trigger":
+			# A trigger on a little spring drum, its line wound round a spool on the side.
+			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("chrome"))
+			_cyl_x(r.root, 0.008, 0.008, side, fin("brass"), 16)
+			for i in 3:
+				_cyl_x(r.root, 0.0085, 0.0012, side + Vector3(-0.003 + i * 0.003, 0, 0), fin("sulfur"), 16)
+		"ambush_trigger":
+			# A black blade with a hooded guard and a small sulfur safety tab.
+			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("bore"))
+			_box(r.root, Vector3(0.004, 0.006, 0.01), side + Vector3(0, 0.004, 0), fin("sulfur"), Vector3(-20, 0, 0), 0.0)
 		_:
 			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("oxide"))
 
@@ -1742,6 +1915,19 @@ static func _bolt_part(r: Rig, id: String) -> void:
 			_box(r.root, Vector3(0.003, 0.011, 0.028), b + out * 0.0005, fin("bare"), Vector3.ZERO, 0.0)
 			for i in 4:
 				_cyl_x(r.root, 0.0022, 0.0034, b + out * 0.0008 + Vector3(0, 0, -0.01 + i * 0.0068), fin("bore"), 10)
+		"echo_chamber":
+			# A second, empty chamber hung beside the port, with a ringing brass bell mouth.
+			var at := b + out * 0.012
+			_cyl(r.root, 0.007, 0.05, at, fin("steel"), 14)
+			_turn(r.root, [Vector2(-0.034, 0.011), Vector2(-0.025, 0.007), Vector2(-0.02, 0.007)], at, fin("brass"), 16)
+			for z: float in [-0.012, 0.012]:
+				_box(r.root, Vector3(0.012, 0.004, 0.004), at + Vector3(-out.x * 0.006, 0, z), fin("black"), Vector3.ZERO, 0.0)
+		"skate_bolt":
+			# Skate bearings on the bolt carrier showing through the port, orange wheels out.
+			for z: float in [-0.014, 0.014]:
+				_cyl_x(r.root, 0.007, 0.006, b + out * 0.004 + Vector3(0, 0, z), fin("oxide"), 14)
+				_cyl_x(r.root, 0.003, 0.0075, b + out * 0.004 + Vector3(0, 0, z), fin("chrome"), 10)
+			_box(r.root, Vector3(0.003, 0.004, 0.04), b + out * 0.002, fin("black"), Vector3.ZERO, 0.0)
 		_:
 			_generic(r, b + out * 0.008, id)
 
@@ -1774,11 +1960,32 @@ static func _charging(r: Rig, id: String) -> void:
 			_box(r.root, Vector3(0.01, 0.014, 0.016), at + Vector3(-0.028, 0, -0.025), mat("panel", BLACK), Vector3.ZERO, 0.002)
 			if not on_side:
 				_box(r.root, Vector3(0.02, 0.006, 0.012), c, dark, Vector3.ZERO, 0.001)
+		"slide_loader":
+			# A long hooked lever off the charging handle with a rubber knob: it snags on your
+			# leg when you slide and racks the gun for you.
+			_box(r.root, Vector3(0.02, 0.006, 0.012), c, fin("black"), Vector3.ZERO, 0.001)
+			var hook := Vector3(r.body_w + 0.014, c.y - 0.06, c.z + 0.012)
+			_rod_between(r.root, c + Vector3(0.012, 0, 0), hook, 0.003, fin("chrome"))
+			_ball(r.root, 0.007, hook, fin("rubber"))
+			_box(r.root, Vector3(0.004, 0.012, 0.004), hook + Vector3(0, 0.009, 0), fin("oxide"), Vector3.ZERO, 0.0)
+		"crank_handle":
+			# A hand crank on the side of the receiver geared to a little brass dynamo.
+			var at := Vector3(r.body_w + 0.006, c.y - 0.012, c.z - 0.02)
+			_cyl_x(r.root, 0.012, 0.012, at, fin("brass"), 16)
+			_cyl_x(r.root, 0.006, 0.02, at + Vector3(0.01, 0, 0), fin("black"), 10)
+			_box(r.root, Vector3(0.004, 0.004, 0.03), at + Vector3(0.022, 0, 0.013), fin("chrome"), Vector3.ZERO, 0.0)
+			_cyl_x(r.root, 0.004, 0.016, at + Vector3(0.03, 0, 0.026), fin("oxide"), 8)
 		_:
 			_generic(r, c, id)
 
 
 static func _magazine(r: Rig, id: String) -> void:
+	var keep := _into_mag(r)
+	_magazine_draw(r, id)
+	r.root = keep
+
+
+static func _magazine_draw(r: Rig, id: String) -> void:
 	var t := r.mag
 	match r.mag_style:
 		"tank":
@@ -1855,9 +2062,24 @@ static func _magazine(r: Rig, id: String) -> void:
 			_round(r, _rod(r.root, 0.005, 0.005, 0.03, at + Vector3(cos(a) * 0.012, -0.018, sin(a) * 0.012), mat("brass"), 5, Vector3.ZERO))
 		return
 	if r.mag_style == "none":
-		_generic(r, t, id)
+		if id in ["parkour_feed", "pain_feed", "bomb_mag"]:
+			_mag_pouch(r, id)
+		else:
+			_generic(r, t, id)
 		return
 	_box_magazine(r, id)
+
+
+## Frames with no box magazine carry the feed part as a pouch strapped under the grip.
+static func _mag_pouch(r: Rig, id: String) -> void:
+	var at := _grip_bottom(r) + Vector3(0, -0.03, 0.0)
+	var colour: String = {"parkour_feed": "poly_grey", "pain_feed": "shell_red", "bomb_mag": "steel"}.get(id, "black")
+	_box(r.root, Vector3(0.03, 0.04, 0.03), at, fin(colour), Vector3.ZERO, 0.006)
+	_box(r.root, Vector3(0.034, 0.008, 0.034), at + Vector3(0, 0.02, 0), fin("black"), Vector3.ZERO, 0.002)
+	match id:
+		"parkour_feed": _cyl_x(r.root, 0.012, 0.008, at + Vector3(-0.02, 0, 0), fin("rubber"), 16)
+		"pain_feed": _tube(r.root, [at, at + Vector3(0.02, -0.02, 0.05), at + Vector3(0.03, -0.01, 0.12)], 0.004, fin("shell_red"), 6)
+		"bomb_mag": _cyl_y(r.root, 0.01, 0.04, at + Vector3(0.024, 0, 0), fin("shell_red"), 12)
 
 
 ## Box-magazine parts in the frame's own magazine shape (or a pistol's, out of the grip).
@@ -1928,6 +2150,27 @@ static func _box_magazine(r: Rig, id: String) -> void:
 		"tube_extension", "side_saddle", "box_mag_conv", "belt_box":
 			# Only fits frames whose own style draws it; anywhere else, a plain magazine.
 			_mag_body(r, t, maxf(base, 0.012), w, d, r.mag_tilt, r.mag_curve, steel)
+		"parkour_feed":
+			# A magazine with a rubber wheel on its spine that rolls along the wall.
+			var bottom := _mag_body(r, t, maxf(base * 0.85, 0.04), w, d, r.mag_tilt, r.mag_curve, fin("poly_grey"))
+			var spine := t.lerp(bottom, 0.55) + Vector3(-w * 0.5 - 0.006, 0, 0)
+			_cyl_x(r.root, 0.014, 0.008, spine, fin("rubber"), 18)
+			_cyl_x(r.root, 0.006, 0.01, spine, fin("oxide"), 10)
+			_box(r.root, Vector3(0.004, 0.012, 0.02), spine + Vector3(0.004, 0, 0), fin("black"), Vector3.ZERO, 0.0)
+		"pain_feed":
+			# A magazine with a ribbed hose running up from its base toward the wearer.
+			var bottom := _mag_body(r, t, maxf(base, 0.04), w, d, r.mag_tilt, r.mag_curve, fin("black"))
+			_tube(r.root, [bottom, bottom + Vector3(0.01, -0.02, 0.03), bottom + Vector3(0.02, -0.03, 0.09), bottom + Vector3(0.03, -0.02, 0.16)],
+					0.004, fin("shell_red"), 6)
+			_box(r.root, Vector3(w + 0.004, 0.01, d + 0.004), bottom, fin("chrome"), Vector3(r.mag_tilt, 0, 0), 0.0015)
+		"bomb_mag":
+			# A magazine taped to a red charge with a pull ring.
+			var bottom := _mag_body(r, t, maxf(base, 0.04), w, d, r.mag_tilt, r.mag_curve, fin("steel"))
+			var mid := t.lerp(bottom, 0.6)
+			_cyl_y(r.root, 0.012, 0.05, mid + Vector3(w * 0.5 + 0.012, 0, 0), fin("shell_red"), 14)
+			_box(r.root, Vector3(w + 0.03, 0.01, d + 0.006), mid, fin("dust"), Vector3(r.mag_tilt, 0, 0), 0.001)
+			_tube(r.root, [mid + Vector3(w * 0.5 + 0.012, 0.03, 0), mid + Vector3(w * 0.5 + 0.02, 0.036, -0.006), mid + Vector3(w * 0.5 + 0.028, 0.03, 0)],
+					0.0016, fin("brass"), 4)
 		_:
 			var bottom := _mag_body(r, t, maxf(base, 0.04), w, d, r.mag_tilt, r.mag_curve, steel)
 			_generic(r, bottom, id)
@@ -1965,6 +2208,12 @@ static func _shell_box_mag(r: Rig) -> void:
 
 ## A nail gun's coil canister of nails.
 static func _nail_coil(r: Rig, at: Vector3, radius: float, big: bool) -> void:
+	var keep := _into_mag(r)
+	_nail_coil_draw(r, at, radius, big)
+	r.root = keep
+
+
+static func _nail_coil_draw(r: Rig, at: Vector3, radius: float, big: bool) -> void:
 	var c := at + Vector3(0, -radius + 0.008, 0)
 	_disc_x(r.root, radius, 0.034 + (0.01 if big else 0.0), c, mat("panel", RED if big else DARK), 10)
 	_round(r, _disc_x(r.root, radius * 0.76, 0.036 + (0.01 if big else 0.0), c, mat("panel", STEEL), 10))
@@ -2117,6 +2366,18 @@ static func _stock(r: Rig, id: String) -> void:
 			_cyl_x(r.root, 0.004, 0.064, s + Vector3(0, -0.036, 0.17), fin("chrome"), 10)
 			_sl(r, s, [Vector2(0.248, 0.014), Vector2(0.26, 0.014), Vector2(0.26, -0.092), Vector2(0.248, -0.092)], 0.038, fin("rubber"), 0.002)
 			_stock_ends(r, s + Vector3(0, -0.04, 0.26), 0.106, s + Vector3(0, 0.016, 0.15))
+		"glider_stock":
+			# A skeleton stock with two folded canvas wings along its sides.
+			_box(r.root, Vector3(0.026, 0.026, 0.02), s + Vector3(0, 0, 0.008), fin("black"), Vector3.ZERO, 0.002)
+			_sl(r, s, [Vector2(0.01, 0.01), Vector2(0.22, 0.012), Vector2(0.226, -0.08), Vector2(0.2, -0.084), Vector2(0.03, -0.03)],
+					0.012, fin("steel"))
+			for sx: float in [-1.0, 1.0]:
+				_slab(r.root, [Vector2(s.z + 0.02, s.y + 0.004), Vector2(s.z + 0.21, s.y + 0.03), Vector2(s.z + 0.215, s.y - 0.06),
+						Vector2(s.z + 0.04, s.y - 0.03)], 0.003, fin("sand"), s.x + sx * 0.01, 0.0005)
+				for k in 3:
+					_cyl(r.root, 0.0016, 0.18, Vector3(s.x + sx * 0.012, s.y + 0.012 - k * 0.026, s.z + 0.12), fin("black"), 6)
+			_sl(r, s, [Vector2(0.21, 0.014), Vector2(0.224, 0.014), Vector2(0.224, -0.086), Vector2(0.21, -0.086)], 0.03, fin("rubber"), 0.002)
+			_stock_ends(r, s + Vector3(0, -0.035, 0.224), 0.1, s + Vector3(0, 0.012, 0.15))
 		_:
 			_sl(r, s, [Vector2(0.0, 0.004), Vector2(0.2, 0.004), Vector2(0.2, -0.045), Vector2(0.0, -0.045)], 0.034, fin("poly_grey"))
 			_generic(r, s + Vector3(0, 0.0, 0.1), id)
@@ -2159,6 +2420,15 @@ static func _buttpad(r: Rig, id: String) -> void:
 			for i in 5:
 				_round(r, _rod(r.root, 0.0045, 0.0045, 0.03, at + Vector3(0.025, 0.0, -0.028 + i * 0.014), mat("brass"), 5, Vector3.ZERO))
 			_box(r.root, Vector3(0.006, 0.012, 0.075), at + Vector3(0.025, -0.012, 0), mat("panel", BLACK), Vector3.ZERO, 0.001)
+		"pogo_pad":
+			# A butt pad on a fat coil spring, with a rubber foot.
+			var points := []
+			for i in 25:
+				var a := TAU * i / 6.0
+				points.append(b + Vector3(cos(a) * 0.014, sin(a) * 0.014, 0.004 + i * 0.0012))
+			_tube(r.root, points, 0.0025, fin("chrome"), 4)
+			_box(r.root, Vector3(0.04, h + 0.004, 0.014), b + Vector3(0, 0, 0.04), fin("rubber"), Vector3.ZERO, 0.005)
+			_box(r.root, Vector3(0.042, 0.006, 0.016), b + Vector3(0, -h * 0.5, 0.04), fin("oxide"), Vector3.ZERO, 0.001)
 		_:
 			_generic(r, b + Vector3(0, 0, 0.012), id)
 
@@ -2283,5 +2553,42 @@ static func _gadget(r: Rig, id: String) -> void:
 				var at := c + Vector3(-0.006 + k * 0.012, -0.008 - k * 0.006, 0)
 				_box(r.root, Vector3(0.011, 0.011, 0.011), at, fin("dust"), Vector3(15 + k * 30, 25, 10), 0.002)
 				_ball(r.root, 0.0014, at + Vector3(0, 0, -0.0058), fin("oxide"))
+		"metronome":
+			# A little pyramid metronome with its pendulum swung to one side.
+			_slab(r.root, [Vector2(c.z - 0.01, c.y - 0.022), Vector2(c.z + 0.01, c.y - 0.022), Vector2(c.z + 0.004, c.y + 0.012),
+					Vector2(c.z - 0.004, c.y + 0.012)], 0.016, fin("laminate"), c.x, 0.001)
+			_rod_between(r.root, c + Vector3(0, -0.016, -0.009), c + Vector3(0.006, 0.016, -0.009), 0.0012, fin("chrome"))
+			_box(r.root, Vector3(0.004, 0.004, 0.002), c + Vector3(0.004, 0.008, -0.009), fin("brass"), Vector3.ZERO, 0.0)
+		"trophy_charm":
+			# A small brass cup on a black base.
+			_box(r.root, Vector3(0.012, 0.006, 0.012), c + Vector3(0, -0.018, 0), fin("black"), Vector3.ZERO, 0.001)
+			_cyl_y(r.root, 0.0015, 0.008, c + Vector3(0, -0.012, 0), fin("brass"), 8)
+			_turn(r.root, [Vector2(-0.008, 0.002), Vector2(-0.004, 0.002), Vector2(0.0, 0.009), Vector2(0.006, 0.01), Vector2(0.008, 0.0)],
+					c + Vector3(0, -0.002, 0), fin("brass"), 14).rotation_degrees = Vector3(-90, 0, 0)
+			for sx: float in [-1.0, 1.0]:
+				_tube(r.root, [c + Vector3(sx * 0.008, 0.004, 0), c + Vector3(sx * 0.013, 0.0, 0), c + Vector3(sx * 0.008, -0.004, 0)], 0.0012, fin("brass"), 3)
+		"glass_heart":
+			var red := fin("glass", Color(0.4, 0.05, 0.05))
+			_ball(r.root, 0.008, c + Vector3(-0.0045, 0.0, 0), red)
+			_ball(r.root, 0.008, c + Vector3(0.0045, 0.0, 0), red)
+			_put(r.root, GunKit.rod(0.0, 0.0115, 12), c + Vector3(0, -0.012, 0), red, Vector3(90, 0, 0))
+		"black_tape":
+			# The gun is wound in black tape here and there, a roll still hanging off it.
+			for z: float in [-0.12, -0.04, 0.03]:
+				var at := (r.recv if r.recv != Vector3.INF else r.gadget + Vector3(0, 0.03, 0)) + Vector3(0, 0, z)
+				_box(r.root, Vector3(maxf(r.body_w * 2.0, 0.026) + 0.004, 0.034, 0.016), at, fin("bore"), Vector3(0, 0, 4), 0.003)
+			_cyl_x(r.root, 0.012, 0.012, c, fin("bore"), 16)
+			_cyl_x(r.root, 0.006, 0.0125, c, fin("sand"), 12)
+		"stopwatch":
+			_cyl(r.root, 0.011, 0.006, c, fin("chrome"), 18)
+			_cyl(r.root, 0.0095, 0.001, c + Vector3(0, 0, -0.0035), fin("dust"), 18)
+			_box(r.root, Vector3(0.0012, 0.008, 0.001), c + Vector3(0, 0.003, -0.0042), fin("oxide"), Vector3(0, 0, -30), 0.0)
+			_cyl_y(r.root, 0.002, 0.006, c + Vector3(0, 0.014, 0), fin("chrome"), 8)
+		"chicken_foot":
+			var skin := fin("sulfur")
+			_cyl_y(r.root, 0.0025, 0.026, c + Vector3(0, -0.006, 0), skin, 6)
+			for k in 3:
+				var a := deg_to_rad(-40.0 + k * 40.0)
+				_rod_between(r.root, c + Vector3(0, -0.019, 0), c + Vector3(sin(a) * 0.014, -0.028, -cos(a) * 0.008), 0.0018, skin)
 		_:
 			_generic(r, c + Vector3(0, -0.006, 0), id)

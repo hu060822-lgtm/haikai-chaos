@@ -109,10 +109,12 @@ static func theme() -> Theme:
 	t.set_stylebox("focus", "LineEdit", panel(field, Faultprint.ui_accent, 6, 2))
 	t.set_color("font_color", "LineEdit", Faultprint.ui_ink)
 	t.set_color("caret_color", "LineEdit", Faultprint.ui_accent)
-	var grabber := panel(Faultprint.ui_ink, Color.TRANSPARENT, 2)
+	var grabber := panel(Faultprint.SLATE, Color.TRANSPARENT, 2)
+	grabber.content_margin_left = 3
+	grabber.content_margin_right = 3
 	t.set_stylebox("grabber", "VScrollBar", grabber)
 	t.set_stylebox("grabber_highlight", "VScrollBar", panel(Faultprint.ui_accent, Color.TRANSPARENT, 2))
-	t.set_stylebox("scroll", "VScrollBar", panel(Faultprint.ui_dust, Color.TRANSPARENT, 2))
+	t.set_stylebox("scroll", "VScrollBar", panel(Color(Faultprint.ui_dust, 0.25), Color.TRANSPARENT, 2))
 	_fonts["theme"] = t
 	return t
 

@@ -1,15 +1,19 @@
 class_name Main
 extends Node3D
 ## The prototype: FOLDED WORKS with you, three sparring bots and a firing range, or the
-## MOVEMENT LAB with its timed routes. Tab opens the bench, dying shows who got you with
-## what, F4 opens the movement debug panel. No networking yet (that is phase C2).
+## MOVEMENT LAB with its timed routes, or (phase C2) a networked team match, 改版死鬥, on
+## FOLDED WORKS ("tdm", run by TeamMatch). Tab opens the bench, dying shows who got you
+## with what, F4 opens the movement debug panel.
 
 const BOTS := 3
 const BOT_RESPAWN := 4.0
 
-## Which map the next load builds ("folded" or "lab"), and whether to skip the title.
+## Which map the next load builds ("folded", "lab" or "tdm"), whether to skip the title,
+## and whether to open the netplay lobby on it (coming back from a match).
 static var map_id := "folded"
 static var skip_title := false
+static var open_lobby := false
+static var title_message := ""
 
 var map: Node3D
 var lab: MovementLab
@@ -19,6 +23,10 @@ var player: Player
 var hud: Hud
 var bench: Bench
 var death: DeathScreen
+var net: NetSession
+var team_match: TeamMatch
+var lobby: Lobby
+var results: Control
 var bots: Array[Bot] = []
 var _ui: CanvasLayer
 var _title: Control
@@ -31,13 +39,23 @@ var _seed := 1
 func _ready() -> void:
 	Settings.load_all()
 	InputSetup.register()
+	net = NetSession.new()
+	add_child(net)
+	var tdm := map_id == "tdm" and NetSession.active
+	if map_id == "tdm" and not tdm:
+		map_id = "folded"
 	if map_id == "lab":
 		lab = MovementLab.new()
 		map = lab
 	else:
 		map = FoldedWorks.new()
 	add_child(map)
-	for xf in map.range_targets:
+	SafeZone.clear()
+	SafeZone.repel = false
+	if not lab and not tdm:
+		SafeZone.add(map.player_spawn.origin, 6.0, 0)
+		SafeZone.draw(map, 0)
+	for xf in ([] if tdm else map.range_targets):
 		var t := RangeTarget.new()
 		add_child(t)
 		t.global_transform = xf
@@ -50,7 +68,7 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	player.damaged.connect(_on_player_damaged)
-	for i in (BOTS if not map.bot_spawns.is_empty() else 0):
+	for i in (BOTS if not map.bot_spawns.is_empty() and not tdm else 0):
 		var bot := Bot.new()
 		bot.target = player
 		bot.waypoints = map.waypoints
@@ -80,12 +98,27 @@ func _ready() -> void:
 	settings_menu.closed.connect(_on_settings_closed)
 	_title = _make_title()
 	_ui.add_child(_title)
+	lobby = Lobby.new()
+	lobby.net = net
+	lobby.closed.connect(func() -> void: _title.visible = true)
+	_ui.add_child(lobby)
 	_ui.add_child(settings_menu)
 	player.input_enabled = false
 	hud.visible = false
+	if tdm:
+		team_match = TeamMatch.new()
+		team_match.main = self
+		add_child(team_match)
+		hud.team_match = team_match
+	if title_message != "":
+		hud.show_hint(title_message, 5.0)
+		title_message = ""
 	if skip_title:
 		skip_title = false
 		_start.call_deferred()
+	elif open_lobby:
+		open_lobby = false
+		_open_lobby.call_deferred()
 
 
 func _next_seed() -> int:
@@ -113,7 +146,7 @@ func _make_title() -> Control:
 	logo.size = Vector2(1400, 140)
 	logo.offset = 5.0
 	t.add_child(logo)
-	var sub := FpUi.label("FAULTPRINT 斷層印刷體　｜　原型 C1：移動手感", 22, Faultprint.ui_ink, FpUi.bold())
+	var sub := FpUi.label("COUNTERFORM　｜　原型 C2：連線團隊死鬥", 22, Faultprint.ui_ink, FpUi.bold())
 	sub.position = Vector2(76, 400)
 	t.add_child(sub)
 	var help := FpUi.label(Hud.HELP, 18, Faultprint.ui_ink, FpUi.bold())
@@ -127,6 +160,9 @@ func _make_title() -> Control:
 		var go := FpUi.button(spec[1], 24)
 		go.pressed.connect(_choose_map.bind(spec[0]))
 		row.add_child(go)
+	var online := FpUi.button("連線對戰（改版死鬥）", 24)
+	online.pressed.connect(_open_lobby)
+	row.add_child(online)
 	var options := FpUi.button("設定／按鍵", 24)
 	options.pressed.connect(func() -> void: settings_menu.open())
 	row.add_child(options)
@@ -142,11 +178,72 @@ func _choose_map(id: String) -> void:
 	get_tree().reload_current_scene()
 
 
+func _open_lobby() -> void:
+	_title.visible = false
+	lobby.open()
+
+
+## Back to the title from anywhere (the host left, or you quit a match), offline.
+func back_to_title(message := "") -> void:
+	if net.multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+		net.leave()
+	map_id = "folded"
+	skip_title = false
+	open_lobby = message == ""
+	title_message = message
+	get_tree().reload_current_scene.call_deferred()
+
+
+## The end of a team match: who won, the final score; back to the lobby in 10 s.
+func show_results(winner: int, final: Array, my_team: int) -> void:
+	if bench.visible:
+		bench.close()
+	player.input_enabled = false
+	death.hide_death()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	results = Control.new()
+	results.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var shade := ColorRect.new()
+	shade.color = Color(Faultprint.CARBON, 0.7)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	results.add_child(shade)
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 18)
+	results.add_child(box)
+	var head := "平手" if winner < 0 else ("勝利" if winner == my_team else "落敗")
+	var big := FpUi.PrintText.new(head, 96, Faultprint.ui_paper)
+	big.custom_minimum_size = Vector2(600, 120)
+	box.add_child(big)
+	var line := FpUi.label("%s %d ： %d %s" % [NetSession.TEAM_NAMES[0], final[0], final[1], NetSession.TEAM_NAMES[1]],
+		36, Faultprint.ui_paper, FpUi.bold())
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(line)
+	var you := FpUi.label("你：擊殺 %d　陣亡 %d" % [hud.kills, hud.deaths], 22, Faultprint.ui_paper, FpUi.bold())
+	you.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(you)
+	var note := FpUi.label("十秒後回到大廳", 18, Faultprint.ui_paper, FpUi.bold())
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(note)
+	if net.is_host():
+		var now := FpUi.button("現在回到大廳", 20)
+		now.custom_minimum_size = Vector2(260, 48)
+		now.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		now.pressed.connect(net.end_match)
+		box.add_child(now)
+	_ui.add_child(results)
+
+
 func _start() -> void:
 	_title.visible = false
 	hud.visible = true
-	player.input_enabled = true
+	player.input_enabled = team_match == null
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if team_match:
+		return
 	if lab:
 		hud.show_hint("移動測試場：穿過起點門開始計時　T 回到起點　F4 除錯面板", 6.0)
 	else:
@@ -161,7 +258,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("info_colors"):
 		FpUi.info_set = (FpUi.info_set + 1) % FpUi.INFO_SETS.size()
 		hud.show_hint("敵我顏色：" + FpUi.INFO_SETS[FpUi.info_set][0])
-	elif event.is_action_pressed("bot_toggle"):
+	elif event.is_action_pressed("bot_toggle") and team_match == null:
 		_bots_passive = not _bots_passive
 		for b in bots:
 			b.passive = _bots_passive
@@ -176,7 +273,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("route_reset") and lab and player.alive:
 		lab.restart()
 	elif event.is_action_pressed("bench") and player.alive and not bench.visible:
-		bench.open(player.weapon.build, player.weapon.name)
+		get_viewport().set_input_as_handled()
+		if not player.can_mod():
+			hud.show_hint("戰鬥中不能改槍：%.1f 秒沒有交火，或回到重生區" % player.combat_left)
+			return
+		bench.open(player.weapon.build, player.weapon.name, not SafeZone.is_safe(player.global_position, player.team))
 		player.input_enabled = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
@@ -208,6 +309,9 @@ func _on_hit_confirmed(info: Dictionary, killed: bool) -> void:
 
 
 func _on_player_damaged(info: Dictionary) -> void:
+	if bench.visible and info.get("attacker") != player:
+		bench.close()
+		hud.show_hint("遭到攻擊：工作台關上了（改好的部分已經裝上）", 3.0)
 	if info.get("attacker") != player:
 		hud.damage_from(-(info.dir as Vector3))
 
@@ -223,6 +327,8 @@ func _tags(info: Dictionary) -> Array:
 
 
 func _on_bot_died(bot: Bot, info: Dictionary) -> void:
+	if team_match:
+		return
 	var by_you: bool = info.get("attacker") == player
 	if by_you:
 		hud.kills += 1
@@ -242,7 +348,8 @@ func _on_player_died(info: Dictionary) -> void:
 	player.input_enabled = false
 	var killer: String = info.get("attacker_name", "?")
 	var side := 0 if info.get("attacker") == player else 1
-	hud.feed.add_kill(killer, side, info.get("gun_name", "?"), info.get("build", {}), _tags(info), player.display_name, 0, true)
+	if team_match == null:
+		hud.feed.add_kill(killer, side, info.get("gun_name", "?"), info.get("build", {}), _tags(info), player.display_name, 0, true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var dealt: float = player.damage_dealt.get(killer, 0.0)
 	var taken: float = player.damage_taken.get(killer, 0.0)
@@ -250,12 +357,21 @@ func _on_player_died(info: Dictionary) -> void:
 
 
 func _respawn() -> void:
+	if team_match:
+		if team_match.over:
+			return
+		if team_match.respawn_wait() > 0.0:
+			team_match.respawn_local()
+			death.set_wait(team_match.respawn_wait())
+			return
 	death.hide_death()
 	if not _pending_build.is_empty():
 		player.equip(_pending_build, _pending_name)
 		_pending_build = {}
 	if lab:
 		lab.restart()
+	elif team_match:
+		team_match.respawn_local()
 	else:
 		player.spawn_at(map.player_spawn)
 	player.input_enabled = true
