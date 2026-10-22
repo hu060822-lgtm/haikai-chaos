@@ -45,6 +45,11 @@ static func bold() -> Font:
 
 ## A panel with cut corners (corner_detail 1 turns rounded corners into bevels).
 static func panel(bg: Color, border := Color.TRANSPARENT, cut := 10, border_w := 0) -> StyleBoxFlat:
+	if Faultprint.ui_line.a > 0.0 and border_w > 0 and border == Faultprint.ui_ink:
+		# Counterform: a hairline instead of an ink border, smaller cut corners.
+		border = Faultprint.ui_line
+		border_w = 1
+		cut = mini(cut, 6)
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
 	s.corner_detail = 1
@@ -99,13 +104,14 @@ static func theme() -> Theme:
 	t.default_font_size = 16
 	t.set_color("font_color", "Label", Faultprint.ui_ink)
 	t.set_stylebox("panel", "PanelContainer", panel(Faultprint.ui_paper, Faultprint.ui_ink, 12, 2))
-	t.set_stylebox("normal", "LineEdit", panel(Color.WHITE, Faultprint.ui_ink, 6, 2))
-	t.set_stylebox("focus", "LineEdit", panel(Color.WHITE, Faultprint.ORANGE, 6, 2))
+	var field := Faultprint.ui_dust if Faultprint.ui_line.a > 0.0 else Color.WHITE
+	t.set_stylebox("normal", "LineEdit", panel(field, Faultprint.ui_ink, 6, 2))
+	t.set_stylebox("focus", "LineEdit", panel(field, Faultprint.ui_accent, 6, 2))
 	t.set_color("font_color", "LineEdit", Faultprint.ui_ink)
-	t.set_color("caret_color", "LineEdit", Faultprint.ORANGE)
+	t.set_color("caret_color", "LineEdit", Faultprint.ui_accent)
 	var grabber := panel(Faultprint.ui_ink, Color.TRANSPARENT, 2)
 	t.set_stylebox("grabber", "VScrollBar", grabber)
-	t.set_stylebox("grabber_highlight", "VScrollBar", panel(Faultprint.ORANGE, Color.TRANSPARENT, 2))
+	t.set_stylebox("grabber_highlight", "VScrollBar", panel(Faultprint.ui_accent, Color.TRANSPARENT, 2))
 	t.set_stylebox("scroll", "VScrollBar", panel(Faultprint.ui_dust, Color.TRANSPARENT, 2))
 	_fonts["theme"] = t
 	return t
@@ -118,12 +124,17 @@ class PrintText:
 	var size_px := 32
 	var main := Faultprint.ui_ink
 	var plate_a := Faultprint.TEAL
-	var plate_b := Faultprint.ORANGE
+	var plate_b := Faultprint.ui_accent
 	var offset := 2.0
 	var align := HORIZONTAL_ALIGNMENT_LEFT
 	var font: Font
 
 	func _init(t := "", s := 32, c := Faultprint.ui_ink) -> void:
+		if Faultprint.ui_line.a > 0.0:
+			# Counterform: clean type, no off-register plates.
+			plate_a = Color.TRANSPARENT
+			plate_b = Color.TRANSPARENT
+			offset = 0.0
 		text = t
 		size_px = s
 		main = c
@@ -147,9 +158,9 @@ class PrintText:
 		elif align == HORIZONTAL_ALIGNMENT_CENTER:
 			x = (size.x - w) / 2.0
 		var base := Vector2(x, font.get_ascent(size_px) + (size.y - font.get_height(size_px)) / 2.0)
-		if plate_a.a > 0.0:
+		if plate_a.a > 0.0 and Faultprint.ui_line.a == 0.0:
 			draw_string(font, base + Vector2(offset, offset * 0.6), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, plate_a)
-		if plate_b.a > 0.0:
+		if plate_b.a > 0.0 and Faultprint.ui_line.a == 0.0:
 			draw_string(font, base + Vector2(-offset * 0.7, offset), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, plate_b)
 		draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, main)
 
@@ -178,4 +189,7 @@ class PrintBar:
 		for i in range(1, ticks):
 			var x := size.x * i / ticks
 			draw_line(Vector2(x, size.y * 0.55), Vector2(x, size.y), Faultprint.SLATE, 1.0)
-		draw_rect(r, Faultprint.ui_ink, false, 2.0)
+		if Faultprint.ui_line.a > 0.0:
+			draw_rect(r, Faultprint.ui_line, false, 1.0)
+		else:
+			draw_rect(r, Faultprint.ui_ink, false, 2.0)

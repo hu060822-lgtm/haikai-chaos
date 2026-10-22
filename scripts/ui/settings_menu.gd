@@ -59,7 +59,7 @@ func _general() -> Control:
 	var box := VBoxContainer.new()
 	box.custom_minimum_size = Vector2(420, 0)
 	box.add_theme_constant_override("separation", 10)
-	box.add_child(FpUi.label("畫面與操作", 20, Faultprint.ORANGE, FpUi.bold()))
+	box.add_child(FpUi.label("畫面與操作", 20, Faultprint.ui_accent, FpUi.bold()))
 	_sens_label = FpUi.label("", 16)
 	box.add_child(_sens_label)
 	box.add_child(_slider(0.1, 4.0, 0.05, Settings.sens, func(v: float) -> void:
@@ -79,7 +79,7 @@ func _general() -> Control:
 		Settings.vsync = on
 		Settings.save()
 		Settings.apply_display()))
-	box.add_child(FpUi.label("畫面風格（介面配色重開遊戲後套用）", 16))
+	box.add_child(FpUi.label("畫面風格（Counterform 與介面配色需重開遊戲）", 16))
 	var look_row := HBoxContainer.new()
 	box.add_child(look_row)
 	var look_buttons: Array[Button] = []
@@ -143,7 +143,7 @@ func _keys() -> Control:
 	box.add_theme_constant_override("separation", 8)
 	var head := HBoxContainer.new()
 	box.add_child(head)
-	var l := FpUi.label("按鍵（點一下再按新的鍵或滑鼠鍵）", 20, Faultprint.ORANGE, FpUi.bold())
+	var l := FpUi.label("按鍵（點一下再按新的鍵或滑鼠鍵）", 20, Faultprint.ui_accent, FpUi.bold())
 	l.size_flags_horizontal = SIZE_EXPAND_FILL
 	head.add_child(l)
 	var reset := FpUi.button("恢復預設", 15)

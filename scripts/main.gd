@@ -105,7 +105,7 @@ func _make_title() -> Control:
 	band.polygon = PackedVector2Array([Vector2(0, 150), Vector2(2400, 60), Vector2(2400, 300), Vector2(0, 360)])
 	t.add_child(band)
 	var stripe := Polygon2D.new()
-	stripe.color = Faultprint.ORANGE
+	stripe.color = Faultprint.ui_accent
 	stripe.polygon = PackedVector2Array([Vector2(0, 360), Vector2(2400, 300), Vector2(2400, 318), Vector2(0, 378)])
 	t.add_child(stripe)
 	var logo := FpUi.PrintText.new("HAIKAI: CHAOS", 110, Faultprint.ui_paper)

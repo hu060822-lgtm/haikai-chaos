@@ -34,7 +34,7 @@ func _ready() -> void:
 	add_child(shade)
 	# A diagonal ink band behind the title: the print's "headline plate".
 	var band := Polygon2D.new()
-	band.color = Faultprint.ORANGE
+	band.color = Faultprint.ui_accent
 	band.polygon = PackedVector2Array([Vector2(0, 40), Vector2(2400, 0), Vector2(2400, 120), Vector2(0, 170)])
 	add_child(band)
 	var root := VBoxContainer.new()

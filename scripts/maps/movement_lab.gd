@@ -58,6 +58,8 @@ func _ready() -> void:
 	_lane_a()
 	_lane_b()
 	_lane_c()
+	if Settings.look == Faultprint.COUNTERFORM:
+		Counterform.vista(self, Vector3(5.0, 0.0, -5.0), 170.0)
 	# Each route has its own colour of light (dark look only).
 	for spec in [[-60.0, Color("#F07A3A")], [-25.0, Color("#3FC6C0")], [20.0, Color("#E6C25A")]]:
 		for z in [24.0, -16.0]:

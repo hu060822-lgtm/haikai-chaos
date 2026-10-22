@@ -99,7 +99,7 @@ func _ready() -> void:
 		bar.ticks = 4
 		row.add_child(bar)
 		set(spec[1], bar)
-	_wall.fill = Faultprint.ORANGE
+	_wall.fill = Faultprint.ui_accent
 	_kicks = FpUi.label("", 13, Faultprint.ui_ink, FpUi.bold())
 	mv.add_child(_kicks)
 	# Bottom right: the gun.
@@ -235,7 +235,7 @@ func _process(delta: float) -> void:
 	_kicks.text = "踢牆 " + "◆".repeat(player.kicks_left()) + "◇".repeat(maxi(player.max_kicks() - player.kicks_left(), 0))
 	var w := player.weapon
 	_ammo.set_text("%d" % w.ammo)
-	_ammo.main = Faultprint.ui_ink if w.ammo > int(w.stats.mag) * 0.25 else Faultprint.ORANGE
+	_ammo.main = Faultprint.ui_ink if w.ammo > int(w.stats.mag) * 0.25 else Faultprint.ui_accent
 	_reserve.text = " / %d" % w.reserve
 	_gun.text = w.name
 	var mode_text: String = Arsenal.MODE_NAMES.get(w.mode(), w.mode())

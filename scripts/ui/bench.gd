@@ -52,7 +52,7 @@ func _ready() -> void:
 	bg.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(bg)
 	# Print-layout blocks in the background: the bench is a printed sheet too.
-	for spec in [[Vector2(-40, 0), Vector2(520, 70), Faultprint.ui_ink], [Vector2(0, 70), Vector2(14, 2000), Faultprint.ORANGE]]:
+	for spec in [[Vector2(-40, 0), Vector2(520, 70), Faultprint.ui_ink], [Vector2(0, 70), Vector2(14, 2000), Faultprint.ui_accent]]:
 		var r := ColorRect.new()
 		r.position = spec[0]
 		r.size = spec[1]
@@ -60,7 +60,7 @@ func _ready() -> void:
 		r.mouse_filter = MOUSE_FILTER_IGNORE
 		add_child(r)
 	var title := FpUi.PrintText.new("改槍工作台", 40, Faultprint.ui_paper)
-	title.plate_b = Faultprint.ORANGE
+	title.plate_b = Faultprint.ui_accent
 	title.position = Vector2(28, 12)
 	title.size = Vector2(480, 50)
 	add_child(title)
@@ -129,7 +129,7 @@ func _ready() -> void:
 	_view.mouse_filter = MOUSE_FILTER_STOP
 	_view.gui_input.connect(_on_view_input)
 	view_panel.add_child(_view)
-	_warn = FpUi.label("", 16, Faultprint.ORANGE, FpUi.bold())
+	_warn = FpUi.label("", 16, Faultprint.ui_accent, FpUi.bold())
 	_warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mid.add_child(_warn)
 	var tune_row := HBoxContainer.new()
@@ -408,7 +408,7 @@ func _fill_stats(preview: Dictionary = {}) -> void:
 			var d := w - v
 			if absf(d) > 0.005:
 				var better: bool = d * row[2] > 0.0
-				var col := Faultprint.DEEP_TEAL if better else Faultprint.ORANGE
+				var col := Faultprint.DEEP_TEAL if better else Faultprint.ui_accent
 				if row[2] == 0:
 					col = Faultprint.SLATE
 				cell.add_child(FpUi.label(("+" if d > 0 else "") + _fmt(d), 14, col, FpUi.bold()))

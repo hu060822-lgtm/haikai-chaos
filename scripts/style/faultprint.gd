@@ -41,14 +41,17 @@ const PIXEL_NAMES := ["關", "2×", "3×", "4×"]
 # Looks (Settings.look): 0 the original light print, 1 soft (darker paper, calmer ink),
 # 2 dark print (dark paper, pale inks). The surfaces switch live through the fp_soft and
 # fp_dark shader globals; the UI colours below are read when a screen is built.
-const LOOKS := ["原版", "柔和", "暗色印刷"]
+const LOOKS := ["印刷原版", "印刷柔和", "印刷暗色", "Counterform"]
+const COUNTERFORM := 3
 const SOFT_PAPER := Color("#C2BBAD")
 const DARK_PAPER := Color("#26272B")
-const PAPERS := [BONE, SOFT_PAPER, DARK_PAPER]
+const PAPERS := [BONE, SOFT_PAPER, DARK_PAPER, DARK_PAPER]
 
 static var ui_ink := CARBON        # UI text, borders
 static var ui_paper := BONE        # UI panels
 static var ui_dust := DUST         # UI preview panels
+static var ui_accent := ORANGE     # UI highlight colour
+static var ui_line := Color.TRANSPARENT  # when set: hairline borders instead of ink borders (Counterform)
 static var _cache := {}
 static var _post: ShaderMaterial
 static var _zone_lights: Array[OmniLight3D] = []
@@ -58,7 +61,10 @@ static var _envs: Array[Environment] = []
 ## A printed surface in world space (walls, floors, props). `options` overrides any shader
 ## uniform: pattern, dot_density, wear, plate, plate_amount, shadow_tone, glow... and "slip":
 ## the colour of the off-register ghost around the silhouette (null = none).
-static func surface(color: Color, options := {}) -> ShaderMaterial:
+static func surface(color: Color, options := {}) -> Material:
+	if Settings.look == COUNTERFORM:
+		var g: Variant = options.get("glow", Color.BLACK)
+		return Counterform.world(color, g if g is Color else Color.BLACK)
 	var key := "s|%s|%s" % [color.to_html(), var_to_str(options)]
 	if _cache.has(key):
 		return _cache[key]
@@ -86,7 +92,9 @@ static func surface(color: Color, options := {}) -> ShaderMaterial:
 
 ## A gun part: object-space dots (they stay put on a moving gun), finer and with less wear.
 ## `kind` is the old HAIKAI texture name and picks the print treatment.
-static func gun(color: Color, kind := "panel", glow := Color.BLACK) -> ShaderMaterial:
+static func gun(color: Color, kind := "panel", glow := Color.BLACK) -> Material:
+	if Settings.look == COUNTERFORM:
+		return Counterform.gun(color, kind, glow)
 	var options := {"slip": null, "object_space": true, "dot_density": 150.0, "wear": 0.0, "grain": 0.02,
 		"glow": glow, "shadow_tone": 0.58, "mid_tone": 0.86}
 	match kind:
@@ -117,6 +125,8 @@ static func _plate_for(color: Color) -> Color:
 ## Adds a carbon inverted-hull silhouette to every mesh under `node`. Only for things the
 ## player has to pick out at speed (players, bots): the world gets its edges from geometry.
 static func outline(node: Node, width := 0.03, color := CARBON) -> void:
+	if Settings.look == COUNTERFORM:
+		return  # read by silhouette, light and material, not ink lines
 	if Settings.look == 2 and color == CARBON:
 		color = DUST
 	var m := ShaderMaterial.new()
@@ -166,6 +176,8 @@ static func flat(color: Color, through_walls := false) -> StandardMaterial3D:
 ## light (the surface shader paints its own shadow tone), linear tone mapping so the inks
 ## come out as their hex values.
 static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -> DirectionalLight3D:
+	if Settings.look == COUNTERFORM:
+		return Counterform.environment(parent, sun_angle)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = PAPERS[Settings.look]
@@ -200,9 +212,12 @@ static func set_look(look: int) -> void:
 	RenderingServer.global_shader_parameter_set("fp_soft", 1.0 if look == 1 else 0.0)
 	RenderingServer.global_shader_parameter_set("fp_dark", 1.0 if look == 2 else 0.0)
 	var dark := look == 2
-	ui_ink = Color("#E7E0D2") if dark else CARBON
-	ui_paper = Color("#2E3034") if dark else BONE
-	ui_dust = Color("#3E4045") if dark else DUST
+	var cf := look == COUNTERFORM
+	ui_ink = Counterform.DUST_WHITE if cf else (Color("#E7E0D2") if dark else CARBON)
+	ui_paper = Color(Counterform.GRAPHITE, 0.84) if cf else (Color("#2E3034") if dark else BONE)
+	ui_dust = Color("#2A2D30") if cf else (Color("#3E4045") if dark else DUST)
+	ui_accent = Counterform.OXIDE_ORANGE.lightened(0.12) if cf else ORANGE
+	ui_line = Color(Counterform.DUST_WHITE, 0.16) if cf else Color.TRANSPARENT
 	for e in _envs:
 		if is_instance_valid(e):
 			e.background_color = PAPERS[look]
@@ -214,6 +229,8 @@ static func set_look(look: int) -> void:
 
 ## The full-screen pass (ink lines, chunky pixels, a little more colour) on `camera`.
 static func post(camera: Camera3D) -> void:
+	if Settings.look == COUNTERFORM:
+		return  # no ink lines, pixels or extra saturation in Counterform (§9.2)
 	if _post == null:
 		_post = ShaderMaterial.new()
 		_post.shader = POST
@@ -234,8 +251,9 @@ static func post(camera: Camera3D) -> void:
 static func apply_post() -> void:
 	if _post == null:
 		return
-	_post.set_shader_parameter("line_strength", 0.85 if Settings.ink_lines else 0.0)
-	_post.set_shader_parameter("pixel_size", PIXEL_SIZES[Settings.pixels])
+	var cf := Settings.look == COUNTERFORM
+	_post.set_shader_parameter("line_strength", 0.85 if Settings.ink_lines and not cf else 0.0)
+	_post.set_shader_parameter("pixel_size", 1.0 if cf else PIXEL_SIZES[Settings.pixels])
 	_post.set_shader_parameter("saturation", 1.18 if Settings.look == 2 else 1.0)
 
 

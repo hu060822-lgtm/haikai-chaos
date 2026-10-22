@@ -18,6 +18,12 @@ static func build(info: Color, enemy: bool, rng: RandomNumberGenerator) -> Node3
 	var cloth := Faultprint.surface(CLOTH_COLORS[rng.randi() % CLOTH_COLORS.size()], {"slip": null, "pattern": 1, "dot_density": 22.0})
 	var plate := Faultprint.surface(Faultprint.BONE if rng.randf() < 0.6 else Faultprint.TEAL, {"slip": null, "dot_density": 20.0})
 	var dark := Faultprint.surface(Faultprint.GRAPHITE, {"slip": null, "dot_density": 24.0})
+	if Settings.look == Faultprint.COUNTERFORM:
+		# Fabric in graphite / grey-green, painted armour plates, rubber boots.
+		var fabric := [Color("#4E5450"), Color("#5E5A52"), Color("#3E4245")]
+		cloth = Counterform.material("polymer", fabric[rng.randi() % fabric.size()], false)
+		plate = Counterform.material("paint", Counterform.DUST_WHITE if rng.randf() < 0.6 else Counterform.GREEN_GREY, false)
+		dark = Counterform.material("rubber", Counterform.GRAPHITE_DEEP, false)
 	var mark := Faultprint.flat(info)
 	var parts := [
 		# legs

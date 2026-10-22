@@ -40,7 +40,7 @@ func add_kill(killer: String, killer_side: int, gun_name: String, build: Diction
 	for t in tags:
 		var tag := FpUi.label(" %s " % t, 12, Faultprint.ui_paper, FpUi.bold())
 		var tag_box := PanelContainer.new()
-		var sb := FpUi.panel(Faultprint.ORANGE if t == "爆頭" else Faultprint.ui_ink, Color.TRANSPARENT, 4)
+		var sb := FpUi.panel(Faultprint.ui_accent if t == "爆頭" else Faultprint.ui_ink, Color.TRANSPARENT, 4)
 		sb.content_margin_left = 2
 		sb.content_margin_right = 2
 		sb.content_margin_top = 1

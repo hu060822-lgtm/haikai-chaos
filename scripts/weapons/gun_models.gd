@@ -140,7 +140,7 @@ static func muzzle_point(build: Dictionary) -> Vector3:
 
 ## The FAULTPRINT gun material. `texture` is the HAIKAI texture name: it now picks the
 ## print treatment (and the ink when the tint is plain white); tints come from the palette.
-static func mat(texture: String, tint := Color.WHITE, glow := Color.BLACK, _density := 7.0) -> ShaderMaterial:
+static func mat(texture: String, tint := Color.WHITE, glow := Color.BLACK, _density := 7.0) -> Material:
 	var color := tint
 	if tint == Color.WHITE:
 		color = TEXTURE_INK.get(texture, Faultprint.CONCRETE)

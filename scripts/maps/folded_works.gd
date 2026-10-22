@@ -34,6 +34,8 @@ func _ready() -> void:
 	_ground_cover()
 	_range()
 	_scenery()
+	if Settings.look == Faultprint.COUNTERFORM:
+		Counterform.vista(self, Vector3.ZERO, 130.0)
 	# Areas told apart by the colour of their light (dark look only).
 	Faultprint.zone_light(self, Vector3(0, 6.0, 0), Color("#3FC6C0"), 16.0)
 	Faultprint.zone_light(self, Vector3(-18, 5.0, 0), Color("#F07A3A"), 15.0)

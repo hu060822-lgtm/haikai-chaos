@@ -1,7 +1,7 @@
 # HAIKAI: CHAOS
 
 HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架），核心是自由、不講道理的改槍和高上限身法。
-美術風格：**FAULTPRINT 斷層印刷體**。引擎：Godot 4.3（GL Compatibility）。
+美術風格：**Counterform Industrial**（正式風格，規範見 [`docs/COUNTERFORM.md`](docs/COUNTERFORM.md)）；舊的 FAULTPRINT 印刷風保留為設定裡的選項。引擎：Godot 4.3（GL Compatibility）。
 
 目前是 **C1.1 原型（移動手感第二輪）**：單機、兩張地圖（灰盒對戰圖 FOLDED WORKS、移動測試場 MOVEMENT LAB）、三個陪練機器人、靶場、改槍工作台、擊殺列表、死亡畫面、移動除錯面板。還沒有連線（C2 才做）。
 
@@ -48,6 +48,7 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 
 | 路徑 | 內容 |
 |---|---|
+| `scripts/style/counterform.gd` | Counterform Industrial：色票、材質類別（混凝土、塗裝金屬、氧化、裸金屬、聚合物、橡膠、玻璃）、程序貼圖、光照與霧、超現實遠景 |
 | `scripts/style/faultprint.gd` | 美術風格的唯一入口：色盤、材質、描邊、環境光。換風格只動這裡和 `shaders/` |
 | `shaders/faultprint.gdshader` | 三階色塊光影 + 半色調網點（隨距離換層級）+ 套色偏移的第二版 + 墨色缺損 |
 | `shaders/fp_misreg.gdshader` | 物件輪廓外的套色偏移（只用在場景，不用在角色） |
@@ -79,6 +80,7 @@ godot --headless --fixed-fps 120 --path . --script res://tests/movement_feel_tes
 godot --headless --fixed-fps 120 --path . --script res://tests/route_test.gd -- 120
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/lab_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c11_shots.gd -- <資料夾>
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/cf_shots.gd -- <資料夾>      # Counterform 截圖（MAP=folded 換對戰圖）
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/look_shots.gd -- <資料夾>   # 三種畫面風格對照
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/game_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/map_shots.gd -- <資料夾>

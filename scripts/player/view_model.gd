@@ -66,6 +66,11 @@ func _make_hands(slots: Dictionary) -> Node3D:
 	var glove := Faultprint.gun(Faultprint.GRAPHITE, "panel")
 	var cuff := Faultprint.gun(Faultprint.ORANGE, "panel")
 	var sleeve := Faultprint.gun(Faultprint.CONCRETE, "rust_metal")
+	if Settings.look == Faultprint.COUNTERFORM:
+		# Rubberised gloves, an oxide-orange cuff tab, a grey-green technical sleeve.
+		glove = Counterform.material("rubber", Color("#2A2C2E"), false)
+		cuff = Counterform.material("paint", Counterform.OXIDE_ORANGE, false)
+		sleeve = Counterform.material("polymer", Color("#4E5450"), false)
 	var grip_at: Vector3 = slots.get("grip", Vector3(0, -0.03, 0.0))
 	var front: Vector3 = slots.get("foregrip", slots.get("handguard", slots.get("underbarrel", Vector3(0, 0.02, -0.2))))
 	for spec in [[grip_at + Vector3(0.0, -0.01, 0.01), Vector3(0.05, 0.075, 0.07), Vector3(-0.2, 0, 0.2)],
