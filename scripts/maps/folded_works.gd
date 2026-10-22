@@ -62,6 +62,10 @@ func _perimeter() -> void:
 			var w := 3.0 + (i % 3) * 1.4
 			var x := -HALF.x + 4.5 + i * 9.0
 			var y := 6.0 + (i % 2) * 2.5
+			if Settings.look == Faultprint.COUNTERFORM and i % 3 == 0:
+				# Control-room windows looking down on the floor.
+				Counterform.glazing(self, w, 2.2 + (i % 3), Vector3(x, y, z - signf(z) * 0.55), 0.0 if z < 0.0 else 180.0)
+				continue
 			Geo.block(self, Vector3(w, 2.2 + (i % 3), 0.3), Vector3(x, y, z - signf(z) * 0.6),
 				Faultprint.CARBON if i % 3 == 0 else Faultprint.CONCRETE, Vector3.ZERO, {"print": {"slip": null}})
 	# East and west walls are runnable along the gallery gaps (see _galleries).
@@ -153,6 +157,10 @@ func _ground_cover() -> void:
 	for z in [-1.8, 1.8]:
 		Geo.block(self, Vector3(9.0, 1.1, 0.8), duct + Vector3(0, 0.55, z), Faultprint.CONCRETE)
 	Geo.block(self, Vector3(9.0, 1.6, 4.4), duct + Vector3(0, 1.9, 0), Faultprint.TEAL)
+	if Settings.look == Faultprint.COUNTERFORM:
+		# A glazed roof light on the duct block: glass lying flat in a steel frame.
+		var roof := Counterform.glazing(self, 6.0, 2.4, duct + Vector3(0, 2.72, 0), 0.0)
+		roof.rotation_degrees = Vector3(-90, 0, 0)
 	for x in [-4.4, 4.4]:
 		var lip := MeshInstance3D.new()
 		lip.mesh = LowPoly.chamfer_box(Vector3(0.1, 0.14, 2.8), 0.02)

@@ -9,6 +9,9 @@ const FRAME_SHORT := {
 	"shotgun": "霰彈", "double_barrel": "雙管", "auto_shotgun": "連發霰彈", "sawed_off": "短管霰彈",
 	"nail_gun": "釘槍", "crossbow": "十字弩", "flamethrower": "噴火器", "tesla": "線圈", "harpoon": "魚叉",
 	"railgun": "電磁砲", "duck_launcher": "鴨砲", "saw_launcher": "鋸片砲", "bubble_gun": "泡泡槍",
+	"jump_shotgun": "推進霰彈", "gyrojet": "火箭手槍", "minigun": "六管", "quad_barrel": "四管", "punt_gun": "巨砲",
+	"pneumatic_lance": "穿刺槍", "ricochet_smg": "跳彈衝鋒", "glass_revolver": "玻璃左輪", "tuning_fork": "音叉",
+	"anchor_gun": "錨鉤",
 }
 
 
@@ -30,6 +33,26 @@ static func auto_name(build: Dictionary, stats: Dictionary) -> String:
 		traits.append([3.0, "麻痺"])
 	if e.get("suppressed", false):
 		traits.append([3.2, "沉默"])
+	if e.has("recoil_push") and float(e.recoil_push) >= 2.0:
+		traits.append([3.3, "火箭跳"])
+	if e.has("grapple"):
+		traits.append([3.3, "飛鉤"])
+	if e.has("ricochet"):
+		traits.append([3.1, "跳彈"])
+	if e.has("leech"):
+		traits.append([3.6, "吸血"])
+	if e.get("gamble", false):
+		traits.append([3.0, "賭命"])
+	if e.get("headhunter", false):
+		traits.append([3.0, "獵頭"])
+	if e.has("air_bonus"):
+		traits.append([2.9, "空戰"])
+	if e.has("speed_bonus"):
+		traits.append([2.9, "疾風"])
+	if e.get("kill_refill", false) or e.get("kill_dash", false):
+		traits.append([2.7, "連殺"])
+	if e.has("last_round"):
+		traits.append([2.7, "遺言"])
 	if int(stats.pellets) > 8:
 		traits.append([3.0, "暴雨"])
 	if float(stats.rate) >= 12.0:

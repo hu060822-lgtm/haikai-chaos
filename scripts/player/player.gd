@@ -1300,6 +1300,11 @@ func take_hit(info: Dictionary) -> bool:
 	return _apply_damage(float(info.damage), info, true)
 
 
+## A kill with a kill_dash gun: the dash is ready again.
+func refill_dash() -> void:
+	_dash_charge = 1.0
+
+
 func _apply_damage(amount: float, info: Dictionary, _direct: bool) -> bool:
 	if not alive:
 		return false

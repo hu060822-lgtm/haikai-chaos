@@ -68,8 +68,14 @@ const AMMO_LOOK := {
 	"net_bolt": [Color(0.5, 1.2, 0.35), Color(0.05, 0.2, 0.0)],
 	"broadhead": [Color(1.3, 1.3, 1.35), Color(0.3, 0.0, 0.0)],
 	"rusty_nails": [Color(1.0, 0.5, 0.3), Color.BLACK],
+	"ricochet_rounds": [Color(0.78, 0.8, 0.8), Color.BLACK],
+	"magnet_rounds": [Color(0.55, 0.22, 0.17), Color.BLACK],
+	"concussion_rounds": [Color(0.47, 0.49, 0.47), Color.BLACK],
+	"vampire_rounds": [Color(0.56, 0.23, 0.17), Color(0.15, 0.0, 0.0)],
+	"sky_rounds": [Color(0.91, 0.89, 0.85), Color.BLACK],
+	"momentum_rounds": [Color(0.85, 0.78, 0.36), Color.BLACK],
+	"cluster_rockets": [Color(0.65, 0.33, 0.22), Color(0.2, 0.06, 0.0)],
 }
-
 
 
 ## A finished model of `build` (any Arsenal build; it is cleaned first).
@@ -87,35 +93,45 @@ static func _assemble(build: Dictionary) -> Node3D:
 	r.parts = build.get("parts", {})
 	r.tune = build.get("tune", {})
 	match r.frame:
-		"revolver": _revolver(r)
-		"service_pistol": _service_pistol(r)
-		"heavy_pistol": _heavy_pistol(r)
-		"machine_pistol": _machine_pistol(r)
-		"smg": _smg(r)
-		"pdw": _pdw(r)
-		"carbine": _carbine(r)
-		"ak": _ak(r)
-		"bullpup": _bullpup(r)
-		"battle_rifle": _battle_rifle(r)
-		"dmr": _dmr(r)
-		"rifle": _rifle(r)
-		"lever_action": _lever_action(r)
-		"lmg": _lmg(r)
-		"anti_materiel": _anti_materiel(r)
-		"shotgun": _shotgun(r)
-		"double_barrel": _double_barrel(r)
-		"auto_shotgun": _auto_shotgun(r)
-		"sawed_off": _sawed_off(r)
-		"nail_gun": _nail_gun(r)
-		"crossbow": _crossbow(r)
-		"flamethrower": _flamethrower(r)
-		"tesla": _tesla(r)
-		"harpoon": _harpoon(r)
-		"railgun": _railgun(r)
-		"duck_launcher": _duck_launcher(r)
-		"saw_launcher": _saw_launcher(r)
-		"bubble_gun": _bubble_gun(r)
-		_: _revolver(r)
+		"revolver": GunFrames.revolver(r)
+		"service_pistol": GunFrames.service_pistol(r)
+		"heavy_pistol": GunFrames.heavy_pistol(r)
+		"machine_pistol": GunFrames.machine_pistol(r)
+		"smg": GunFrames.smg(r)
+		"pdw": GunFrames.pdw(r)
+		"carbine": GunFrames.carbine(r)
+		"ak": GunFrames.ak(r)
+		"bullpup": GunFrames.bullpup(r)
+		"battle_rifle": GunFrames.battle_rifle(r)
+		"dmr": GunFrames.dmr(r)
+		"rifle": GunFrames.rifle(r)
+		"lever_action": GunFrames.lever_action(r)
+		"lmg": GunFrames.lmg(r)
+		"anti_materiel": GunFrames.anti_materiel(r)
+		"shotgun": GunFrames.shotgun(r)
+		"double_barrel": GunFrames.double_barrel(r)
+		"auto_shotgun": GunFrames.auto_shotgun(r)
+		"sawed_off": GunFrames.sawed_off(r)
+		"nail_gun": GunFrames.nail_gun(r)
+		"crossbow": GunFrames.crossbow(r)
+		"flamethrower": GunFrames.flamethrower(r)
+		"tesla": GunFrames.tesla(r)
+		"harpoon": GunFrames.harpoon(r)
+		"railgun": GunFrames.railgun(r)
+		"duck_launcher": GunFrames.duck_launcher(r)
+		"saw_launcher": GunFrames.saw_launcher(r)
+		"bubble_gun": GunFrames.bubble_gun(r)
+		"jump_shotgun": GunFrames.jump_shotgun(r)
+		"gyrojet": GunFrames.gyrojet(r)
+		"minigun": GunFrames.minigun(r)
+		"quad_barrel": GunFrames.quad_barrel(r)
+		"punt_gun": GunFrames.punt_gun(r)
+		"pneumatic_lance": GunFrames.pneumatic_lance(r)
+		"ricochet_smg": GunFrames.ricochet_smg(r)
+		"glass_revolver": GunFrames.glass_revolver(r)
+		"tuning_fork": GunFrames.tuning_fork(r)
+		"anchor_gun": GunFrames.anchor_gun(r)
+		_: GunFrames.revolver(r)
 	_settle_anchors(r)
 	var bare_muzzle := r.muzzle
 	r.barrel_end = r.muzzle
@@ -217,6 +233,9 @@ class Rig:
 	var barrel_end := Vector3.ZERO         # the bare muzzle, before devices and cans                # an AR buffer tube is already there for stocks
 
 
+## How many placeholder lumps have been drawn (tests check new parts don't need one).
+static var lumps := 0
+
 
 # --- Shape helpers ----------------------------------------------------------------
 
@@ -225,44 +244,71 @@ static func _box(p: Node3D, size: Vector3, pos: Vector3, m: Material, rot := Vec
 	return _put(p, LowPoly.chamfer_box(size, minf(bevel, minf(size.x, minf(size.y, size.z)) * 0.45)), pos, m, rot)
 
 
-## A rod along Z centred at `pos` (front radius, back radius).
+## A rod along Z centred at `pos` (front radius, back radius): a smooth turned part with
+## softened edges. `rot` turns it like a Y-axis prism turned by `rot` (the default lays it
+## along Z).
 static func _rod(p: Node3D, r_front: float, r_back: float, length: float, pos: Vector3, m: Material,
 		sides := 8, rot := Vector3(90, 0, 0)) -> MeshInstance3D:
-	return _put(p, LowPoly.prism(sides, r_front, r_back, length), pos, m, rot)
+	var h := length / 2.0
+	var c := minf(minf(r_front, r_back) * 0.12, minf(0.0012, h * 0.3))
+	var prof := PackedVector2Array()
+	if r_front > 0.0001 and c > 0.00005:
+		prof.append_array([Vector2(-h, r_front - c), Vector2(-h + c, r_front)])
+	else:
+		prof.append(Vector2(-h, r_front))
+	if r_back > 0.0001 and c > 0.00005:
+		prof.append_array([Vector2(h - c, r_back), Vector2(h, r_back - c)])
+	else:
+		prof.append(Vector2(h, r_back))
+	var node := _put(p, GunKit.turned(prof, clampi(sides * 2, 12, 24)), pos, m)
+	node.transform = Transform3D(Basis.from_euler(rot * PI / 180.0) * Basis(Vector3.RIGHT, -PI / 2.0), pos)
+	return node
 
 
 ## A rod from point a to point b.
-static func _rod_between(p: Node3D, a: Vector3, b: Vector3, radius: float, m: Material, sides := 6) -> MeshInstance3D:
+static func _rod_between(p: Node3D, a: Vector3, b: Vector3, radius: float, m: Material, sides := 10) -> MeshInstance3D:
+	sides = maxi(sides, 8)
 	var path := PackedVector3Array([a, b])
 	return _put(p, LowPoly.tube(path, PackedFloat32Array([radius, radius]), sides), Vector3.ZERO, m)
 
 
 ## A disc / drum with its axis along X.
 static func _disc_x(p: Node3D, radius: float, thick: float, pos: Vector3, m: Material, sides := 10) -> MeshInstance3D:
-	return _put(p, LowPoly.prism(sides, radius, radius, thick), pos, m, Vector3(0, 0, 90))
+	return _put(p, GunKit.rod(radius, thick, clampi(sides * 2, 12, 24)), pos, m, Vector3(0, 90, 0))
 
 
 ## A lathed profile along Z: points are (radius, z) listed front (-z) to back.
 static func _lathe_z(p: Node3D, profile: Array, pos: Vector3, m: Material, sides := 8) -> MeshInstance3D:
 	var packed := PackedVector2Array()
 	for v: Vector2 in profile:
-		packed.append(v)
-	return _put(p, LowPoly.lathe(packed, sides), pos, m, Vector3(90, 0, 0))
+		packed.append(Vector2(v.y, v.x))
+	return _put(p, GunKit.turned(packed, clampi(sides * 2, 12, 24)), pos, m)
 
 
-## A side silhouette: points are (forward, up), extruded `thick` across X.
+## A side silhouette: points are (forward, up) from `pos`, extruded `thick` across X with
+## chamfered edges (a GunKit slab).
 static func _profile(p: Node3D, points: Array, thick: float, pos: Vector3, m: Material) -> MeshInstance3D:
 	var packed := PackedVector2Array()
 	for v: Vector2 in points:
-		packed.append(v)
-	return _put(p, LowPoly.extrude(packed, thick), pos, m, Vector3(0, 90, 0))
+		packed.append(Vector2(pos.z - v.x, pos.y + v.y))
+	return _put(p, GunKit.slab(packed, thick, minf(0.003, thick * 0.12)), Vector3(pos.x, 0, 0), m)
 
 
 static func _ball(p: Node3D, radius: float, pos: Vector3, m: Material, squash := Vector3.ONE, lump := 0.0) -> MeshInstance3D:
-	return _put(p, LowPoly.blob(radius, squash, 1, lump, 3), pos, m)
+	if lump > 0.0:
+		return _put(p, LowPoly.blob(radius, squash, 1, lump, 3), pos, m)
+	var sphere := SphereMesh.new()
+	sphere.radius = radius
+	sphere.height = radius * 2.0
+	sphere.radial_segments = 14
+	sphere.rings = 7
+	var node := _put(p, sphere, pos, m)
+	node.scale = squash
+	return node
 
 
-static func _tube(p: Node3D, points: Array, radius: float, m: Material, sides := 5) -> MeshInstance3D:
+static func _tube(p: Node3D, points: Array, radius: float, m: Material, sides := 8) -> MeshInstance3D:
+	sides = maxi(sides, 8)
 	var path := PackedVector3Array()
 	var radii := PackedFloat32Array()
 	for v: Vector3 in points:
@@ -281,6 +327,99 @@ static func _put(p: Node3D, mesh: Mesh, pos: Vector3, m: Material, rot := Vector
 	return node
 
 
+# --- Counterform finishes and machined shapes (GunKit) --------------------------------
+
+## Gun finishes (art direction §6): name -> [Counterform material class, colour, old-look
+## texture, old-look ink]. Use fin("black") etc. instead of raw colours in new models.
+const FINISHES := {
+	"black": ["anodized", Color("#2A2D2F"), "panel", Faultprint.GRAPHITE],
+	"steel": ["phosphate", Color("#4C5153"), "panel", Faultprint.CONCRETE],
+	"bore": ["anodized", Color("#141617"), "panel", Faultprint.CARBON],
+	"polymer": ["polymer", Color("#222426"), "panel", Faultprint.CARBON],
+	"poly_grey": ["polymer", Color("#4A4E50"), "panel", Faultprint.SLATE],
+	"poly_tan": ["polymer", Color("#7E6A52"), "wood", Faultprint.KRAFT],
+	"poly_green": ["polymer", Color("#5C635D"), "panel", Faultprint.DEEP_TEAL],
+	"laminate": ["polymer", Color("#5A4636"), "wood", Faultprint.KRAFT],
+	"oxide": ["paint", Color("#A65339"), "panel", Faultprint.ORANGE],
+	"rust": ["oxide", Color("#6E3A28"), "rust_metal", Faultprint.OXIDE],
+	"green": ["paint", Color("#777D77"), "panel", Faultprint.TEAL],
+	"dust": ["paint", Color("#E9E4D9"), "panel", Faultprint.BONE],
+	"sand": ["paint", Color("#B9AC92"), "panel", Faultprint.DUST],
+	"sulfur": ["paint", Color("#D9C75B"), "panel", Faultprint.YELLOW],
+	"bare": ["bare", Color("#A3A5A3"), "pipe", Faultprint.DUST],
+	"chrome": ["bare", Color("#C9CBCB"), "pipe", Faultprint.BONE],
+	"brass": ["bare", Color("#A88B55"), "brass", Faultprint.YELLOW],
+	"copper": ["bare", Color("#B0704A"), "brass", Faultprint.ORANGE],
+	"rubber": ["rubber", Color("#26282A"), "panel", Faultprint.CARBON],
+	"lens": ["lens", Color("#24343A"), "panel", Faultprint.DEEP_TEAL],
+	"glass": ["glass", Color("#9FB8BE"), "panel", Faultprint.TEAL],
+	"shell_red": ["polymer", Color("#8E3A2C"), "panel", Faultprint.OXIDE],
+	"shell_green": ["polymer", Color("#55634F"), "panel", Faultprint.DEEP_TEAL],
+}
+
+
+static func fin(name: String, glow := Color.BLACK) -> Material:
+	var f: Array = FINISHES.get(name, FINISHES.steel)
+	if Settings.look == Faultprint.COUNTERFORM:
+		return Counterform.material(f[0], f[1], false, glow)
+	return Faultprint.gun(f[3], f[2], glow)
+
+
+## A side silhouette `points` (z, y) in model space, `thick` across X at `x`, chamfered.
+static func _slab(p: Node3D, points: Array, thick: float, m: Material, x := 0.0, bevel := 0.0015) -> MeshInstance3D:
+	var packed := PackedVector2Array()
+	for v: Vector2 in points:
+		packed.append(v)
+	return _put(p, GunKit.slab(packed, thick, bevel), Vector3(x, 0, 0), m)
+
+
+## A turned part: `profile` (z, radius) front to back, placed with its axis through `at`
+## (the profile's z is added to at.z).
+static func _turn(p: Node3D, profile: Array, at: Vector3, m: Material, sides := 16) -> MeshInstance3D:
+	var packed := PackedVector2Array()
+	for v: Vector2 in profile:
+		packed.append(v)
+	return _put(p, GunKit.turned(packed, sides), at, m)
+
+
+## A plain machined cylinder along Z centred at `at`.
+static func _cyl(p: Node3D, radius: float, length: float, at: Vector3, m: Material, sides := 14) -> MeshInstance3D:
+	return _put(p, GunKit.rod(radius, length, sides), at, m)
+
+
+## A cylinder along X (pins, knobs, wheels) centred at `at`.
+static func _cyl_x(p: Node3D, radius: float, length: float, at: Vector3, m: Material, sides := 10) -> MeshInstance3D:
+	return _put(p, GunKit.rod(radius, length, sides), at, m, Vector3(0, 90, 0))
+
+
+## A cylinder along Y centred at `at`.
+static func _cyl_y(p: Node3D, radius: float, length: float, at: Vector3, m: Material, sides := 10) -> MeshInstance3D:
+	return _put(p, GunKit.rod(radius, length, sides), at, m, Vector3(90, 0, 0))
+
+
+## Cross pins showing on both sides of a receiver `half` wide.
+static func _pins(r: Rig, points: Array, half: float, radius := 0.0022) -> void:
+	for v: Vector2 in points:
+		_cyl_x(r.root, radius, half * 2.0 + 0.0012, Vector3(0, v.y, v.x), fin("steel"), 8)
+
+
+## Grooves (slide serrations, grip texture): `count` thin dark ridges on both sides.
+static func _grooves(r: Rig, z_back: float, z_front: float, y: float, h: float, half: float, count: int, rake := 0.0) -> void:
+	for i in count:
+		var z := lerpf(z_back, z_front, (i + 0.5) / count)
+		for sx: float in [-1.0, 1.0]:
+			_box(r.root, Vector3(0.0012, h, 0.0016), Vector3(sx * (half + 0.0002), y, z), fin("bore"), Vector3(rake, 0, 0), 0.0)
+
+
+## An engraved split line: a hairline of dark along a side, from a to b ((z, y) points).
+static func _seam(r: Rig, a: Vector2, b: Vector2, half: float, both := true) -> void:
+	var mid := (a + b) / 2.0
+	var d := b - a
+	var ang := rad_to_deg(atan2(d.y, -d.x))
+	for sx: float in ([-1.0, 1.0] if both else [1.0]):
+		_box(r.root, Vector3(0.0008, 0.0012, d.length()), Vector3(sx * (half + 0.0002), mid.y, mid.x), fin("bore"), Vector3(ang, 0, 0), 0.0)
+
+
 ## A pistol grip whose top is at `top` (raked back), with a strip of tape round it. The rig
 ## remembers where it is; with a grip part fitted the part is drawn there instead.
 static func _grip(r: Rig, top: Vector3, m: Material, size := Vector3(0.032, 0.105, 0.042), rake := -16.0) -> void:
@@ -292,12 +431,47 @@ static func _grip(r: Rig, top: Vector3, m: Material, size := Vector3(0.032, 0.10
 	_grip_shape(r, top, m, size, rake)
 
 
-static func _grip_shape(r: Rig, top: Vector3, m: Material, size: Vector3, rake: float, tape := true) -> void:
+static func _grip_shape(r: Rig, top: Vector3, m: Material, size: Vector3, rake: float, _tape := true, grooves := true) -> void:
+	_put(r.root, GunKit.slab(_grip_outline(top, size, rake, grooves, 1.0), size.x, 0.004), Vector3.ZERO, m)
+	# A textured panel on each side (stippling), a shade darker, inset from the edges.
+	_put(r.root, GunKit.slab(_grip_outline(top, size, rake, false, 0.7), size.x + 0.0012, 0.001), Vector3.ZERO, fin("rubber"))
+
+
+## The side outline of a moulded grip: palm swell at the back, finger grooves at the front
+## (optional), a flared heel. `k` < 1 shrinks it about its middle (for inset panels).
+static func _grip_outline(top: Vector3, size: Vector3, rake: float, grooves: bool, k: float) -> PackedVector2Array:
+	var d := size.z
+	var h := size.y
+	var local := [Vector2(0.5, 0.0), Vector2(0.53, 0.28)]
+	if grooves:
+		local.append_array([Vector2(0.45, 0.42), Vector2(0.53, 0.55), Vector2(0.46, 0.69), Vector2(0.53, 0.82)])
+	else:
+		local.append_array([Vector2(0.54, 0.55), Vector2(0.53, 0.82)])
+	local.append_array([Vector2(0.52, 0.97), Vector2(0.44, 1.02), Vector2(-0.52, 1.03), Vector2(-0.6, 0.94),
+		Vector2(-0.62, 0.62), Vector2(-0.58, 0.32), Vector2(-0.52, 0.08), Vector2(-0.47, 0.0)])
+	var fwd := Vector3(0, sin(deg_to_rad(rake)), -cos(deg_to_rad(rake)))
 	var down := _grip_down(rake)
-	_box(r.root, size, top + down * size.y * 0.5, m, Vector3(rake, 0, 0), 0.008)
-	if tape:
-		_box(r.root, Vector3(size.x + 0.004, 0.018, size.z + 0.004), top + down * size.y * 0.62,
-				mat("panel", TAPE), Vector3(rake, 0, 0), 0.002)
+	var out := PackedVector2Array()
+	for v: Vector2 in local:
+		var lv := Vector2(v.x * k, 0.5 + (v.y - 0.5) * k) if k < 1.0 else v
+		var p := top + fwd * lv.x * d + down * lv.y * h
+		out.append(Vector2(p.z, p.y))
+	return out
+
+
+## A trigger guard loop from under the frame at `front` (z) back to the grip at `back`,
+## hanging `depth` below `y` (the frame's underside).
+static func _guard(r: Rig, front: float, back: float, y: float, depth: float, m: Material, w := 0.009, t := 0.0042) -> void:
+	_slab(r.root, [Vector2(front, y + 0.002), Vector2(front - 0.004, y - depth * 0.55), Vector2(front + 0.006, y - depth),
+			Vector2(back, y - depth + 0.002), Vector2(back, y - depth + 0.002 + t), Vector2(front + 0.008, y - depth + t),
+			Vector2(front + t - 0.003, y - depth * 0.55), Vector2(front + t, y + 0.002)], w, m, 0.0, 0.0012)
+
+
+## A curved trigger blade whose pivot is at (z, y).
+static func _blade_at(r: Rig, z: float, y: float, m: Material) -> void:
+	_slab(r.root, [Vector2(z, y), Vector2(z - 0.004, y - 0.008), Vector2(z - 0.003, y - 0.018), Vector2(z + 0.002, y - 0.024),
+			Vector2(z + 0.004, y - 0.022), Vector2(z + 0.001, y - 0.016), Vector2(z + 0.002, y - 0.006), Vector2(z + 0.005, y)],
+			0.006, m, 0.0, 0.001)
 
 
 static func _grip_down(rake: float) -> Vector3:
@@ -312,17 +486,16 @@ static func _grip_bottom(r: Rig) -> Vector3:
 ## A trigger and a bent-wire guard in front of a grip at the origin.
 static func _trigger(r: Rig, y := 0.03, z := -0.015, guard := true) -> void:
 	r.trig = Vector3(0, y - 0.012, z - 0.012)
-	_box(r.root, Vector3(0.006, 0.022, 0.008), r.trig, mat("panel", BLACK), Vector3(-15, 0, 0))
+	_blade_at(r, z - 0.014, y, fin("black"))
 	if guard:
-		_tube(r.root, [Vector3(0, y, z - 0.045), Vector3(0, y - 0.035, z - 0.04), Vector3(0, y - 0.04, z - 0.005),
-				Vector3(0, y - 0.03, z + 0.02)], 0.003, mat("panel", DARK), 4)
+		_guard(r, z - 0.05, z + 0.012, y + 0.003, 0.042, fin("polymer"))
 
 
 ## A picatinny rail: a flat bar with cross slots, `centre` on its base, along Z. `roll`
 ## turns it round Z (90 faces left, -90 right, 180 down).
 static func _pic(r: Rig, centre: Vector3, length: float, roll := 0.0, width := 0.02, m: Material = null) -> void:
 	var up := Vector3(0, 1, 0).rotated(Vector3(0, 0, 1), deg_to_rad(roll))
-	var bar := m if m != null else mat("panel", BLACK)
+	var bar := m if m != null else fin("black")
 	_box(r.root, Vector3(width, 0.007, length), centre + up * 0.0035, bar, Vector3(0, 0, roll), 0.0015)
 	var count := int(length / 0.016)
 	for i in count:
@@ -333,17 +506,43 @@ static func _pic(r: Rig, centre: Vector3, length: float, roll := 0.0, width := 0
 ## A box magazine (optionally curved like a banana) hanging from `top`; returns its bottom.
 static func _mag_body(r: Rig, top: Vector3, length: float, w: float, d: float, tilt: float, curve: float,
 		m: Material, plate := true) -> Vector3:
-	var segs := 1 if absf(curve) < 1.0 else 3
+	# The magazine's side silhouette along a curve (a banana when curve > 0), with stiffening
+	# ribs down its side and a flared base plate.
+	var steps := 8
+	var front := PackedVector2Array()
+	var back := PackedVector2Array()
 	var p := top
-	var seg_len := length / segs
 	var a := tilt
-	for i in segs:
-		a = tilt + curve * (i + 0.5) / segs
+	var seg := length / steps
+	for i in steps + 1:
+		a = tilt + curve * float(i) / steps
 		var down := Vector3(0, -cos(deg_to_rad(a)), -sin(deg_to_rad(a)))
-		_box(r.root, Vector3(w, seg_len + (0.004 if segs > 1 else 0.0), d), p + down * seg_len * 0.5, m, Vector3(a, 0, 0), 0.003)
-		p += down * seg_len
+		var fwd := Vector3(0, sin(deg_to_rad(a)), -cos(deg_to_rad(a)))
+		var fp := p + fwd * d * 0.5
+		var bp := p - fwd * d * 0.5
+		front.append(Vector2(fp.z, fp.y))
+		back.append(Vector2(bp.z, bp.y))
+		if i < steps:
+			p += down * seg
+	var outline := PackedVector2Array()
+	outline.append_array(front)
+	for i in range(back.size() - 1, -1, -1):
+		outline.append(back[i])
+	_put(r.root, GunKit.slab(outline, w, 0.0025), Vector3(top.x, 0, 0), m)
+	# Ribs: two raised strips down each side, following the curve.
+	for k: float in [-0.22, 0.22]:
+		var rib := PackedVector2Array()
+		for i in front.size():
+			var c := (front[i] + back[i]) * 0.5 + (front[i] - back[i]) * k
+			rib.append(c)
+		for i in range(front.size() - 1, -1, -1):
+			var c := (front[i] + back[i]) * 0.5 + (front[i] - back[i]) * (k + 0.07)
+			rib.append(c)
+		var rib_cut := PackedVector2Array(Array(rib).slice(1, rib.size() - 1))
+		_put(r.root, GunKit.slab(rib_cut, w + 0.0016, 0.0005), Vector3(top.x, 0, 0), m)
 	if plate:
-		_box(r.root, Vector3(w + 0.004, 0.01, d + 0.006), p, mat("panel", BLACK), Vector3(a, 0, 0), 0.002)
+		var down := Vector3(0, -cos(deg_to_rad(a)), -sin(deg_to_rad(a)))
+		_box(r.root, Vector3(w + 0.004, 0.008, d + 0.008), p + down * 0.002, fin("polymer"), Vector3(a, 0, 0), 0.002)
 	return p
 
 
@@ -356,6 +555,7 @@ static func _std_mag(r: Rig, m: Material, length_scale := 1.0) -> Vector3:
 
 ## A small taped-on lump for a part with no model of its own: something shows where it went.
 static func _generic(r: Rig, at: Vector3, id: String) -> void:
+	lumps += 1
 	var h := absi(hash(id))
 	var tint := Color.from_hsv(float(h % 360) / 360.0, 0.45, 0.85)
 	_box(r.root, Vector3(0.022, 0.016, 0.03), at, mat("panel", tint), Vector3.ZERO, 0.004)
@@ -368,6 +568,8 @@ static func _barrel_scale(r: Rig) -> float:
 		"long_barrel", "nail_guide": return 1.5
 		"short_barrel": return 0.6
 		"bbl_338": return 1.25
+		"telescoping_barrel": return 1.0 + 0.45 * float(r.tune.get("barrel", 0.0))
+		"organ_pipes": return 0.7
 	return 1.0
 
 
@@ -380,7 +582,11 @@ static func _barrel(r: Rig, start: Vector3, length: float, radius: float, m: Mat
 	match id:
 		"heavy_barrel": rad = radius * 1.5
 		"bbl_338": rad = radius * 1.3
-	_rod(r.root, rad, rad, len, start + Vector3(0, 0, -len / 2.0), m, 6)
+	# Turned barrel: a step down from the chamber, a crowned muzzle, the bore showing.
+	var step := minf(len * 0.25, 0.06)
+	_turn(r.root, [Vector2(-len, rad * 0.8), Vector2(-len + rad * 0.25, rad), Vector2(-step, rad), Vector2(-step + 0.002, rad * 1.12),
+			Vector2(0.0, rad * 1.12)], start, m, 16)
+	_cyl(r.root, rad * 0.45, 0.0016, start + Vector3(0, 0, -len - 0.0002), fin("bore"), 10)
 	var end := start + Vector3(0, 0, -len)
 	match id:
 		"long_barrel":
@@ -436,12 +642,56 @@ static func _barrel(r: Rig, start: Vector3, length: float, radius: float, m: Mat
 		"nail_guide":
 			_rod(r.root, rad * 1.3, rad * 1.3, 0.02, end + Vector3(0, 0, 0.01), mat("panel", YELLOW), 6)
 			_rod(r.root, rad * 1.6, rad * 1.3, 0.012, end + Vector3(0, 0, -0.004), mat("panel", BLACK), 6)
+		"corkscrew_barrel":
+			# A helix of steel wound round the barrel, welded at both ends.
+			var helix := []
+			var turns := maxi(int(len / 0.03), 4)
+			for i in turns * 8 + 1:
+				var a := TAU * i / 8.0
+				helix.append(start + Vector3(cos(a) * rad * 1.5, sin(a) * rad * 1.5, -len * float(i) / (turns * 8)))
+			_tube(r.root, helix, maxf(rad * 0.32, 0.0022), fin("steel"), 8)
+			for z: float in [0.004, len - 0.004]:
+				_turn(r.root, [Vector2(-0.004, rad * 1.85), Vector2(0.004, rad * 1.85)], start + Vector3(0, 0, -z), fin("black"), 16)
+		"glass_barrel":
+			# A thick glass sleeve over a thin steel liner; the liner shows through.
+			_turn(r.root, [Vector2(-len + 0.004, rad * 1.7), Vector2(-len + 0.008, rad * 2.0), Vector2(-0.01, rad * 2.0), Vector2(-0.006, rad * 1.7)],
+					start, fin("glass"), 18)
+			for z: float in [0.004, len - 0.002]:
+				_turn(r.root, [Vector2(-0.004, rad * 2.1), Vector2(0.004, rad * 2.1)], start + Vector3(0, 0, -z), fin("chrome"), 18)
+		"telescoping_barrel":
+			# Three nested sections, each a step thinner, with a collar where they meet.
+			for k in 3:
+				var z0 := len * k / 3.0
+				var rr := rad * (1.6 - k * 0.22)
+				_turn(r.root, [Vector2(-len / 3.0, rr), Vector2(0.0, rr)], start + Vector3(0, 0, -z0), fin("black" if k % 2 == 0 else "steel"), 16)
+				_turn(r.root, [Vector2(-0.006, rr * 1.18), Vector2(0.0, rr * 1.18)], start + Vector3(0, 0, -z0 - len / 3.0 + 0.006), fin("oxide"), 16)
+		"twin_linked":
+			# A second barrel welded on top, clamped at both ends.
+			var up := Vector3(0, rad * 2.3, 0)
+			_turn(r.root, [Vector2(-len, rad * 0.8), Vector2(-len + rad * 0.25, rad), Vector2(0.0, rad)], start + up, m, 16)
+			_cyl(r.root, rad * 0.45, 0.0016, start + up + Vector3(0, 0, -len - 0.0002), fin("bore"), 10)
+			for z: float in [0.02, len - 0.02]:
+				_slab(r.root, [Vector2(start.z - z + 0.008, start.y - rad * 1.1), Vector2(start.z - z - 0.008, start.y - rad * 1.1),
+						Vector2(start.z - z - 0.008, start.y + up.y + rad * 1.1), Vector2(start.z - z + 0.008, start.y + up.y + rad * 1.1)],
+						rad * 2.4, fin("steel"), start.x, 0.0015)
+			sight = false
+		"organ_pipes":
+			# Six short pipes round the barrel, bundled with two brass bands.
+			for i in 6:
+				var a := TAU * i / 6.0
+				var off := Vector3(cos(a), sin(a), 0) * rad * 2.05
+				_turn(r.root, [Vector2(-len * (0.85 + 0.15 * float(i % 2)), rad * 0.95), Vector2(0.0, rad * 0.95)], start + off, fin("steel"), 12)
+				_cyl(r.root, rad * 0.55, 0.0016, start + off + Vector3(0, 0, -len * (0.85 + 0.15 * float(i % 2)) - 0.0002), fin("bore"), 10)
+			for z: float in [0.015, len * 0.6]:
+				_turn(r.root, [Vector2(-0.006, rad * 3.1), Vector2(0.006, rad * 3.1)], start + Vector3(0, 0, -z), fin("brass"), 20)
+			sight = false
 	if sight:
 		_box(r.root, Vector3(0.004, 0.014, 0.008), start + Vector3(0, rad + 0.006, -len + 0.012), mat("panel", DARK))
 	if id != "" and not Arsenal.is_organ(id):
 		r.done["barrel"] = true
 		if not id in ["long_barrel", "short_barrel", "heavy_barrel", "fluted_barrel", "match_barrel", "polygonal_barrel",
-				"threaded_barrel", "integral_suppressor", "bbl_338", "rifled_slug_barrel", "nail_guide"]:
+				"threaded_barrel", "integral_suppressor", "bbl_338", "rifled_slug_barrel", "nail_guide", "corkscrew_barrel",
+				"glass_barrel", "telescoping_barrel", "twin_linked", "organ_pipes"]:
 			_generic(r, start + Vector3(0, rad + 0.006, -len * 0.5), id)
 	r.barrel_start = start
 	r.barrel_r = rad
@@ -467,344 +717,6 @@ static func _box_mag(r: Rig, top: Vector3, length: float, m: Material, width := 
 
 # --- Frames ---------------------------------------------------------------------------
 
-static func _revolver(r: Rig) -> void:
-	var steel := mat("panel", DARK)
-	var y := 0.07
-	_grip(r, Vector3(0, 0.035, 0.012), mat("wood", WOOD), Vector3(0.03, 0.1, 0.044), -20.0)
-	_box(r.root, Vector3(0.028, 0.055, 0.1), Vector3(0, 0.055, -0.02), steel)
-	_box(r.root, Vector3(0.02, 0.012, 0.11), Vector3(0, y + 0.02, -0.035), steel)
-	# Cylinder with six chamber mouths showing the rounds (eight in the big one; the .45
-	# conversion holds them in black moon clips).
-	var recv: String = r.parts.get("receiver", "")
-	var chambers := 8 if recv == "cylinder_8" else 6
-	var cyl_r := 0.029 if recv == "cylinder_8" else 0.025
-	if recv in ["cylinder_8", "cylinder_45"]:
-		r.done["receiver"] = true
-	_rod(r.root, cyl_r, cyl_r, 0.05, Vector3(0, y - 0.006, -0.04), mat("panel", NICKEL if recv == "cylinder_8" else STEEL), chambers + 2)
-	if recv == "cylinder_45":
-		_rod(r.root, cyl_r * 0.95, cyl_r * 0.95, 0.004, Vector3(0, y - 0.006, -0.013), mat("panel", BLACK), 8)
-	for i in chambers:
-		var a := TAU * i / chambers + PI / chambers
-		var pos := Vector3(cos(a) * (cyl_r - 0.01), y - 0.006 + sin(a) * (cyl_r - 0.01), -0.04)
-		_round(r, _rod(r.root, 0.0055 if recv != "cylinder_45" else 0.0065, 0.0055, 0.052, pos, mat("brass"), 5))
-	_barrel(r, Vector3(0, y, -0.066), 0.15, 0.011, mat("panel", STEEL))
-	_rod(r.root, 0.006, 0.006, 0.1 * _barrel_scale(r), Vector3(0, y - 0.017, -0.066 - 0.05 * _barrel_scale(r)), steel, 5)
-	_box(r.root, Vector3(0.012, 0.022, 0.016), Vector3(0, y + 0.024, 0.03), steel, Vector3(35, 0, 0))
-	_trigger(r, 0.03, -0.0)
-	# A lanyard ring at the butt.
-	_tube(r.root, [Vector3(0, -0.085, 0.045), Vector3(0, -0.1, 0.05), Vector3(0, -0.095, 0.065), Vector3(0, -0.082, 0.058)],
-			0.003, mat("brass"), 4)
-	r.top = Vector3(0, y + 0.026, -0.03)
-	r.under = Vector3(0, y - 0.03, r.muzzle.z + 0.06)
-	r.gadget = Vector3(0, -0.098, 0.055)
-	r.side = Vector3(0.018, 0.0, 0.025)
-	r.stock = Vector3(0, 0.04, 0.06)
-	r.rail_l = Vector3(-0.009, y - 0.017, -0.13)
-	r.recv = Vector3(0, y - 0.006, -0.04)
-	r.body_w = 0.014
-	r.mount = r.top + Vector3(0, 0, -0.05)
-	r.bolt = Vector3(0, y + 0.024, 0.03)
-	r.mag = Vector3(0, 0.03, -0.05)
-
-
-static func _smg(r: Rig) -> void:
-	var y := 0.075
-	var pipe := mat("pipe", Color(1.1, 1.0, 0.95))
-	_grip(r, Vector3(0, 0.05, 0.02), mat("panel", BLACK), Vector3(0.03, 0.1, 0.04), -14.0)
-	# Receiver: a length of water pipe with end caps.
-	_rod(r.root, 0.028, 0.028, 0.27, Vector3(0, y, -0.04), pipe, 8)
-	_rod(r.root, 0.033, 0.033, 0.024, Vector3(0, y, 0.095), mat("panel", DARK), 8)
-	_rod(r.root, 0.032, 0.032, 0.018, Vector3(0, y, -0.172), mat("panel", DARK), 8)
-	# Sewing-machine hand wheel bolted on the side (it cocks the thing).
-	_disc_x(r.root, 0.036, 0.008, Vector3(0.034, y, 0.03), mat("brass", COPPER), 12)
-	_disc_x(r.root, 0.012, 0.016, Vector3(0.038, y, 0.03), mat("panel", DARK), 6)
-	for i in 4:
-		var a := TAU * i / 4.0
-		_box(r.root, Vector3(0.004, 0.05, 0.006), Vector3(0.039, y, 0.03), mat("panel", DARK), Vector3(rad_to_deg(a), 0, 0), 0.001)
-	# Welded plate and charging knob.
-	_box(r.root, Vector3(0.006, 0.04, 0.1), Vector3(-0.03, y - 0.008, -0.06), mat("rust_metal", RUST))
-	_rod_between(r.root, Vector3(0.026, y + 0.01, -0.1), Vector3(0.05, y + 0.012, -0.1), 0.004, mat("panel", DARK))
-	_ball(r.root, 0.009, Vector3(0.052, y + 0.012, -0.1), mat("panel", RED))
-	# Barrel inside a perforated shroud.
-	var start := Vector3(0, y, -0.18)
-	_barrel(r, start, 0.13, 0.009, mat("panel", STEEL))
-	var shroud := minf(0.1, 0.13 * _barrel_scale(r) - 0.01)
-	_rod(r.root, 0.02, 0.02, shroud, start + Vector3(0, 0, -shroud / 2.0), mat("grate", Color(1.6, 1.6, 1.6)), 8)
-	_trigger(r, 0.045, 0.0)
-	if not r.parts.has("magazine"):
-		_box_mag(r, Vector3(0, 0.048, -0.075), 0.12, mat("panel", DARK))
-	r.mag = Vector3(0, 0.048, -0.075)
-	r.top = Vector3(0, y + 0.028, -0.04)
-	r.stock = Vector3(0, y - 0.005, 0.105)
-	r.under = Vector3(0, y - 0.025, start.z - 0.08)
-	r.gadget = Vector3(0, y - 0.03, 0.07)
-	r.side = Vector3(0.028, y, -0.13)
-	r.rail_l = Vector3(-0.021, y, -0.23)
-	r.rail_r = Vector3(0.021, y, -0.23)
-	r.foregrip = Vector3(0, y - 0.02, -0.21)
-	r.hg_start = -0.18
-	r.hg_end = -0.28
-	r.hg_y = y
-	r.hg_r = 0.02
-	r.charging = Vector3(0.052, y + 0.012, -0.1)
-	r.bolt = Vector3(0.028, y + 0.01, -0.03)
-	r.recv = Vector3(0, y, -0.04)
-	r.body_w = 0.028
-	r.mount = Vector3(0, y + 0.028, -0.12)
-
-
-static func _shotgun(r: Rig) -> void:
-	var y := 0.08
-	var wood := mat("wood", WOOD)
-	_grip(r, Vector3(0, 0.05, 0.02), wood, Vector3(0.034, 0.1, 0.045), -20.0)
-	_box(r.root, Vector3(0.042, 0.066, 0.17), Vector3(0, y - 0.004, -0.04), mat("panel", DARK), Vector3.ZERO, 0.008)
-	_box(r.root, Vector3(0.044, 0.02, 0.06), Vector3(0, y - 0.0, -0.03), mat("grate", Color(1.5, 1.5, 1.5)))
-	var len := _barrel(r, Vector3(0, y + 0.012, -0.125), 0.34, 0.013, mat("panel", STEEL))
-	# Tube magazine under the barrel, and the pump on it (a handguard part replaces the pump).
-	var tube := minf(len - 0.03, 0.27)
-	_rod(r.root, 0.011, 0.011, tube, Vector3(0, y - 0.016, -0.125 - tube / 2.0), mat("panel", DARK), 6)
-	r.tube_end = Vector3(0, y - 0.016, -0.125 - tube)
-	r.tube_r = 0.011
-	_rod(r.root, 0.0125, 0.0125, 0.01, r.tube_end, mat("panel", BLACK), 6)
-	if not r.parts.has("handguard"):
-		_box(r.root, Vector3(0.042, 0.036, 0.12), Vector3(0, y - 0.016, -0.22), wood, Vector3.ZERO, 0.01)
-		for i in 4:
-			_box(r.root, Vector3(0.044, 0.004, 0.006), Vector3(0, y - 0.006, -0.18 - i * 0.025), mat("panel", BLACK), Vector3.ZERO, 0.001)
-	# Duct tape holding barrel and tube together.
-	_box(r.root, Vector3(0.032, 0.05, 0.022), Vector3(0, y - 0.002, -0.125 - tube + 0.02), mat("panel", TAPE), Vector3.ZERO, 0.006)
-	# A red shell sitting in the ejection port.
-	_box(r.root, Vector3(0.003, 0.022, 0.05), Vector3(0.021, y + 0.004, -0.05), mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.009, 0.009, 0.034, Vector3(0.018, y + 0.004, -0.05), mat("panel", RED), 6))
-	_trigger(r, 0.045, 0.0)
-	r.stock = Vector3(0, y - 0.01, 0.045)
-	if not r.parts.has("stock"):
-		# A plain wooden butt, split and wired back together.
-		_profile(r.root, [Vector2(-0.04, 0.02), Vector2(-0.35, 0.008), Vector2(-0.36, -0.1), Vector2(-0.33, -0.105),
-				Vector2(-0.09, -0.04), Vector2(-0.04, -0.035)], 0.036, Vector3(0, y - 0.01, 0), wood)
-		_box(r.root, Vector3(0.038, 0.112, 0.012), Vector3(0, y - 0.056, 0.362), mat("panel", BLACK), Vector3.ZERO, 0.003)
-		_rod(r.root, 0.0215, 0.0215, 0.006, Vector3(0, y - 0.03, 0.2), mat("panel", STEEL), 6, Vector3(90, 0, 0))
-		r.butt = Vector3(0, y - 0.056, 0.368)
-		r.butt_h = 0.112
-		r.comb = Vector3(0, y + 0.004, 0.25)
-	r.mag = Vector3(0, y - 0.036, -0.07)
-	r.mag_style = "tube"
-	r.mag_w = 0.03
-	r.mag_d = 0.06
-	r.mag_len = 0.1
-	r.mag_tilt = 4.0
-	r.hg_start = -0.16
-	r.hg_end = -0.28
-	r.hg_y = y - 0.012
-	r.hg_r = 0.021
-	r.recv = Vector3(0, y - 0.004, -0.04)
-	r.body_w = 0.021
-	r.mount = Vector3(0, y + 0.03, -0.1)
-	r.bolt = Vector3(0.021, y + 0.004, -0.05)
-	r.top = Vector3(0, y + 0.03, -0.05)
-	r.stock = Vector3(0, y - 0.01, 0.045)
-	r.under = Vector3(0, y - 0.04, -0.33 if tube > 0.2 else r.muzzle.z + 0.05)
-	r.gadget = Vector3(0, y - 0.035, 0.04)
-	r.side = Vector3(0.022, y, -0.06)
-
-
-static func _rifle(r: Rig) -> void:
-	var y := 0.08
-	var wood := mat("wood", WOOD)
-	var chassis: bool = r.parts.get("receiver", "") == "precision_chassis"
-	if chassis:
-		# An aluminium chassis instead of the plank: a slab fore-end with rails, a skeleton
-		# grip and (with no stock part) a folding skeleton butt.
-		r.done["receiver"] = true
-		var alu := mat("panel", Color(0.34, 0.36, 0.4))
-		_box(r.root, Vector3(0.036, 0.04, 0.4), Vector3(0, 0.05, -0.16), alu, Vector3.ZERO, 0.004)
-		_pic(r, Vector3(0, 0.03, -0.24), 0.22, 180.0)
-		for sx: float in [-1.0, 1.0]:
-			_pic(r, Vector3(sx * 0.018, 0.05, -0.26), 0.1, -sx * 90.0, 0.016)
-			for i in 4:
-				_box(r.root, Vector3(0.003, 0.012, 0.03), Vector3(sx * 0.018, 0.05, -0.08 - i * 0.07), mat("panel", BLACK), Vector3.ZERO, 0.0)
-		_grip(r, Vector3(0, 0.04, 0.03), mat("panel", BLACK), Vector3(0.03, 0.095, 0.045), -18.0)
-		_box(r.root, Vector3(0.03, 0.03, 0.06), Vector3(0, 0.05, 0.05), alu, Vector3.ZERO, 0.004)
-		r.stock = Vector3(0, y - 0.012, 0.075)
-		if not r.parts.has("stock"):
-			_tube(r.root, [Vector3(0, 0.07, 0.08), Vector3(0, 0.07, 0.33), Vector3(0, -0.02, 0.33), Vector3(0, 0.03, 0.09)], 0.007, alu, 5)
-			_box(r.root, Vector3(0.036, 0.1, 0.014), Vector3(0, 0.025, 0.335), mat("panel", BLACK), Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.028, 0.016, 0.1), Vector3(0, 0.08, 0.24), mat("panel", BLACK), Vector3.ZERO, 0.004)
-			r.butt = Vector3(0, 0.025, 0.342)
-			r.butt_h = 0.1
-			r.comb = Vector3(0, 0.088, 0.24)
-		r.rail_r = Vector3(0.026, 0.05, -0.26)
-		r.rail_l = Vector3(-0.026, 0.05, -0.26)
-		r.foregrip = Vector3(0, 0.023, -0.2)
-	else:
-		# Fore-end and wrist carved from one plank.
-		_profile(r.root, [Vector2(-0.06, 0.03), Vector2(0.06, 0.0), Vector2(0.36, 0.0), Vector2(0.37, 0.03),
-				Vector2(0.36, 0.055), Vector2(-0.06, 0.06), Vector2(-0.08, 0.04)], 0.036, Vector3(0, 0.02, 0), wood)
-		_grip(r, Vector3(0, 0.04, 0.03), wood, Vector3(0.034, 0.09, 0.05), -28.0)
-		r.stock = Vector3(0, y - 0.012, 0.075)
-		if not r.parts.has("stock"):
-			# The rest of the plank: a long butt, cracked and taped.
-			_profile(r.root, [Vector2(-0.07, 0.06), Vector2(-0.35, 0.05), Vector2(-0.36, -0.04), Vector2(-0.33, -0.045),
-					Vector2(-0.07, 0.02)], 0.034, Vector3(0, 0.02, 0), wood)
-			_box(r.root, Vector3(0.036, 0.1, 0.012), Vector3(0, 0.025, 0.362), mat("panel", DARK), Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.036, 0.024, 0.03), Vector3(0, 0.06, 0.16), mat("panel", TAPE), Vector3(-4, 0, 0), 0.003)
-			r.butt = Vector3(0, 0.025, 0.368)
-			r.butt_h = 0.1
-			r.comb = Vector3(0, 0.07, 0.25)
-		r.rail_l = Vector3(-0.0185, 0.05, -0.24)
-		r.rail_r = Vector3(0.0185, 0.05, -0.24)
-		r.foregrip = Vector3(0, 0.02, -0.22)
-	_rod(r.root, 0.016, 0.016, 0.16, Vector3(0, y + 0.002, -0.02), mat("panel", DARK), 8)
-	# Bolt handle with a knob, sticking out to the right.
-	r.bolt = Vector3(0.052, y - 0.014, 0.042)
-	_rod_between(r.root, Vector3(0.012, y + 0.004, 0.03), Vector3(0.05, y - 0.012, 0.04), 0.004, mat("panel", STEEL))
-	if r.parts.get("bolt", "") != "bolt_knob":
-		_ball(r.root, 0.01, r.bolt, mat("panel", STEEL))
-	_barrel(r, Vector3(0, y + 0.002, -0.1), 0.42, 0.009, mat("panel", STEEL))
-	if not chassis:
-		for z: float in [-0.2, -0.34]:
-			_rod(r.root, 0.022, 0.022, 0.012, Vector3(0, y - 0.01, z), mat("brass"), 6)
-	_trigger(r, 0.04, 0.0)
-	r.mag = Vector3(0, 0.025 if not chassis else 0.03, -0.05)
-	r.mag_len = 0.035
-	r.mag_w = 0.02
-	r.mag_d = 0.05
-	r.mag_tilt = 0.0
-	if not r.parts.has("magazine"):
-		_box_mag(r, r.mag, 0.035, mat("panel", DARK), 0.02, 0.05, 0.0)
-	r.top = Vector3(0, y + 0.018, -0.02)
-	r.mount = Vector3(0, y + 0.018, -0.075)
-	r.under = Vector3(0, 0.035, -0.4)
-	r.gadget = Vector3(0, 0.022, 0.06)
-	r.side = Vector3(0.019, 0.05, -0.18) if not chassis else Vector3(0.019, 0.06, 0.05)
-	r.hg_start = -0.1
-	r.hg_end = -0.37
-	r.hg_y = 0.05
-	r.hg_r = 0.02
-	r.recv = Vector3(0, y + 0.002, -0.02)
-	r.body_w = 0.016
-
-
-static func _nail_gun(r: Rig) -> void:
-	var y := 0.075
-	var body := mat("panel", ORANGE)
-	_grip(r, Vector3(0, 0.035, 0.022), body, Vector3(0.036, 0.11, 0.046), -10.0)
-	_box(r.root, Vector3(0.04, 0.03, 0.05), Vector3(0, -0.012, 0.03), mat("panel", BLACK))
-	_box(r.root, Vector3(0.054, 0.085, 0.17), Vector3(0, y, -0.03), body, Vector3.ZERO, 0.014)
-	_box(r.root, Vector3(0.058, 0.02, 0.12), Vector3(0, y + 0.03, -0.03), mat("panel", BLACK), Vector3.ZERO, 0.006)
-	# Motor housing at the back with vents.
-	_rod(r.root, 0.038, 0.038, 0.05, Vector3(0, y + 0.005, 0.07), mat("panel", BLACK), 10)
-	_disc_x(r.root, 0.026, 0.062, Vector3(0, y + 0.005, 0.07), mat("grate", Color(1.4, 1.4, 1.4)), 8)
-	# Battery pack under the grip, green charge light.
-	_box(r.root, Vector3(0.05, 0.032, 0.075), Vector3(0, -0.1, 0.035), mat("panel", BLACK), Vector3.ZERO, 0.006)
-	_box(r.root, Vector3(0.052, 0.008, 0.012), Vector3(0, -0.09, 0.0), mat("panel", BLACK, Color(0.2, 1.0, 0.3)))
-	# Nose and safety tip.
-	var start := Vector3(0, y - 0.01, -0.115)
-	var len := _barrel(r, start, 0.08, 0.012, mat("panel", STEEL), false)
-	_rod(r.root, 0.012, 0.024, 0.04, start + Vector3(0, 0, -0.02), mat("panel", DARK), 6)
-	_box(r.root, Vector3(0.03, 0.01, 0.016), r.muzzle + Vector3(0, -0.012, 0.008), mat("panel", YELLOW))
-	_trigger(r, 0.035, -0.01)
-	if not r.parts.has("magazine"):
-		# Coil canister of nails under the nose.
-		_disc_x(r.root, 0.04, 0.034, Vector3(0, 0.0, -0.09), mat("panel", DARK), 10)
-		_round(r, _disc_x(r.root, 0.03, 0.036, Vector3(0, 0.0, -0.09), mat("panel", STEEL), 10))
-		_box(r.root, Vector3(0.02, 0.035, 0.02), Vector3(0, 0.04, -0.1), mat("panel", DARK))
-	r.mag = Vector3(0, 0.032, -0.09)
-	r.top = Vector3(0, y + 0.04, -0.03)
-	r.under = Vector3(0, y - 0.04, r.muzzle.z + 0.04 + len * 0.3)
-	r.gadget = Vector3(0, -0.116, 0.06)
-	r.side = Vector3(0.027, y - 0.005, -0.05)
-	r.stock = Vector3(0, y, 0.095)
-	r.rail_l = Vector3(-0.028, 0.07, -0.06)
-	r.rail_r = Vector3(0.028, 0.07, -0.06)
-	r.recv = Vector3(0, 0.075, -0.03)
-	r.body_w = 0.027
-	r.mount = Vector3(0, 0.115, -0.08)
-	r.bolt = Vector3(0.028, 0.08, 0.0)
-	r.mag_style = "coil"
-
-
-static func _crossbow(r: Rig) -> void:
-	var y := 0.085
-	var wood := mat("wood", WOOD)
-	_box(r.root, Vector3(0.034, 0.038, 0.42), Vector3(0, y - 0.025, -0.1), wood, Vector3.ZERO, 0.008)
-	_grip(r, Vector3(0, 0.05, 0.03), wood, Vector3(0.032, 0.09, 0.045), -22.0)
-	_box(r.root, Vector3(0.012, 0.008, 0.36), Vector3(0, y - 0.004, -0.12), mat("panel", STEEL))
-	# The prod: two car leaf springs bolted to the front, bent back.
-	var front := -0.28
-	for sx: float in [-1.0, 1.0]:
-		var path := [Vector3(0, y - 0.01, front), Vector3(sx * 0.08, y - 0.01, front + 0.004),
-				Vector3(sx * 0.16, y - 0.01, front + 0.03), Vector3(sx * 0.21, y - 0.01, front + 0.075)]
-		var radii := PackedFloat32Array([0.012, 0.011, 0.009, 0.006])
-		var packed := PackedVector3Array()
-		for v: Vector3 in path:
-			packed.append(v)
-		_put(r.root, LowPoly.tube(packed, radii, 4), Vector3.ZERO, mat("rust_metal", RUST))
-		# String from the limb tip to the latch.
-		_rod_between(r.root, Vector3(sx * 0.21, y - 0.006, front + 0.075), Vector3(0, y + 0.002, -0.02), 0.0018, mat("panel", BONE), 3)
-	_box(r.root, Vector3(0.05, 0.03, 0.03), Vector3(0, y - 0.015, front), mat("panel", DARK))
-	# Stirrup loop at the front.
-	_tube(r.root, [Vector3(-0.02, y - 0.02, front - 0.012), Vector3(-0.025, y - 0.04, front - 0.06),
-			Vector3(0.025, y - 0.04, front - 0.06), Vector3(0.02, y - 0.02, front - 0.012)], 0.004, mat("panel", DARK), 4)
-	# The loaded bolt with its head showing the ammo.
-	_rod(r.root, 0.004, 0.004, 0.27, Vector3(0, y + 0.004, -0.15), mat("wood", BONE), 4)
-	_round(r, _rod(r.root, 0.0, 0.009, 0.03, Vector3(0, y + 0.004, -0.3), mat("panel", STEEL), 5))
-	for sx: float in [-1.0, 1.0]:
-		_box(r.root, Vector3(0.002, 0.012, 0.03), Vector3(sx * 0.005, y + 0.01, -0.03), mat("panel", RED), Vector3(0, 0, sx * 30.0), 0.0)
-	_trigger(r, 0.05, 0.0)
-	r.muzzle = Vector3(0, y + 0.004, -0.315)
-	r.top = Vector3(0, y + 0.004, 0.05)
-	r.stock = Vector3(0, y - 0.025, 0.11)
-	r.under = Vector3(0, y - 0.05, -0.22)
-	r.gadget = Vector3(0, y - 0.046, 0.06)
-	r.side = Vector3(0.018, y - 0.025, -0.13)
-	r.mag_style = "none"
-	r.rail_l = Vector3(-0.018, 0.06, -0.15)
-	r.rail_r = Vector3(0.018, 0.06, -0.15)
-	r.foregrip = Vector3(0, 0.041, -0.17)
-	r.mount = Vector3(0, 0.089, 0.0)
-	r.recv = Vector3(0, 0.06, -0.05)
-	r.body_w = 0.017
-	r.hg_start = -0.05
-	r.hg_end = -0.25
-	r.hg_y = 0.06
-	r.hg_r = 0.019
-
-
-static func _flamethrower(r: Rig) -> void:
-	var y := 0.06
-	var pipe := mat("pipe", Color(1.1, 1.0, 0.95))
-	_grip(r, Vector3(0, 0.045, 0.02), mat("panel", BLACK), Vector3(0.03, 0.095, 0.04), -12.0)
-	_rod(r.root, 0.014, 0.014, 0.4, Vector3(0, y, -0.12), pipe, 6)
-	_rod(r.root, 0.02, 0.02, 0.03, Vector3(0, y, 0.08), mat("panel", DARK), 6)
-	# Nozzle with a pilot flame under it.
-	_rod(r.root, 0.022, 0.016, 0.04, Vector3(0, y, -0.335), mat("panel", DARK), 6)
-	_ball(r.root, 0.006, Vector3(0, y - 0.03, -0.34), mat("panel", BLACK, FIRE * 1.4), Vector3(1, 1.6, 1))
-	_rod_between(r.root, Vector3(0, y - 0.016, -0.32), Vector3(0, y - 0.028, -0.34), 0.003, mat("brass"))
-	r.muzzle = Vector3(0, y, -0.355)
-	# Carry handle over the wand (the second hand goes here).
-	_tube(r.root, [Vector3(0, y + 0.012, -0.08), Vector3(0, y + 0.05, -0.1), Vector3(0, y + 0.05, -0.17), Vector3(0, y + 0.012, -0.19)],
-			0.006, mat("panel", BLACK), 5)
-	if not r.parts.has("magazine"):
-		_tank(r, Vector3(0, -0.005, -0.17), 0.045, 0.2, mat("panel", OLIVE))
-	_trigger(r, 0.04, 0.0)
-	r.mag = Vector3(0, -0.005, -0.17)
-	r.gadget = Vector3(0, y - 0.02, 0.09)
-	r.side = Vector3(0.016, y, -0.03)
-	r.under = Vector3(0, y - 0.03, -0.25)
-	r.top = Vector3(0, y + 0.02, -0.02)
-	r.stock = Vector3(0, y, 0.095)
-	r.mag_style = "tank"
-	r.rail_l = Vector3(-0.015, 0.06, -0.24)
-	r.rail_r = Vector3(0.015, 0.06, -0.24)
-	r.recv = Vector3(0, 0.06, -0.02)
-	r.body_w = 0.014
-	r.hg_start = -0.1
-	r.hg_end = -0.3
-	r.hg_y = 0.06
-	r.hg_r = 0.014
-
-
-## A capsule fuel tank lying along Z with a valve wheel, a hazard band and a hose.
 static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Material) -> void:
 	var h := length / 2.0
 	_lathe_z(r.root, [Vector2(0, -h), Vector2(radius * 0.7, -h + 0.008), Vector2(radius, -h + 0.03),
@@ -817,124 +729,6 @@ static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Materia
 			0.007, mat("panel", BLACK), 5)
 
 
-static func _tesla(r: Rig) -> void:
-	var y := 0.075
-	var copper := mat("brass", COPPER)
-	_grip(r, Vector3(0, 0.045, 0.02), mat("wood", WOOD), Vector3(0.032, 0.1, 0.044), -16.0)
-	_box(r.root, Vector3(0.05, 0.06, 0.16), Vector3(0, y, -0.02), mat("brass", Color(0.9, 0.8, 0.7)), Vector3.ZERO, 0.01)
-	for z: float in [-0.08, 0.0, 0.05]:
-		for sx: float in [-1.0, 1.0]:
-			_ball(r.root, 0.004, Vector3(sx * 0.026, y + 0.02, z), mat("panel", DARK))
-	# Coil stack around a glowing core.
-	_rod(r.root, 0.01, 0.01, 0.12, Vector3(0, y, -0.15), mat("panel", BLACK, ZAP * 0.9), 6)
-	for i in 4:
-		_rod(r.root, 0.036 - i * 0.004, 0.036 - i * 0.004, 0.012, Vector3(0, y, -0.11 - i * 0.026), copper, 10)
-	# Prongs converging on a spark ball.
-	for a: float in [0.0, TAU / 3.0, TAU * 2.0 / 3.0]:
-		var off := Vector3(cos(a), sin(a), 0) * 0.026
-		_rod_between(r.root, Vector3(0, y, -0.2) + off, Vector3(0, y, -0.25) + off * 0.25, 0.003, mat("panel", STEEL))
-	_ball(r.root, 0.012, Vector3(0, y, -0.255), mat("panel", BLACK, ZAP * 1.3))
-	# Glass bulb on top.
-	_rod(r.root, 0.014, 0.016, 0.012, Vector3(0, y + 0.036, 0.0), copper, 8, Vector3.ZERO)
-	_ball(r.root, 0.018, Vector3(0, y + 0.058, 0.0), mat("panel", Color(0.2, 0.3, 0.35), ZAP * 0.6), Vector3(1, 1.25, 1))
-	if not r.parts.has("magazine"):
-		# A car battery strapped under the front, with the wires to the coil.
-		_box(r.root, Vector3(0.05, 0.045, 0.065), Vector3(0, y - 0.055, -0.065), mat("panel", BLACK), Vector3.ZERO, 0.004)
-		_box(r.root, Vector3(0.012, 0.01, 0.012), Vector3(0.014, y - 0.028, -0.085), mat("panel", RED))
-		_box(r.root, Vector3(0.012, 0.01, 0.012), Vector3(-0.014, y - 0.028, -0.085), mat("panel", DARK))
-	_tube(r.root, [Vector3(0.014, y - 0.025, -0.09), Vector3(0.03, y - 0.02, -0.12), Vector3(0.03, y - 0.01, -0.15)],
-			0.003, mat("panel", RED), 4)
-	_trigger(r, 0.045, 0.0)
-	r.barrel_start = Vector3(0, y, -0.1)
-	r.barrel_r = 0.036
-	r.muzzle = Vector3(0, y, -0.265)
-	r.mag = Vector3(0, y - 0.03, -0.065)
-	r.stock = Vector3(0, y - 0.005, 0.06)
-	r.gadget = Vector3(0, y - 0.03, 0.05)
-	r.side = Vector3(0.025, y, -0.03)
-	r.top = Vector3(0, y + 0.03, -0.05)
-	r.under = Vector3(0, y - 0.04, -0.2)
-	r.mag_style = "cell"
-	r.rail_l = Vector3(-0.026, 0.075, -0.03)
-	r.recv = Vector3(0, 0.075, -0.02)
-	r.body_w = 0.025
-
-
-static func _harpoon(r: Rig) -> void:
-	var y := 0.07
-	var hull := mat("panel", Color(0.45, 0.6, 0.5))
-	_grip(r, Vector3(0, 0.045, 0.02), mat("wood", WOOD), Vector3(0.032, 0.1, 0.045), -16.0)
-	_rod(r.root, 0.021, 0.021, 0.46, Vector3(0, y, -0.15), hull, 8)
-	_rod(r.root, 0.025, 0.025, 0.02, Vector3(0, y, 0.08), mat("panel", DARK), 8)
-	_rod(r.root, 0.025, 0.025, 0.02, Vector3(0, y, -0.375), mat("panel", DARK), 8)
-	# Compressed-air bottle under the tube.
-	_lathe_z(r.root, [Vector2(0, -0.07), Vector2(0.014, -0.065), Vector2(0.018, -0.05), Vector2(0.018, 0.06),
-			Vector2(0.01, 0.07), Vector2(0, 0.075)], Vector3(0, y - 0.04, -0.16), mat("panel", YELLOW), 8)
-	_box(r.root, Vector3(0.012, 0.02, 0.012), Vector3(0, y - 0.022, -0.1), mat("panel", DARK))
-	# The loaded harpoon with its barbed head (the round).
-	_rod(r.root, 0.005, 0.005, 0.14, Vector3(0, y, -0.43), mat("panel", STEEL), 5)
-	_round(r, _rod(r.root, 0.0, 0.014, 0.05, Vector3(0, y, -0.52), mat("panel", STEEL), 4))
-	for sx: float in [-1.0, 1.0]:
-		_box(r.root, Vector3(0.003, 0.004, 0.03), Vector3(sx * 0.012, y, -0.495), mat("panel", STEEL), Vector3(0, -sx * 30.0, 0), 0.0)
-	# Rope spool on the side, the line running to the harpoon.
-	_disc_x(r.root, 0.03, 0.03, Vector3(0.036, y - 0.01, -0.03), mat("panel", DARK), 10)
-	_disc_x(r.root, 0.024, 0.032, Vector3(0.036, y - 0.01, -0.03), mat("wood", Color(1.3, 1.2, 0.9)), 10)
-	_tube(r.root, [Vector3(0.036, y + 0.01, -0.05), Vector3(0.03, y + 0.016, -0.2), Vector3(0.02, y + 0.01, -0.38),
-			Vector3(0.006, y + 0.004, -0.44)], 0.0022, mat("wood", Color(1.3, 1.2, 0.9)), 3)
-	_trigger(r, 0.045, 0.0)
-	r.muzzle = Vector3(0, y, -0.385)
-	r.top = Vector3(0, y + 0.022, -0.05)
-	r.stock = Vector3(0, y - 0.005, 0.09)
-	r.gadget = Vector3(0, y - 0.022, 0.06)
-	r.side = Vector3(-0.02, y, -0.2)
-	r.under = Vector3(0, y - 0.03, -0.3)
-	r.mag_style = "none"
-	r.rail_l = Vector3(-0.022, 0.07, -0.25)
-	r.mount = Vector3(0, 0.092, -0.12)
-	r.recv = Vector3(0, 0.07, -0.05)
-	r.body_w = 0.021
-
-
-static func _railgun(r: Rig) -> void:
-	var y := 0.08
-	var housing := mat("panel", Color(0.4, 0.42, 0.46))
-	_grip(r, Vector3(0, 0.045, 0.02), mat("panel", BLACK), Vector3(0.034, 0.1, 0.045), -14.0)
-	_box(r.root, Vector3(0.07, 0.09, 0.27), Vector3(0, y, 0.0), housing, Vector3.ZERO, 0.012)
-	_box(r.root, Vector3(0.074, 0.02, 0.04), Vector3(0, y + 0.02, -0.08), mat("panel", YELLOW), Vector3.ZERO, 0.004)
-	_box(r.root, Vector3(0.05, 0.012, 0.09), Vector3(0, y + 0.046, 0.06), mat("grate", Color(1.5, 1.5, 1.5)))
-	# The rails, with the charge glowing between them, clamped every so often.
-	var front := -0.6
-	var len := absf(front + 0.13)
-	for sy: float in [-1.0, 1.0]:
-		_box(r.root, Vector3(0.016, 0.018, len), Vector3(0, y + sy * 0.022, -0.13 - len / 2.0), mat("panel", STEEL), Vector3.ZERO, 0.003)
-	_box(r.root, Vector3(0.006, 0.02, len - 0.02), Vector3(0, y, -0.13 - len / 2.0), mat("panel", BLACK, ZAP), Vector3.ZERO, 0.0)
-	for i in 4:
-		_box(r.root, Vector3(0.03, 0.07, 0.014), Vector3(0, y, -0.17 - i * 0.12), mat("rust_metal", RUST), Vector3.ZERO, 0.003)
-	# Front grip and the fat orange cables.
-	_box(r.root, Vector3(0.026, 0.07, 0.03), Vector3(0, y - 0.07, -0.18), mat("panel", BLACK), Vector3(-10, 0, 0), 0.006)
-	for sx: float in [-1.0, 1.0]:
-		_tube(r.root, [Vector3(sx * 0.035, y + 0.01, -0.1), Vector3(sx * 0.05, y + 0.0, -0.22),
-				Vector3(sx * 0.03, y + 0.0, -0.36), Vector3(sx * 0.016, y, -0.42)], 0.006, mat("panel", ORANGE), 5)
-	if not r.parts.has("magazine"):
-		_cells(r, Vector3(0, y - 0.045, -0.03), 2, 0.018, 0.1, mat("panel", Color(0.3, 0.5, 0.8)))
-	_trigger(r, 0.045, 0.0)
-	r.barrel_start = Vector3(0, y, -0.13)
-	r.barrel_r = 0.034
-	r.muzzle = Vector3(0, y, front)
-	r.top = Vector3(0, y + 0.045, -0.02)
-	r.mag = Vector3(0, y - 0.045, -0.03)
-	r.stock = Vector3(0, y, 0.135)
-	r.gadget = Vector3(0, y - 0.045, 0.1)
-	r.side = Vector3(0.035, y, -0.05)
-	r.under = Vector3(0, y - 0.05, -0.4)
-	r.mag_style = "cell"
-	r.foregrip = Vector3(0, 0.049, -0.36)
-	r.mount = Vector3(0, 0.125, -0.08)
-	r.recv = Vector3(0, 0.08, 0.0)
-	r.body_w = 0.035
-
-
-## Capacitor cans lying along Z under a mount point, with glowing charge bands.
 static func _cells(r: Rig, top: Vector3, count: int, radius: float, length: float, m: Material) -> void:
 	for i in count:
 		var x := (i - (count - 1) / 2.0) * radius * 2.1
@@ -945,39 +739,6 @@ static func _cells(r: Rig, top: Vector3, count: int, radius: float, length: floa
 	_box(r.root, Vector3(radius * 2.2 * count, 0.008, 0.02), top + Vector3(0, -0.002, 0), mat("panel", DARK))
 
 
-static func _duck_launcher(r: Rig) -> void:
-	var y := 0.08
-	var pvc := mat("panel", Color(0.8, 0.85, 0.9))
-	_grip(r, Vector3(0, 0.04, 0.02), mat("panel", BLACK), Vector3(0.032, 0.1, 0.042), -14.0)
-	# Drainpipe with a flared mouth.
-	_lathe_z(r.root, [Vector2(0.06, -0.34), Vector2(0.06, -0.31), Vector2(0.046, -0.3), Vector2(0.046, 0.12),
-			Vector2(0.03, 0.125), Vector2(0.0, 0.126)], Vector3(0, y, 0), pvc, 10)
-	_lathe_z(r.root, [Vector2(0.0, -0.315), Vector2(0.044, -0.314), Vector2(0.044, -0.2)], Vector3(0, y, 0), mat("panel", BLACK), 10)
-	for z: float in [-0.22, 0.0]:
-		_rod(r.root, 0.049, 0.049, 0.03, Vector3(0, y, z), mat("panel", YELLOW), 10)
-		_rod(r.root, 0.05, 0.05, 0.01, Vector3(0, y, z), mat("panel", BLACK), 10)
-	# The next duck peeking out of the mouth.
-	_duck(r.root, Vector3(0, y - 0.012, -0.335), 1.0)
-	# Bicycle horn bolted on the side: squeeze to quack.
-	_ball(r.root, 0.018, Vector3(0.06, y + 0.01, 0.06), mat("panel", RED), Vector3(1, 1, 1.3))
-	_rod(r.root, 0.018, 0.005, 0.05, Vector3(0.06, y + 0.01, 0.02), mat("brass"), 8)
-	_box(r.root, Vector3(0.026, 0.07, 0.03), Vector3(0, y - 0.075, -0.16), mat("panel", BLACK), Vector3(-10, 0, 0), 0.006)
-	_trigger(r, 0.035, 0.0)
-	r.muzzle = Vector3(0, y, -0.34)
-	r.top = Vector3(0, y + 0.046, 0.0)
-	r.mag = Vector3(-0.046, y, -0.07)
-	r.stock = Vector3(0, y - 0.01, 0.125)
-	r.gadget = Vector3(0, y - 0.046, 0.08)
-	r.side = Vector3(0.046, y, -0.1)
-	r.under = Vector3(0, y - 0.05, -0.26)
-	r.mag_style = "hopper"
-	r.rail_l = Vector3(-0.047, 0.08, -0.2)
-	r.mount = Vector3(0, 0.126, -0.12)
-	r.recv = Vector3(0, 0.08, 0.0)
-	r.body_w = 0.046
-
-
-## A rubber duck facing -Z (the duck launcher's round).
 static func _duck(p: Node3D, pos: Vector3, s: float) -> void:
 	var yellow := mat("panel", Color(1.5, 1.25, 0.15))
 	_ball(p, 0.03 * s, pos + Vector3(0, 0, 0.012) * s, yellow, Vector3(1, 0.75, 1.2))
@@ -988,44 +749,6 @@ static func _duck(p: Node3D, pos: Vector3, s: float) -> void:
 	_box(p, Vector3(0.012, 0.012, 0.012) * s, pos + Vector3(0, 0.012, 0.045) * s, yellow, Vector3(30, 0, 0), 0.002)
 
 
-static func _saw_launcher(r: Rig) -> void:
-	var y := 0.07
-	var body := mat("panel", Color(1.2, 0.25, 0.2))
-	_grip(r, Vector3(0, 0.035, 0.022), mat("panel", BLACK), Vector3(0.034, 0.1, 0.044), -12.0)
-	_box(r.root, Vector3(0.05, 0.065, 0.19), Vector3(0, y - 0.005, -0.02), body, Vector3.ZERO, 0.012)
-	_rod(r.root, 0.034, 0.034, 0.06, Vector3(0, y + 0.005, 0.1), mat("panel", BLACK), 10)
-	_disc_x(r.root, 0.022, 0.07, Vector3(0, y + 0.005, 0.1), mat("grate", Color(1.4, 1.4, 1.4)), 8)
-	# Launch deck: the loaded blade sits flat on top, half under a guard.
-	_box(r.root, Vector3(0.09, 0.008, 0.12), Vector3(0, y + 0.03, -0.14), mat("panel", DARK), Vector3.ZERO, 0.002)
-	_blade(r.root, Vector3(0, y + 0.042, -0.15), 0.072)
-	# A yellow guard round the back half of the blade, bolted to the body.
-	var arc := []
-	for i in 9:
-		var a := PI * i / 8.0
-		arc.append(Vector3(cos(a) * 0.074, y + 0.046, -0.15 + sin(a) * 0.074))
-	_tube(r.root, arc, 0.007, mat("panel", YELLOW), 4)
-	_box(r.root, Vector3(0.06, 0.022, 0.03), Vector3(0, y + 0.04, -0.07), mat("panel", YELLOW), Vector3.ZERO, 0.006)
-	_box(r.root, Vector3(0.012, 0.026, 0.012), Vector3(0, y + 0.05, -0.15), mat("panel", DARK))
-	# Spring arms that fling it.
-	for sx: float in [-1.0, 1.0]:
-		_rod_between(r.root, Vector3(sx * 0.04, y + 0.035, -0.06), Vector3(sx * 0.055, y + 0.035, -0.2), 0.004, mat("panel", STEEL))
-	_trigger(r, 0.035, 0.0)
-	if not r.parts.has("magazine"):
-		_blade_stack(r, Vector3(0, y - 0.04, -0.08), 3)
-	r.muzzle = Vector3(0, y + 0.04, -0.22)
-	r.top = Vector3(0, y + 0.028, 0.04)
-	r.mag = Vector3(0, y - 0.04, -0.08)
-	r.stock = Vector3(0, y - 0.005, 0.13)
-	r.gadget = Vector3(0, y - 0.04, 0.05)
-	r.side = Vector3(0.026, y - 0.01, 0.0)
-	r.under = Vector3(0, y - 0.045, -0.15)
-	r.mag_style = "blades"
-	r.rail_l = Vector3(-0.026, 0.065, -0.03)
-	r.recv = Vector3(0, 0.065, -0.02)
-	r.body_w = 0.025
-
-
-## A flat circular saw blade (teeth out) at `pos`, lying in the XZ plane.
 static func _blade(p: Node3D, pos: Vector3, radius: float) -> void:
 	var outline := PackedVector2Array()
 	var teeth := 14
@@ -1048,38 +771,6 @@ static func _blade_stack(r: Rig, top: Vector3, count: int) -> void:
 	_box(r.root, Vector3(0.1, 0.004, 0.02), top + Vector3(0, -0.01 - count * 0.008, 0), mat("panel", DARK))
 
 
-static func _bubble_gun(r: Rig) -> void:
-	var y := 0.07
-	var pink := mat("panel", PINK)
-	var teal := mat("panel", TEAL)
-	_grip(r, Vector3(0, 0.04, 0.015), teal, Vector3(0.032, 0.09, 0.04), -12.0)
-	_box(r.root, Vector3(0.05, 0.06, 0.14), Vector3(0, y, -0.02), pink, Vector3.ZERO, 0.018)
-	_rod(r.root, 0.018, 0.026, 0.06, Vector3(0, y, -0.12), teal, 8)
-	# Bubble wand ring at the muzzle, a few bubbles drifting off it.
-	_tube(r.root, _ring(Vector3(0, y, -0.158), 0.026, 10), 0.004, mat("panel", YELLOW), 4)
-	var bubble := mat("panel", Color(0.35, 0.5, 0.6), Color(0.2, 0.45, 0.55))
-	_ball(r.root, 0.012, Vector3(0.03, y + 0.03, -0.19), bubble)
-	_ball(r.root, 0.008, Vector3(-0.025, y + 0.045, -0.17), bubble)
-	_ball(r.root, 0.006, Vector3(0.01, y + 0.06, -0.21), bubble)
-	# The soap bottle, upside down on top.
-	_lathe_z(r.root, [Vector2(0.0, -0.03), Vector2(0.022, -0.028), Vector2(0.024, 0.02), Vector2(0.01, 0.03), Vector2(0.006, 0.04),
-			Vector2(0.0, 0.04)], Vector3.ZERO, mat("panel", Color(0.6, 0.35, 1.2), Color(0.12, 0.05, 0.2)), 8).transform = \
-			LowPoly.at(Vector3(0, y + 0.07, 0.01), Vector3(180, 0, 0))
-	_box(r.root, Vector3(0.012, 0.012, 0.012), Vector3(0, y + 0.034, 0.01), teal)
-	_trigger(r, 0.04, 0.0)
-	r.muzzle = Vector3(0, y, -0.16)
-	r.mag = Vector3(0, y - 0.03, -0.06)
-	r.gadget = Vector3(0, y - 0.03, 0.03)
-	r.side = Vector3(0.025, y, -0.04)
-	r.top = Vector3(0, y + 0.03, -0.06)
-	r.stock = Vector3(0, y, 0.05)
-	r.under = Vector3(0, y - 0.03, -0.12)
-	r.mag_style = "cell"
-	r.rail_l = Vector3(-0.026, 0.07, -0.04)
-	r.recv = Vector3(0, 0.07, -0.02)
-	r.body_w = 0.025
-
-
 static func _ring(centre: Vector3, radius: float, segments: int) -> Array:
 	var points := []
 	for i in segments + 1:
@@ -1088,31 +779,8 @@ static func _ring(centre: Vector3, radius: float, segments: int) -> Array:
 	return points
 
 
-
 # --- Handguns (gunsmith v2) --------------------------------------------------------
 
-## A pistol slide from z `back` to `front`: serrations at the back, an ejection port on the
-## right with a round showing in it, and a pair of sights.
-static func _pistol_slide(r: Rig, back: float, front: float, y: float, w: float, h: float, m: Material) -> void:
-	_box(r.root, Vector3(w, h, back - front), Vector3(0, y, (back + front) / 2.0), m, Vector3.ZERO, 0.004)
-	for i in 4:
-		_box(r.root, Vector3(w + 0.002, h * 0.6, 0.0025), Vector3(0, y - h * 0.08, back - 0.008 - i * 0.006),
-				mat("panel", BLACK), Vector3.ZERO, 0.0)
-	var port := Vector3(w / 2.0, y + h * 0.15, back - 0.07)
-	_box(r.root, Vector3(0.004, h * 0.4, 0.028), port, mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.0042, 0.0042, 0.018, port + Vector3(-0.002, 0, 0), mat("brass"), 5))
-	_box(r.root, Vector3(0.004, 0.006, 0.006), Vector3(0, y + h / 2.0 + 0.003, front + 0.008), mat("panel", BLACK))
-	_box(r.root, Vector3(w * 0.8, 0.006, 0.006), Vector3(0, y + h / 2.0 + 0.003, back - 0.008), mat("panel", BLACK))
-	_box(r.root, Vector3(0.0025, 0.003, 0.003), Vector3(0, y + h / 2.0 + 0.007, front + 0.008), mat("panel", BONE, Color(0.4, 0.45, 0.1)), Vector3.ZERO, 0.0)
-	r.bolt = port + Vector3(0.002, 0, 0)
-	r.recv = Vector3(0, y, (back + front) / 2.0)
-	r.top = Vector3(0, y + h / 2.0, back - 0.03)
-	r.mount = Vector3(0, y + h / 2.0, front + 0.03)
-	r.body_w = w / 2.0
-
-
-## A pistol's magazine lives in its grip: by default only the base plate shows; parts that
-## stick out come down along the grip.
 static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
 	r.mag = _grip_bottom(r)
 	r.mag_style = "pistol"
@@ -1130,531 +798,18 @@ static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
 				Vector3(r.grip_rake, 0, 0), 0.002)
 
 
-static func _service_pistol(r: Rig) -> void:
-	var y := 0.075
-	var frame := mat("panel", TAN)
-	_pistol_slide(r, 0.035, -0.155, y, 0.028, 0.03, mat("panel", BLACK))
-	# Polymer frame under the slide; the dust cover has a short rail under its nose.
-	_box(r.root, Vector3(0.025, 0.022, 0.18), Vector3(0, 0.051, -0.06), frame, Vector3.ZERO, 0.005)
-	for i in 3:
-		_box(r.root, Vector3(0.02, 0.004, 0.005), Vector3(0, 0.0385, -0.105 - i * 0.014), mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_grip(r, Vector3(0, 0.046, 0.024), frame, Vector3(0.028, 0.094, 0.044), -18.0)
-	_box(r.root, Vector3(0.024, 0.01, 0.026), Vector3(0, 0.05, 0.046), frame, Vector3(-25, 0, 0), 0.004)
-	_trigger(r, 0.04, 0.0)
-	_barrel(r, Vector3(0, y + 0.003, -0.12), 0.042, 0.0075, mat("panel", STEEL), false)
-	_pistol_mag(r)
-	# A strip of red tape where somebody marked it as theirs.
-	_box(r.root, Vector3(0.027, 0.006, 0.03), Vector3(0, 0.051, -0.02), mat("panel", RED), Vector3.ZERO, 0.001)
-	r.rail_l = Vector3(0, 0.038, -0.12)
-	r.stock = Vector3(0, 0.055, 0.04)
-	r.side = Vector3(0.0135, 0.051, -0.07)
-	r.charging = Vector3(0, y + 0.008, 0.035)
-
-
-static func _heavy_pistol(r: Rig) -> void:
-	var y := 0.077
-	var steel := mat("panel", STEEL)
-	_pistol_slide(r, 0.035, -0.17, y, 0.025, 0.028, steel)
-	_box(r.root, Vector3(0.0255, 0.012, 0.05), Vector3(0.0, y - 0.002, -0.08), mat("rust_metal", RUST), Vector3.ZERO, 0.002)
-	_box(r.root, Vector3(0.024, 0.02, 0.17), Vector3(0, 0.054, -0.06), mat("panel", DARK), Vector3.ZERO, 0.004)
-	# Barrel bushing at the nose, a hammer and a beavertail at the back.
-	_rod(r.root, 0.009, 0.009, 0.006, Vector3(0, y + 0.002, -0.171), mat("panel", DARK), 8)
-	_box(r.root, Vector3(0.008, 0.02, 0.01), Vector3(0, y + 0.012, 0.041), mat("panel", DARK), Vector3(30, 0, 0), 0.002)
-	_box(r.root, Vector3(0.022, 0.008, 0.03), Vector3(0, 0.058, 0.045), steel, Vector3(-15, 0, 0), 0.003)
-	_box(r.root, Vector3(0.004, 0.008, 0.02), Vector3(-0.0135, 0.066, 0.015), mat("panel", DARK), Vector3.ZERO, 0.001)
-	# Walnut panels over a steel grip frame.
-	_grip(r, Vector3(0, 0.048, 0.026), mat("wood", WOOD), Vector3(0.03, 0.096, 0.042), -14.0)
-	if not r.parts.has("grip"):
-		_box(r.root, Vector3(0.022, 0.096, 0.008), r.grip_top + _grip_down(-14.0) * 0.048 + Vector3(0, 0, 0.021), steel,
-				Vector3(-14, 0, 0), 0.002)
-	_trigger(r, 0.043, 0.0)
-	_barrel(r, Vector3(0, y + 0.002, -0.13), 0.044, 0.0085, mat("panel", STEEL), false)
-	_pistol_mag(r)
-	r.rail_l = Vector3(0, 0.044, -0.125)
-	r.stock = Vector3(0, 0.058, 0.045)
-	r.side = Vector3(0.0125, 0.054, -0.07)
-
-
-static func _machine_pistol(r: Rig) -> void:
-	var y := 0.076
-	var black := mat("panel", BLACK)
-	_pistol_slide(r, 0.035, -0.165, y, 0.028, 0.03, mat("panel", DARK))
-	# Ports cut in the slide's nose (it climbs), and a red fire selector at the back.
-	for i in 3:
-		_box(r.root, Vector3(0.012, 0.004, 0.008), Vector3(0, y + 0.0145, -0.135 + i * 0.012), black, Vector3.ZERO, 0.0)
-	_box(r.root, Vector3(0.006, 0.01, 0.012), Vector3(-0.016, y - 0.004, 0.02), mat("panel", RED), Vector3.ZERO, 0.002)
-	_box(r.root, Vector3(0.025, 0.022, 0.19), Vector3(0, 0.052, -0.065), mat("panel", POLY), Vector3.ZERO, 0.005)
-	_grip(r, Vector3(0, 0.047, 0.024), mat("panel", POLY), Vector3(0.029, 0.094, 0.044), -18.0)
-	_trigger(r, 0.041, 0.0)
-	# The fold-down front grip under the nose, wrapped in olive tape.
-	_box(r.root, Vector3(0.012, 0.012, 0.024), Vector3(0, 0.038, -0.12), black, Vector3.ZERO, 0.002)
-	_box(r.root, Vector3(0.016, 0.055, 0.018), Vector3(0, 0.008, -0.126), black, Vector3(-12, 0, 0), 0.004)
-	_box(r.root, Vector3(0.019, 0.016, 0.021), Vector3(0, 0.0, -0.127), mat("panel", OD), Vector3(-12, 0, 0), 0.002)
-	_barrel(r, Vector3(0, y + 0.003, -0.13), 0.05, 0.0075, mat("panel", STEEL), false)
-	_pistol_mag(r, 0.075, mat("panel", DARK))
-	r.rail_l = Vector3(0, 0.04, -0.1)
-	r.stock = Vector3(0, 0.056, 0.04)
-	r.side = Vector3(0.0135, 0.052, -0.06)
-
-
 # --- PDW -----------------------------------------------------------------------------
 
-static func _pdw(r: Rig) -> void:
-	var body := mat("panel", Color(0.36, 0.38, 0.32))
-	var black := mat("panel", BLACK)
-	# One moulded body: butt, thumbhole grip, finger loop and the nose, in one silhouette.
-	_profile(r.root, [Vector2(-0.215, 0.065), Vector2(0.17, 0.065), Vector2(0.25, 0.052), Vector2(0.262, 0.03),
-			Vector2(0.24, 0.012), Vector2(0.125, 0.012), Vector2(0.1, -0.03), Vector2(0.088, -0.066), Vector2(0.05, -0.07),
-			Vector2(0.046, -0.03), Vector2(0.042, 0.004), Vector2(0.008, 0.004), Vector2(-0.008, -0.075),
-			Vector2(-0.055, -0.08), Vector2(-0.06, -0.035), Vector2(-0.2, -0.05), Vector2(-0.218, -0.04)], 0.05,
-			Vector3(0, 0.035, 0), body)
-	# Black rubber butt plate and a band of tape round the middle.
-	_box(r.root, Vector3(0.052, 0.11, 0.012), Vector3(0, 0.044, 0.216), black, Vector3.ZERO, 0.003)
-	_box(r.root, Vector3(0.053, 0.06, 0.03), Vector3(0, 0.07, 0.08), mat("panel", TAPE), Vector3.ZERO, 0.002)
-	# The 50-round magazine lies along the top; its rounds show through the smoke window.
-	r.mag = Vector3(0, 0.1, 0.0)
-	r.mag_style = "top"
-	r.mag_len = 0.3
-	if not r.parts.has("magazine"):
-		_top_mag(r, 0.3, mat("panel", SMOKE))
-	# A rail bridge over the magazine for the sight.
-	for z: float in [0.13, -0.14]:
-		_box(r.root, Vector3(0.012, 0.035, 0.014), Vector3(0, 0.118, z), black, Vector3.ZERO, 0.002)
-	_pic(r, Vector3(0, 0.136, -0.005), 0.29)
-	# Barrel out of the nose, cocking knobs on both sides.
-	_barrel(r, Vector3(0, 0.062, -0.25), 0.045, 0.0075, mat("panel", STEEL), false)
-	for sx: float in [-1.0, 1.0]:
-		_ball(r.root, 0.006, Vector3(sx * 0.028, 0.075, -0.2), black)
-	_box(r.root, Vector3(0.006, 0.022, 0.008), Vector3(0, 0.03, -0.03), black, Vector3(-15, 0, 0))
-	r.trig = Vector3(0, 0.03, -0.03)
-	r.grip_top = Vector3(0, 0.04, 0.03)
-	r.grip_rake = -12.0
-	r.top = Vector3(0, 0.143, 0.03)
-	r.mount = Vector3(0, 0.143, -0.1)
-	r.rail_l = Vector3(-0.026, 0.06, -0.19)
-	r.rail_r = Vector3(0.026, 0.06, -0.19)
-	r.foregrip = Vector3(0, 0.047, -0.2)
-	r.hg_start = -0.13
-	r.hg_end = -0.245
-	r.hg_y = 0.06
-	r.hg_r = 0.025
-	r.stock = Vector3(0, 0.07, 0.215)
-	r.butt = Vector3(0, 0.044, 0.222)
-	r.gadget = Vector3(0, -0.012, 0.15)
-	r.side = Vector3(0.026, 0.06, 0.12)
-	r.bolt = Vector3(0.026, 0.07, -0.08)
-	r.body_w = 0.025
-	r.recv = Vector3(0, 0.07, 0.0)
-
-
-## A magazine lying on top of the gun along Z, with a window of rounds down its side.
 static func _top_mag(r: Rig, length: float, m: Material, width := 0.044) -> void:
 	_box(r.root, Vector3(width, 0.026, length), r.mag + Vector3(0, 0.013, 0), m, Vector3.ZERO, 0.006)
+	# Two staggered rows of rounds inside (seen through a clear body), the feed lips in black.
 	for sx: float in [-1.0, 1.0]:
-		_round(r, _box(r.root, Vector3(0.003, 0.01, length * 0.8), r.mag + Vector3(sx * width * 0.5, 0.012, 0.0), mat("brass"), Vector3.ZERO, 0.001))
+		_round(r, _box(r.root, Vector3(0.008, 0.008, length * 0.85), r.mag + Vector3(sx * width * 0.2, 0.012, 0.0), fin("brass"), Vector3.ZERO, 0.002))
+	_box(r.root, Vector3(width + 0.002, 0.03, 0.02), r.mag + Vector3(0, 0.014, length * 0.5), fin("polymer"), Vector3.ZERO, 0.004)
 
 
 # --- Rifles ------------------------------------------------------------------------
 
-## An AR receiver: lower with its magwell, upper with a flat-top rail, a charging handle
-## and a forward assist. `s` scales it (the DMR is bigger). Uppers change it here.
-static func _ar_receiver(r: Rig, y: float, s: float, upper_m: Material, lower_m: Material) -> void:
-	var recv: String = r.parts.get("receiver", "")
-	var upper := upper_m
-	match recv:
-		"upper_billet": upper = mat("panel", Color(0.95, 0.5, 0.3))
-		"upper_light": upper = mat("panel", DARK)
-	if recv in ["upper_300", "upper_pcc", "upper_light", "upper_billet"]:
-		r.done["receiver"] = true
-	_profile(r.root, [Vector2(-0.07, -0.01) * s, Vector2(0.125, -0.01) * s, Vector2(0.13, -0.03) * s, Vector2(0.12, -0.065) * s,
-			Vector2(0.04, -0.065) * s, Vector2(0.035, -0.04) * s, Vector2(-0.03, -0.04) * s, Vector2(-0.075, -0.025) * s],
-			0.03 * s, Vector3(0, y, 0), lower_m)
-	var bevel := 0.001 if recv == "upper_billet" else 0.004
-	var up_size := Vector3(0.032, 0.03, 0.2) * s
-	if recv == "upper_billet":
-		up_size += Vector3(0.004, 0.004, 0.0)
-	_box(r.root, up_size, Vector3(0, y + 0.005 * s, -0.02 * s), upper, Vector3.ZERO, bevel)
-	_pic(r, Vector3(0, y + 0.005 * s + up_size.y / 2.0, -0.02 * s), 0.2 * s)
-	match recv:
-		"upper_light":
-			for sx: float in [-1.0, 1.0]:
-				for i in 3:
-					_box(r.root, Vector3(0.002, 0.012, 0.022), Vector3(sx * up_size.x / 2.0, y + 0.006, -0.08 + i * 0.03) * Vector3(1, 1, s),
-							mat("panel", BLACK), Vector3.ZERO, 0.0)
-		"upper_billet":
-			# Squared-off billet: an oversized bolt release and a flared magwell lip.
-			_box(r.root, Vector3(0.006, 0.014, 0.02), Vector3(-0.018 * s, y - 0.025 * s, -0.01 * s), mat("panel", Color(0.95, 0.5, 0.3)), Vector3.ZERO, 0.001)
-			_box(r.root, Vector3(0.036 * s, 0.01, 0.075 * s), Vector3(0, y - 0.06 * s, -0.08 * s), mat("panel", Color(0.95, 0.5, 0.3)), Vector3.ZERO, 0.002)
-		"upper_300":
-			# Painted red band on the magwell: this one eats .300 Blackout.
-			_box(r.root, Vector3(0.031 * s, 0.008, 0.07 * s), Vector3(0, y - 0.05 * s, -0.08 * s), mat("panel", RED), Vector3.ZERO, 0.001)
-			_box(r.root, Vector3(0.033, 0.005, 0.03), Vector3(0, y + 0.005, 0.03), mat("panel", BONE), Vector3.ZERO, 0.001)
-	# Ejection port with a round in it, forward assist, charging handle.
-	var port := Vector3(up_size.x / 2.0, y + 0.004 * s, -0.02 * s)
-	_box(r.root, Vector3(0.003, 0.012, 0.034) * s, port, mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.0045, 0.0045, 0.02, port + Vector3(-0.002, 0, 0), mat("brass"), 5))
-	_rod(r.root, 0.006, 0.006, 0.02, Vector3(up_size.x / 2.0 + 0.002, y + 0.008 * s, 0.05 * s), mat("panel", DARK), 6)
-	r.charging = Vector3(0, y + 0.014 * s, 0.083 * s)
-	if not r.parts.has("charging"):
-		_box(r.root, Vector3(0.028, 0.008, 0.016) * s, r.charging, mat("panel", DARK), Vector3.ZERO, 0.002)
-	r.bolt = port + Vector3(0.002, 0, 0)
-	r.recv = Vector3(0, y + 0.005 * s, -0.02 * s)
-	r.body_w = up_size.x / 2.0
-	r.top = Vector3(0, y + 0.005 * s + up_size.y / 2.0 + 0.007, -0.01 * s)
-	r.mount = Vector3(0, r.top.y, -0.095 * s)
-	r.mag = Vector3(0, y - 0.065 * s, -0.08 * s)
-	r.mag_len = 0.13 * s
-	r.mag_w = 0.022 * s
-	r.mag_d = 0.055 * s
-	r.mag_tilt = 4.0
-	r.mag_curve = 10.0
-	if recv == "upper_pcc":
-		# A magwell block: a skinny 9mm stick in the big rifle well.
-		_box(r.root, Vector3(0.026, 0.016, 0.05) * s, r.mag + Vector3(0, -0.004, 0), mat("panel", ORANGE), Vector3.ZERO, 0.002)
-		r.mag_d = 0.03
-		r.mag_len = 0.15
-		r.mag_curve = 0.0
-		r.mag_tilt = 2.0
-
-
-## The AR buffer tube behind the receiver, and (with no stock part) a crude fixed stock.
-static func _ar_buffer(r: Rig, y: float, s: float, default_stock := true) -> void:
-	r.stock = Vector3(0, y, 0.075 * s)
-	r.has_buffer = true
-	_rod(r.root, 0.014 * s, 0.014 * s, 0.2 * s, Vector3(0, y, 0.175 * s), mat("panel", BLACK), 8)
-	_rod(r.root, 0.018 * s, 0.018 * s, 0.01, Vector3(0, y, 0.08 * s), mat("panel", DARK), 8)
-	if r.parts.has("stock") or not default_stock:
-		return
-	_profile(r.root, [Vector2(-0.15, 0.016), Vector2(-0.31, 0.014), Vector2(-0.315, -0.07), Vector2(-0.29, -0.075),
-			Vector2(-0.15, -0.018)], 0.034, Vector3(0, y, 0), mat("panel", TAN))
-	_box(r.root, Vector3(0.036, 0.09, 0.012), Vector3(0, y - 0.028, 0.316), mat("panel", BLACK), Vector3.ZERO, 0.003)
-	_box(r.root, Vector3(0.036, 0.02, 0.04), Vector3(0, y - 0.01, 0.2), mat("panel", TAPE), Vector3(-8, 0, 0), 0.003)
-	r.butt = Vector3(0, y - 0.028, 0.322)
-	r.butt_h = 0.09
-	r.comb = Vector3(0, y + 0.015, 0.25)
-
-
-static func _carbine(r: Rig) -> void:
-	var y := 0.085
-	_ar_receiver(r, y, 1.0, mat("panel", BLACK), mat("panel", DARK))
-	_grip(r, Vector3(0, 0.05, 0.03), mat("panel", BLACK), Vector3(0.03, 0.095, 0.04), -20.0)
-	_trigger(r, 0.05, 0.0)
-	_barrel(r, Vector3(0, y, -0.12), 0.4, 0.0085, mat("panel", STEEL), false)
-	r.hg_start = -0.125
-	r.hg_end = -0.3
-	r.hg_y = y
-	r.hg_r = 0.021
-	r.gas = Vector3(0, y, -0.32)
-	if not r.parts.has("handguard"):
-		# Round ribbed M4 handguard (olive, from another gun), a delta ring behind it.
-		_rod(r.root, 0.021, 0.021, 0.175, Vector3(0, y, -0.2125), mat("panel", OD), 8)
-		for i in 5:
-			_rod(r.root, 0.0218, 0.0218, 0.006, Vector3(0, y, -0.145 - i * 0.033), mat("panel", BLACK), 8)
-		_rod(r.root, 0.025, 0.025, 0.012, Vector3(0, y, -0.124), mat("panel", DARK), 8)
-		_rod(r.root, 0.0225, 0.0225, 0.025, Vector3(0, y, -0.25), mat("panel", TAPE), 8)
-	if not r.parts.has("gas"):
-		if r.parts.has("handguard"):
-			_rod(r.root, 0.012, 0.012, 0.02, r.gas, mat("panel", DARK), 6)
-		else:
-			# The A-frame front sight on the gas block.
-			_rod(r.root, 0.013, 0.013, 0.026, r.gas, mat("panel", DARK), 6)
-			_profile(r.root, [Vector2(0.305, 0.0), Vector2(0.335, 0.0), Vector2(0.325, 0.046), Vector2(0.315, 0.046)], 0.01,
-					Vector3(0, y, 0), mat("panel", DARK))
-			_box(r.root, Vector3(0.003, 0.012, 0.003), Vector3(0, y + 0.05, -0.32), mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_ar_buffer(r, y, 1.0)
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", DARK))
-	r.under = Vector3(0, y - 0.021, -0.28)
-	r.gadget = Vector3(0, y - 0.016, 0.1)
-	r.side = Vector3(0.019, y - 0.02, 0.2)
-
-
-static func _dmr(r: Rig) -> void:
-	var y := 0.09
-	var s := 1.12
-	_ar_receiver(r, y, s, mat("panel", TAN), mat("panel", BLACK))
-	_grip(r, Vector3(0, 0.05, 0.032), mat("panel", BLACK), Vector3(0.032, 0.1, 0.044), -18.0)
-	_trigger(r, 0.05, 0.0)
-	_barrel(r, Vector3(0, y, -0.135), 0.52, 0.0105, mat("panel", DARK), false)
-	r.hg_start = -0.14
-	r.hg_end = -0.4
-	r.hg_y = y
-	r.hg_r = 0.025
-	r.gas = Vector3(0, y, -0.36)
-	if not r.parts.has("handguard"):
-		# A long free-float tube with slots and a strip of rail on top, mismatched black.
-		_rod(r.root, 0.025, 0.025, 0.26, Vector3(0, y, -0.27), mat("panel", DARK), 8)
-		_pic(r, Vector3(0, y + 0.025, -0.27), 0.26)
-		for sx: float in [-1.0, 1.0]:
-			for i in 5:
-				_box(r.root, Vector3(0.003, 0.008, 0.024), Vector3(sx * 0.024, y, -0.17 - i * 0.05), mat("panel", BLACK), Vector3.ZERO, 0.0)
-		_rod(r.root, 0.0255, 0.0255, 0.03, Vector3(0, y, -0.36), mat("panel", TAPE), 8)
-	if not r.parts.has("gas"):
-		_rod(r.root, 0.013, 0.013, 0.02, r.gas, mat("panel", DARK), 6)
-	_ar_buffer(r, y, s, false)
-	if not r.parts.has("stock"):
-		# A fixed rifle stock with a cheek comb (the buffer tube runs inside).
-		_profile(r.root, [Vector2(-0.08, 0.02), Vector2(-0.2, 0.024), Vector2(-0.43, 0.02), Vector2(-0.44, -0.08),
-				Vector2(-0.41, -0.088), Vector2(-0.2, -0.04), Vector2(-0.08, -0.025)], 0.038, Vector3(0, y, 0), mat("panel", BLACK))
-		_box(r.root, Vector3(0.04, 0.1, 0.014), Vector3(0, y - 0.03, 0.442), mat("panel", DARK), Vector3.ZERO, 0.004)
-		_box(r.root, Vector3(0.04, 0.03, 0.05), Vector3(0, y - 0.01, 0.15), mat("panel", OD), Vector3.ZERO, 0.004)
-		r.butt = Vector3(0, y - 0.03, 0.45)
-		r.butt_h = 0.1
-		r.comb = Vector3(0, y + 0.024, 0.3)
-	r.mag_len = 0.075
-	r.mag_d = 0.065
-	r.mag_w = 0.026
-	r.mag_tilt = 2.0
-	r.mag_curve = 0.0
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", DARK))
-	r.top = Vector3(0, r.top.y, -0.03)
-	r.under = Vector3(0, y - 0.025, -0.38)
-	r.gadget = Vector3(0, y - 0.035, 0.12)
-	r.side = Vector3(0.02, y - 0.02, 0.32)
-
-
-static func _ak(r: Rig) -> void:
-	var y := 0.08
-	var wood := mat("wood", WOOD)
-	var recv: String = r.parts.get("receiver", "")
-	var modern := recv == "ak_modern"
-	if recv in ["ak_cover", "ak_modern"]:
-		r.done["receiver"] = true
-	# Stamped receiver, a ribbed dust cover on top and the rear sight block in front of it.
-	_box(r.root, Vector3(0.032, 0.05, 0.24), Vector3(0, y - 0.01, -0.02), mat("panel", DARK), Vector3.ZERO, 0.004)
-	_box(r.root, Vector3(0.029, 0.012, 0.21), Vector3(0, y + 0.02, 0.0), mat("panel", Color(0.36, 0.37, 0.4)), Vector3.ZERO, 0.004)
-	for i in 3:
-		_box(r.root, Vector3(0.03, 0.003, 0.004), Vector3(0, y + 0.026, 0.06 - i * 0.03), mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_box(r.root, Vector3(0.028, 0.02, 0.04), Vector3(0, y + 0.016, -0.13), mat("panel", DARK), Vector3.ZERO, 0.003)
-	r.top = Vector3(0, y + 0.026, 0.0)
-	if recv in ["ak_cover", "ak_modern"]:
-		_pic(r, Vector3(0, y + 0.026, 0.0), 0.19, 0.0, 0.02, mat("panel", TAN if modern else BLACK))
-		r.top = Vector3(0, y + 0.033, 0.0)
-	r.mount = Vector3(0, r.top.y, -0.07)
-	# Charging handle on the right, the big selector lever under it.
-	r.charging = Vector3(0.034, y + 0.0, -0.09)
-	_rod_between(r.root, Vector3(0.016, y, -0.09), r.charging, 0.004, mat("panel", STEEL))
-	_ball(r.root, 0.0085 if modern else 0.0065, r.charging, mat("panel", BLACK if modern else STEEL))
-	_box(r.root, Vector3(0.003, 0.012, 0.07), Vector3(0.0175, y - 0.002, 0.02), mat("panel", STEEL), Vector3(-6, 0, 0), 0.001)
-	if modern:
-		_box(r.root, Vector3(0.005, 0.016, 0.02), Vector3(0.0185, y - 0.012, -0.02), mat("panel", ORANGE), Vector3.ZERO, 0.002)
-	_round(r, _rod(r.root, 0.0045, 0.0045, 0.02, Vector3(0.0145, y + 0.006, -0.06), mat("brass"), 5))
-	_grip(r, Vector3(0, 0.05, 0.03), mat("panel", PLUM), Vector3(0.03, 0.095, 0.04), -20.0)
-	_trigger(r, 0.05, 0.0)
-	_barrel(r, Vector3(0, y, -0.14), 0.4, 0.0085, mat("panel", STEEL), false)
-	# Gas tube over the barrel, the gas block and the hooded front sight near the muzzle.
-	_rod(r.root, 0.01, 0.01, 0.2, Vector3(0, y + 0.024, -0.24), mat("panel", DARK), 6)
-	r.gas = Vector3(0, y + 0.014, -0.35)
-	if not r.parts.has("gas"):
-		_box(r.root, Vector3(0.02, 0.04, 0.03), r.gas, mat("panel", DARK), Vector3.ZERO, 0.004)
-	var fs := r.muzzle + Vector3(0, 0, 0.03)
-	_box(r.root, Vector3(0.018, 0.022, 0.03), fs + Vector3(0, 0.008, 0), mat("panel", DARK), Vector3.ZERO, 0.003)
-	_tube(r.root, [fs + Vector3(-0.008, 0.016, 0.0), fs + Vector3(-0.008, 0.032, 0.0), fs + Vector3(0.008, 0.032, 0.0),
-			fs + Vector3(0.008, 0.016, 0.0)], 0.0025, mat("panel", DARK), 4)
-	r.hg_start = -0.145
-	r.hg_end = -0.315
-	r.hg_y = y + 0.006
-	r.hg_r = 0.022
-	if not r.parts.has("handguard"):
-		_box(r.root, Vector3(0.038, 0.036, 0.17), Vector3(0, y - 0.006, -0.23), wood, Vector3.ZERO, 0.01)
-		_box(r.root, Vector3(0.03, 0.02, 0.13), Vector3(0, y + 0.026, -0.22), wood, Vector3.ZERO, 0.008)
-		_box(r.root, Vector3(0.04, 0.012, 0.014), Vector3(0, y - 0.004, -0.31), mat("panel", DARK), Vector3.ZERO, 0.002)
-	r.stock = Vector3(0, y, 0.1)
-	if not r.parts.has("stock"):
-		# The slab of wood that drops away from the bore line.
-		_profile(r.root, [Vector2(-0.098, 0.012), Vector2(-0.34, -0.004), Vector2(-0.345, -0.088), Vector2(-0.32, -0.09),
-				Vector2(-0.098, -0.03)], 0.034, Vector3(0, y, 0), wood)
-		_box(r.root, Vector3(0.036, 0.09, 0.008), Vector3(0, y - 0.046, 0.347), mat("panel", DARK), Vector3(-4, 0, 0), 0.002)
-		_box(r.root, Vector3(0.036, 0.02, 0.05), Vector3(0, y - 0.018, 0.2), mat("panel", TAPE), Vector3(-5, 0, 0), 0.003)
-		r.butt = Vector3(0, y - 0.046, 0.352)
-		r.butt_h = 0.09
-		r.comb = Vector3(0, y + 0.005, 0.24)
-	# The banana magazine in orange bakelite.
-	r.mag = Vector3(0, y - 0.035, -0.085)
-	r.mag_len = 0.19
-	r.mag_w = 0.024
-	r.mag_d = 0.05
-	r.mag_tilt = 8.0
-	r.mag_curve = 32.0
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", BAKELITE))
-	r.bolt = Vector3(0.0165, y + 0.006, -0.06)
-	r.recv = Vector3(0, y - 0.01, -0.02)
-	r.body_w = 0.016
-	r.under = Vector3(0, y - 0.025, -0.36)
-	r.gadget = Vector3(0, y - 0.03, 0.12)
-	r.side = Vector3(0.018, y - 0.02, 0.24)
-
-
-static func _bullpup(r: Rig) -> void:
-	var y := 0.085
-	var body := mat("panel", OD)
-	# The whole action sits behind the grip: one long body from the butt to the nose.
-	_profile(r.root, [Vector2(-0.3, 0.115), Vector2(-0.3, 0.025), Vector2(-0.16, 0.032), Vector2(-0.155, 0.04),
-			Vector2(-0.085, 0.04), Vector2(-0.075, 0.05), Vector2(0.03, 0.054), Vector2(0.11, 0.058), Vector2(0.175, 0.066),
-			Vector2(0.18, 0.1), Vector2(0.12, 0.112), Vector2(-0.24, 0.118)], 0.054, Vector3.ZERO, body)
-	_box(r.root, Vector3(0.056, 0.09, 0.012), Vector3(0, 0.07, 0.3), mat("panel", BLACK), Vector3.ZERO, 0.003)
-	_box(r.root, Vector3(0.056, 0.05, 0.04), Vector3(0, 0.09, 0.2), mat("panel", TAPE), Vector3.ZERO, 0.003)
-	_pic(r, Vector3(0, 0.118, -0.02), 0.22)
-	_grip(r, Vector3(0, 0.055, 0.02), mat("panel", BLACK), Vector3(0.03, 0.095, 0.042), -16.0)
-	_trigger(r, 0.05, 0.0, false)
-	# A guard big enough for a gloved fist.
-	_tube(r.root, [Vector3(0, 0.054, -0.075), Vector3(0, -0.04, -0.07), Vector3(0, -0.058, -0.04), Vector3(0, -0.05, 0.02)],
-			0.005, mat("panel", BLACK), 5)
-	_barrel(r, Vector3(0, y, -0.175), 0.23, 0.0085, mat("panel", STEEL))
-	_rod(r.root, 0.013, 0.013, 0.012, Vector3(0, y, -0.182), mat("panel", DARK), 6)
-	r.gas = Vector3(0, y, -0.2)
-	# Charging knob on the left of the nose, ejection port up by the cheek.
-	r.charging = Vector3(-0.034, 0.1, -0.06)
-	if not r.parts.has("charging"):
-		_rod_between(r.root, Vector3(-0.026, 0.1, -0.06), r.charging, 0.004, mat("panel", DARK))
-		_ball(r.root, 0.007, r.charging, mat("panel", BLACK))
-	var port := Vector3(0.0275, 0.095, 0.16)
-	_box(r.root, Vector3(0.003, 0.014, 0.04), port, mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.0045, 0.0045, 0.022, port + Vector3(-0.002, 0, 0), mat("brass"), 5))
-	r.bolt = port + Vector3(0.002, 0, 0)
-	r.mag = Vector3(0, 0.035, 0.12)
-	r.mag_len = 0.11
-	r.mag_w = 0.022
-	r.mag_d = 0.055
-	r.mag_tilt = -4.0
-	r.mag_curve = 10.0
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", SMOKE))
-	r.top = Vector3(0, 0.125, 0.0)
-	r.mount = Vector3(0, 0.125, -0.1)
-	r.hg_start = -0.05
-	r.hg_end = -0.175
-	r.hg_y = 0.085
-	r.hg_r = 0.027
-	r.rail_l = Vector3(-0.028, 0.085, -0.13)
-	r.rail_r = Vector3(0.028, 0.085, -0.13)
-	r.foregrip = Vector3(0, 0.06, -0.135)
-	r.under = Vector3(0, y - 0.012, -0.26)
-	r.stock = Vector3(0, 0.085, 0.3)
-	r.butt = Vector3(0, 0.07, 0.306)
-	r.gadget = Vector3(0, 0.028, 0.24)
-	r.side = Vector3(0.028, 0.06, 0.24)
-	r.recv = Vector3(0, 0.085, 0.12)
-	r.body_w = 0.027
-
-
-static func _battle_rifle(r: Rig) -> void:
-	var y := 0.085
-	var steel := mat("panel", DARK)
-	_box(r.root, Vector3(0.034, 0.06, 0.25), Vector3(0, y - 0.01, -0.02), steel, Vector3.ZERO, 0.004)
-	_box(r.root, Vector3(0.03, 0.014, 0.2), Vector3(0, y + 0.026, 0.0), mat("panel", Color(0.4, 0.4, 0.42)), Vector3.ZERO, 0.004)
-	_box(r.root, Vector3(0.035, 0.02, 0.06), Vector3(0, y - 0.01, 0.04), mat("rust_metal", RUST), Vector3.ZERO, 0.002)
-	# Folded carry handle on the left, cocking handle on the left too.
-	_tube(r.root, [Vector3(-0.017, y + 0.0, -0.1), Vector3(-0.03, y + 0.006, -0.09), Vector3(-0.03, y + 0.006, -0.03),
-			Vector3(-0.017, y, -0.02)], 0.004, mat("panel", BLACK), 4)
-	r.charging = Vector3(-0.032, y + 0.012, -0.125)
-	if not r.parts.has("charging"):
-		_rod_between(r.root, Vector3(-0.017, y + 0.012, -0.125), r.charging, 0.004, mat("panel", STEEL))
-		_box(r.root, Vector3(0.006, 0.01, 0.016), r.charging, mat("panel", STEEL), Vector3.ZERO, 0.002)
-	# Rear aperture sight at the back of the top cover.
-	_box(r.root, Vector3(0.016, 0.018, 0.012), Vector3(0, y + 0.038, 0.08), steel, Vector3.ZERO, 0.002)
-	var port := Vector3(0.0175, y + 0.004, -0.03)
-	_box(r.root, Vector3(0.003, 0.012, 0.035), port, mat("panel", BLACK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.0048, 0.0048, 0.022, port + Vector3(-0.002, 0, 0), mat("brass"), 5))
-	_grip(r, Vector3(0, 0.05, 0.03), mat("panel", BLACK), Vector3(0.03, 0.1, 0.042), -20.0)
-	_trigger(r, 0.05, 0.0)
-	_barrel(r, Vector3(0, y, -0.15), 0.48, 0.0095, mat("panel", STEEL), true)
-	r.hg_start = -0.15
-	r.hg_end = -0.35
-	r.hg_y = y - 0.002
-	r.hg_r = 0.023
-	if not r.parts.has("handguard"):
-		# Ventilated steel handguard.
-		_box(r.root, Vector3(0.042, 0.046, 0.2), Vector3(0, y - 0.004, -0.25), mat("grate", Color(0.6, 0.6, 0.62)), Vector3.ZERO, 0.008)
-		_box(r.root, Vector3(0.044, 0.014, 0.2), Vector3(0, y - 0.024, -0.25), steel, Vector3.ZERO, 0.004)
-	r.gas = Vector3(0, y + 0.02, -0.37)
-	_rod(r.root, 0.007, 0.007, 0.21, Vector3(0, y + 0.02, -0.26), mat("panel", DARK), 6)
-	if not r.parts.has("gas"):
-		_box(r.root, Vector3(0.024, 0.045, 0.04), r.gas + Vector3(0, -0.012, 0), steel, Vector3.ZERO, 0.004)
-		_rod(r.root, 0.006, 0.006, 0.02, r.gas + Vector3(0, 0.0, -0.025), mat("brass"), 6)
-	r.stock = Vector3(0, y, 0.105)
-	if not r.parts.has("stock"):
-		_profile(r.root, [Vector2(-0.103, 0.02), Vector2(-0.41, 0.014), Vector2(-0.42, -0.09), Vector2(-0.395, -0.095),
-				Vector2(-0.15, -0.05), Vector2(-0.103, -0.04)], 0.036, Vector3(0, y, 0), mat("wood", Color(0.8, 0.6, 0.45)))
-		_box(r.root, Vector3(0.038, 0.105, 0.012), Vector3(0, y - 0.038, 0.422), mat("panel", BLACK), Vector3.ZERO, 0.003)
-		r.butt = Vector3(0, y - 0.038, 0.428)
-		r.butt_h = 0.105
-		r.comb = Vector3(0, y + 0.017, 0.3)
-	r.mag = Vector3(0, y - 0.04, -0.085)
-	r.mag_len = 0.11
-	r.mag_w = 0.027
-	r.mag_d = 0.07
-	r.mag_tilt = 6.0
-	r.mag_curve = 4.0
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", DARK))
-		_box(r.root, Vector3(0.029, 0.02, 0.072), r.mag + Vector3(0, -0.055, -0.006), mat("panel", TAPE), Vector3(6, 0, 0), 0.002)
-	r.top = Vector3(0, y + 0.033, 0.0)
-	r.mount = Vector3(0, y + 0.033, -0.08)
-	r.bolt = port + Vector3(0.002, 0, 0)
-	r.recv = Vector3(0, y - 0.01, -0.02)
-	r.body_w = 0.017
-	r.under = Vector3(0, y - 0.03, -0.42)
-	r.gadget = Vector3(0, y - 0.04, 0.16)
-	r.side = Vector3(0.019, y - 0.025, 0.3)
-
-
-static func _lever_action(r: Rig) -> void:
-	var y := 0.08
-	var wood := mat("wood", WOOD)
-	# Brass receiver with a loading gate (a round showing in it), hammer at the back.
-	_box(r.root, Vector3(0.03, 0.052, 0.13), Vector3(0, 0.064, -0.04), mat("brass", Color(1.25, 1.05, 0.55)), Vector3.ZERO, 0.006)
-	_box(r.root, Vector3(0.003, 0.016, 0.03), Vector3(0.0155, 0.054, -0.06), mat("panel", DARK), Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.0055, 0.0055, 0.02, Vector3(0.0145, 0.052, -0.06), mat("brass"), 5))
-	_box(r.root, Vector3(0.008, 0.024, 0.012), Vector3(0, 0.095, 0.03), mat("panel", DARK), Vector3(25, 0, 0), 0.002)
-	# The straight wrist and stock: no pistol grip, the hand sits in the lever loop.
-	r.stock = Vector3(0, 0.07, 0.025)
-	if not r.parts.has("stock"):
-		_profile(r.root, [Vector2(-0.02, 0.09), Vector2(-0.1, 0.078), Vector2(-0.37, 0.07), Vector2(-0.38, -0.045),
-				Vector2(-0.355, -0.05), Vector2(-0.1, 0.03), Vector2(-0.02, 0.04)], 0.034, Vector3.ZERO, wood)
-		_box(r.root, Vector3(0.036, 0.12, 0.01), Vector3(0, 0.012, 0.382), mat("panel", DARK), Vector3(-3, 0, 0), 0.002)
-		_box(r.root, Vector3(0.036, 0.018, 0.04), Vector3(0, 0.058, 0.09), mat("panel", TAPE), Vector3(-6, 0, 0), 0.003)
-		r.butt = Vector3(0, 0.012, 0.387)
-		r.butt_h = 0.12
-		r.comb = Vector3(0, 0.074, 0.25)
-	# The lever loop under the wrist (a big loop part replaces it).
-	if r.parts.get("bolt", "") != "lever_loop":
-		_lever(r, 1.0)
-	_box(r.root, Vector3(0.005, 0.02, 0.006), Vector3(0, 0.03, -0.012), mat("panel", BLACK), Vector3(-10, 0, 0))
-	r.trig = Vector3(0, 0.03, -0.012)
-	r.grip_top = Vector3(0, 0.045, 0.04)
-	r.grip_rake = -5.0
-	_barrel(r, Vector3(0, y + 0.006, -0.105), 0.48, 0.0105, mat("panel", DARK))
-	# Buckhorn rear sight; the half-length tube magazine under the barrel and its band.
-	_box(r.root, Vector3(0.014, 0.01, 0.005), Vector3(0, y + 0.02, -0.17), mat("panel", DARK), Vector3.ZERO, 0.001)
-	r.tube_r = 0.0085
-	var tube_len := 0.3
-	r.tube_end = Vector3(0, 0.063, -0.105 - tube_len)
-	_rod(r.root, r.tube_r, r.tube_r, tube_len, Vector3(0, 0.063, -0.105 - tube_len / 2.0), mat("panel", DARK), 6)
-	_rod(r.root, r.tube_r * 1.15, r.tube_r * 1.15, 0.008, r.tube_end, mat("brass"), 6)
-	_box(r.root, Vector3(0.024, 0.034, 0.01), Vector3(0, 0.074, r.tube_end.z + 0.012), mat("panel", DARK), Vector3.ZERO, 0.002)
-	# Wooden forend round the barrel and tube.
-	_box(r.root, Vector3(0.03, 0.03, 0.19), Vector3(0, 0.068, -0.2), wood, Vector3.ZERO, 0.009)
-	r.mag = Vector3(0, 0.038, -0.07)
-	r.mag_style = "tube"
-	r.top = Vector3(0, 0.091, -0.04)
-	r.mount = Vector3(0, 0.091, -0.08)
-	r.rail_l = Vector3(-0.0155, 0.068, -0.2)
-	r.under = Vector3(0, 0.054, -0.44)
-	r.gadget = Vector3(-0.0155, 0.06, 0.0)
-	r.side = Vector3(0.018, 0.04, 0.25)
-	r.bolt = Vector3(0, -0.03, 0.02)
-	r.recv = Vector3(0, 0.064, -0.04)
-	r.body_w = 0.015
-	r.hg_start = -0.105
-	r.hg_end = -0.29
-	r.hg_y = 0.07
-	r.hg_r = 0.018
-
-
-## The lever loop under a lever action's wrist; `s` makes the big-loop part.
 static func _lever(r: Rig, s: float) -> void:
 	var m := mat("panel", STEEL if s > 1.0 else DARK)
 	var o := Vector3(0, 0.038, -0.02)
@@ -1663,59 +818,6 @@ static func _lever(r: Rig, s: float) -> void:
 			o + Vector3(0, -0.004, 0.08)], 0.0042 * minf(s, 1.3), m, 5)
 
 
-static func _lmg(r: Rig) -> void:
-	var y := 0.09
-	var body := mat("panel", DARK)
-	_box(r.root, Vector3(0.05, 0.075, 0.26), Vector3(0, y - 0.015, -0.03), body, Vector3.ZERO, 0.006)
-	# Feed tray cover with its latch, a rail on it, and the belt feeding in from the left.
-	_box(r.root, Vector3(0.052, 0.018, 0.16), Vector3(0, y + 0.03, -0.02), mat("panel", Color(0.4, 0.42, 0.38)), Vector3.ZERO, 0.004)
-	_box(r.root, Vector3(0.02, 0.01, 0.02), Vector3(0, y + 0.04, 0.065), mat("panel", BLACK), Vector3.ZERO, 0.002)
-	_pic(r, Vector3(0, y + 0.039, -0.02), 0.13)
-	_box(r.root, Vector3(0.006, 0.04, 0.05), Vector3(-0.027, y + 0.005, -0.05), mat("panel", BLACK), Vector3.ZERO, 0.002)
-	r.charging = Vector3(0.034, y - 0.0, -0.11)
-	if not r.parts.has("charging"):
-		_rod_between(r.root, Vector3(0.025, y, -0.11), r.charging, 0.004, mat("panel", STEEL))
-		_box(r.root, Vector3(0.006, 0.014, 0.012), r.charging, mat("panel", BLACK), Vector3.ZERO, 0.002)
-	_grip(r, Vector3(0, 0.045, 0.04), mat("panel", BLACK), Vector3(0.032, 0.1, 0.044), -18.0)
-	_trigger(r, 0.045, 0.01)
-	_barrel(r, Vector3(0, y, -0.16), 0.48, 0.0105, mat("panel", DARK))
-	# Carry handle over the barrel; gas cylinder under it.
-	_tube(r.root, [Vector3(0, y + 0.012, -0.19), Vector3(0, y + 0.05, -0.2), Vector3(0, y + 0.05, -0.27), Vector3(0, y + 0.012, -0.28)],
-			0.005, mat("panel", BLACK), 5)
-	_rod(r.root, 0.009, 0.009, 0.25, Vector3(0, y - 0.024, -0.285), mat("panel", DARK), 6)
-	r.gas = Vector3(0, y - 0.018, -0.42)
-	if not r.parts.has("gas"):
-		_box(r.root, Vector3(0.022, 0.04, 0.03), r.gas, mat("panel", DARK), Vector3.ZERO, 0.004)
-	r.hg_start = -0.16
-	r.hg_end = -0.32
-	r.hg_y = y - 0.01
-	r.hg_r = 0.028
-	if not r.parts.has("handguard"):
-		_box(r.root, Vector3(0.05, 0.036, 0.16), Vector3(0, y - 0.03, -0.24), mat("panel", BLACK), Vector3.ZERO, 0.008)
-		_box(r.root, Vector3(0.03, 0.012, 0.13), Vector3(0, y + 0.016, -0.235), mat("grate", Color(1.3, 1.3, 1.3)), Vector3.ZERO, 0.002)
-	r.stock = Vector3(0, y - 0.005, 0.1)
-	if not r.parts.has("stock"):
-		_profile(r.root, [Vector2(-0.098, 0.03), Vector2(-0.38, 0.02), Vector2(-0.4, -0.08), Vector2(-0.37, -0.085),
-				Vector2(-0.098, -0.04)], 0.04, Vector3(0, y, 0), mat("panel", Color(0.26, 0.27, 0.25)))
-		_box(r.root, Vector3(0.042, 0.1, 0.014), Vector3(0, y - 0.025, 0.402), mat("panel", BLACK), Vector3.ZERO, 0.004)
-		r.butt = Vector3(0, y - 0.025, 0.41)
-		r.butt_h = 0.1
-		r.comb = Vector3(0, y + 0.028, 0.28)
-	r.mag = Vector3(-0.005, y - 0.0525, -0.06)
-	r.mag_style = "belt"
-	if not r.parts.has("magazine"):
-		_belt_box(r, Vector3(0.05, 0.075, 0.1), mat("panel", OD))
-	r.top = Vector3(0, y + 0.046, -0.01)
-	r.mount = Vector3(0, y + 0.046, -0.07)
-	r.bolt = Vector3(0.026, y - 0.02, 0.01)
-	r.recv = Vector3(0, y - 0.015, -0.03)
-	r.body_w = 0.025
-	r.under = Vector3(0, y - 0.04, -0.4)
-	r.gadget = Vector3(0, y - 0.045, 0.16)
-	r.side = Vector3(0.022, y - 0.02, 0.3)
-
-
-## An ammo box hanging under the gun with the belt of rounds running up into its left side.
 static func _belt_box(r: Rig, size: Vector3, m: Material) -> void:
 	var c := r.mag + Vector3(0, -size.y / 2.0 - 0.004, 0)
 	_box(r.root, Vector3(0.03, 0.01, 0.04), r.mag + Vector3(0, -0.002, 0), mat("panel", BLACK), Vector3.ZERO, 0.002)
@@ -1732,72 +834,6 @@ static func _belt_box(r: Rig, size: Vector3, m: Material) -> void:
 		_box(r.root, Vector3(0.011, 0.006, 0.006), p + Vector3(0, 0, 0.006), mat("panel", BLACK), Vector3.ZERO, 0.001)
 
 
-static func _anti_materiel(r: Rig) -> void:
-	var y := 0.1
-	var sand := mat("panel", TAN)
-	var black := mat("panel", BLACK)
-	# A long slab of a receiver, sand-painted, with a long rail on top.
-	_box(r.root, Vector3(0.06, 0.05, 0.5), Vector3(0, y + 0.012, -0.05), sand, Vector3.ZERO, 0.006)
-	_box(r.root, Vector3(0.056, 0.04, 0.42), Vector3(0, y - 0.03, -0.01), mat("panel", DARK), Vector3.ZERO, 0.006)
-	_box(r.root, Vector3(0.061, 0.03, 0.08), Vector3(0, y + 0.012, -0.22), mat("rust_metal", RUST), Vector3.ZERO, 0.004)
-	_pic(r, Vector3(0, y + 0.037, -0.06), 0.42, 0.0, 0.024)
-	_grip(r, Vector3(0, 0.05, 0.035), black, Vector3(0.036, 0.11, 0.05), -18.0)
-	_trigger(r, 0.05, 0.0)
-	# A huge bolt handle on the right.
-	r.bolt = Vector3(0.068, y - 0.004, 0.13)
-	_rod_between(r.root, Vector3(0.03, y + 0.012, 0.11), r.bolt, 0.006, mat("panel", STEEL))
-	if r.parts.get("bolt", "") != "bolt_knob":
-		_ball(r.root, 0.014, r.bolt, black)
-	# Fat fluted barrel.
-	_barrel(r, Vector3(0, y + 0.004, -0.3), 0.58, 0.016, mat("panel", DARK), false)
-	for i in 4:
-		var a := TAU * i / 4.0 + PI / 4.0
-		_box(r.root, Vector3(0.004, 0.004, 0.3), Vector3(0, y + 0.004, -0.5) + Vector3(cos(a), sin(a), 0) * 0.016,
-				black, Vector3(0, 0, rad_to_deg(a)), 0.0)
-	if not r.parts.has("muzzle"):
-		# The double-chamber brake: two chunky baffles with ports, a pointed nose.
-		var m := r.muzzle
-		for i in 2:
-			var z := m.z - 0.018 - i * 0.034
-			_box(r.root, Vector3(0.07, 0.045, 0.026), Vector3(0, m.y, z), mat("panel", BLACK), Vector3.ZERO, 0.006)
-			_box(r.root, Vector3(0.072, 0.028, 0.012), Vector3(0, m.y, z - 0.004), mat("panel", BLACK, FIRE * 0.15), Vector3.ZERO, 0.0)
-		_rod(r.root, 0.02, 0.022, 0.016, m + Vector3(0, 0, -0.078), black, 8)
-		r.muzzle = m + Vector3(0, 0, -0.086)
-	# The bipod yoke clamped round the barrel at the front of the receiver.
-	_box(r.root, Vector3(0.05, 0.05, 0.04), Vector3(0, y - 0.004, -0.33), black, Vector3.ZERO, 0.006)
-	r.foregrip = Vector3(0, y - 0.03, -0.335)
-	# The stock is part of the gun: a long box, a fat recoil pad and a monopod under it.
-	r.stock = Vector3(0, y, 0.2)
-	if not r.parts.has("stock"):
-		_box(r.root, Vector3(0.05, 0.075, 0.25), Vector3(0, y - 0.01, 0.325), sand, Vector3.ZERO, 0.008)
-		_box(r.root, Vector3(0.04, 0.03, 0.12), Vector3(0, y + 0.04, 0.33), black, Vector3.ZERO, 0.006)
-		_box(r.root, Vector3(0.054, 0.11, 0.025), Vector3(0, y - 0.01, 0.462), black, Vector3.ZERO, 0.006)
-		_rod_between(r.root, Vector3(0, y - 0.05, 0.4), Vector3(0, y - 0.13, 0.405), 0.006, mat("panel", STEEL))
-		_box(r.root, Vector3(0.03, 0.006, 0.03), Vector3(0, y - 0.133, 0.405), black, Vector3.ZERO, 0.002)
-		r.butt = Vector3(0, y - 0.01, 0.475)
-		r.butt_h = 0.11
-		r.comb = Vector3(0, y + 0.055, 0.33)
-	r.mag = Vector3(0, y - 0.05, -0.02)
-	r.mag_len = 0.08
-	r.mag_w = 0.042
-	r.mag_d = 0.13
-	r.mag_tilt = 0.0
-	r.mag_curve = 0.0
-	if not r.parts.has("magazine"):
-		_std_mag(r, mat("panel", DARK))
-	r.top = Vector3(0, y + 0.044, 0.02)
-	r.mount = Vector3(0, y + 0.044, -0.2)
-	r.rail_l = Vector3(-0.03, y + 0.012, -0.25)
-	r.hg_start = -0.3
-	r.hg_end = -0.33
-	r.hg_y = y
-	r.hg_r = 0.03
-	r.recv = Vector3(0, y, -0.05)
-	r.body_w = 0.03
-	r.gadget = Vector3(0, y - 0.05, 0.22)
-	r.side = Vector3(0.026, y - 0.01, 0.33)
-
-
 # --- Shotguns ----------------------------------------------------------------------
 
 ## Two barrels side by side from `start` (the centre between them): returns the length.
@@ -1812,142 +848,6 @@ static func _twin_barrels(r: Rig, start: Vector3, length: float, radius: float, 
 	_box(r.root, Vector3(0.008, 0.004, len), start + Vector3(0, radius + 0.002, -len / 2.0), mat("panel", DARK), Vector3.ZERO, 0.001)
 	_ball(r.root, 0.0025, Vector3(0, start.y + radius + 0.006, r.muzzle.z + 0.006), mat("brass"))
 	return len
-
-
-static func _double_barrel(r: Rig) -> void:
-	var y := 0.085
-	var wood := mat("wood", WOOD)
-	_box(r.root, Vector3(0.05, 0.05, 0.09), Vector3(0, 0.07, -0.04), mat("panel", STEEL), Vector3.ZERO, 0.008)
-	_box(r.root, Vector3(0.052, 0.02, 0.05), Vector3(0, 0.06, -0.04), mat("brass", Color(1.0, 0.85, 0.6)), Vector3.ZERO, 0.004)
-	# Two hammers and two triggers.
-	for sx: float in [-1.0, 1.0]:
-		_box(r.root, Vector3(0.006, 0.024, 0.01), Vector3(sx * 0.012, 0.1, 0.005), mat("panel", DARK), Vector3(25, 0, 0), 0.002)
-	_box(r.root, Vector3(0.005, 0.02, 0.006), Vector3(0, 0.03, -0.028), mat("panel", BLACK), Vector3(-10, 0, 0))
-	_trigger(r, 0.045, 0.0)
-	r.trig = Vector3(0, 0.032, -0.012)
-	r.grip_top = Vector3(0, 0.045, 0.035)
-	r.grip_rake = -5.0
-	r.stock = Vector3(0, 0.072, 0.005)
-	if not r.parts.has("stock"):
-		_profile(r.root, [Vector2(-0.0, 0.092), Vector2(-0.1, 0.08), Vector2(-0.37, 0.075), Vector2(-0.38, -0.045),
-				Vector2(-0.355, -0.05), Vector2(-0.1, 0.03), Vector2(0.0, 0.045)], 0.036, Vector3.ZERO, wood)
-		_box(r.root, Vector3(0.038, 0.125, 0.01), Vector3(0, 0.015, 0.382), mat("panel", BLACK), Vector3(-2, 0, 0), 0.002)
-		# Shells in a leather cuff on the left of the stock.
-		_box(r.root, Vector3(0.004, 0.04, 0.07), Vector3(-0.02, 0.05, 0.22), mat("panel", Color(0.6, 0.4, 0.25)), Vector3(-6, 0, 0), 0.001)
-		for i in 3:
-			_round(r, _rod(r.root, 0.0075, 0.0075, 0.04, Vector3(-0.026, 0.05, 0.2 + i * 0.02), mat("panel", RED), 6, Vector3(-6, 0, 0)))
-		r.butt = Vector3(0, 0.015, 0.388)
-		r.butt_h = 0.125
-		r.comb = Vector3(0, 0.08, 0.25)
-	_twin_barrels(r, Vector3(0, y, -0.085), 0.56, 0.0125, mat("panel", STEEL))
-	_box(r.root, Vector3(0.04, 0.024, 0.16), Vector3(0, y - 0.019, -0.17), wood, Vector3.ZERO, 0.008)
-	if r.rounds.is_empty():
-		_round(r, _rod(r.root, 0.008, 0.008, 0.004, Vector3(0.0137, y, -0.083), mat("brass"), 8))
-	r.top = Vector3(0, y + 0.017, -0.06)
-	r.mount = Vector3(0, y + 0.017, -0.12)
-	r.rail_l = Vector3(-0.021, y - 0.019, -0.17)
-	r.mag_style = "none"
-	r.recv = Vector3(0, 0.07, -0.04)
-	r.body_w = 0.025
-	r.gadget = Vector3(0, 0.045, 0.1)
-	r.side = Vector3(0.019, 0.05, 0.24)
-	r.under = Vector3(0, y - 0.03, -0.4)
-	r.bolt = Vector3(0.025, 0.07, -0.04)
-
-
-static func _auto_shotgun(r: Rig) -> void:
-	var y := 0.085
-	var black := mat("panel", BLACK)
-	_box(r.root, Vector3(0.042, 0.06, 0.2), Vector3(0, y - 0.01, -0.03), mat("panel", POLY), Vector3.ZERO, 0.006)
-	_pic(r, Vector3(0, y + 0.02, -0.02), 0.17)
-	# Ghost-ring rear sight on the rail, a big charging handle, a shell in the port.
-	_tube(r.root, _ring(Vector3(0, y + 0.044, 0.055), 0.008, 8), 0.0025, black, 4)
-	_box(r.root, Vector3(0.006, 0.02, 0.01), Vector3(0, y + 0.032, 0.055), black, Vector3.ZERO, 0.001)
-	r.charging = Vector3(0.036, y - 0.004, -0.07)
-	if not r.parts.has("charging"):
-		_rod_between(r.root, Vector3(0.02, y - 0.004, -0.07), r.charging, 0.005, mat("panel", STEEL))
-		_box(r.root, Vector3(0.01, 0.014, 0.012), r.charging, mat("panel", STEEL), Vector3.ZERO, 0.002)
-	var port := Vector3(0.0215, y + 0.0, -0.02)
-	_box(r.root, Vector3(0.003, 0.02, 0.05), port, black, Vector3.ZERO, 0.0)
-	_round(r, _rod(r.root, 0.009, 0.009, 0.03, port + Vector3(-0.003, 0, 0), mat("panel", RED), 6))
-	_grip(r, Vector3(0, 0.05, 0.03), black, Vector3(0.032, 0.1, 0.044), -18.0)
-	_trigger(r, 0.05, 0.0)
-	_barrel(r, Vector3(0, y + 0.01, -0.13), 0.42, 0.012, mat("panel", DARK), true)
-	# Tube magazine and the twin gas pistons beside it.
-	r.tube_r = 0.012
-	var tube := minf(0.32, r.barrel_start.distance_to(r.muzzle) - 0.05)
-	r.tube_end = Vector3(0, y - 0.018, -0.13 - tube)
-	_rod(r.root, r.tube_r, r.tube_r, tube, Vector3(0, y - 0.018, -0.13 - tube / 2.0), mat("panel", DARK), 6)
-	_rod(r.root, r.tube_r * 1.1, r.tube_r * 1.1, 0.014, r.tube_end, black, 6)
-	r.gas = Vector3(0, y - 0.004, -0.315)
-	if not r.parts.has("gas"):
-		for sx: float in [-1.0, 1.0]:
-			_rod(r.root, 0.005, 0.005, 0.05, r.gas + Vector3(sx * 0.016, 0, 0.02), mat("panel", STEEL), 6)
-	r.hg_start = -0.13
-	r.hg_end = -0.29
-	r.hg_y = y - 0.004
-	r.hg_r = 0.024
-	if not r.parts.has("handguard"):
-		_box(r.root, Vector3(0.046, 0.042, 0.16), Vector3(0, y - 0.01, -0.21), mat("panel", POLY), Vector3.ZERO, 0.01)
-		for i in 5:
-			_box(r.root, Vector3(0.048, 0.006, 0.006), Vector3(0, y - 0.024, -0.15 - i * 0.025), black, Vector3.ZERO, 0.001)
-	r.stock = Vector3(0, y - 0.005, 0.07)
-	if not r.parts.has("stock"):
-		_profile(r.root, [Vector2(-0.068, 0.02), Vector2(-0.39, 0.012), Vector2(-0.4, -0.085), Vector2(-0.375, -0.09),
-				Vector2(-0.12, -0.04), Vector2(-0.068, -0.04)], 0.038, Vector3(0, y, 0), mat("panel", OD))
-		_box(r.root, Vector3(0.04, 0.1, 0.014), Vector3(0, y - 0.035, 0.402), black, Vector3.ZERO, 0.004)
-		r.butt = Vector3(0, y - 0.035, 0.41)
-		r.butt_h = 0.1
-		r.comb = Vector3(0, y + 0.016, 0.26)
-	r.mag = Vector3(0, y - 0.04, -0.07)
-	r.mag_style = "tube"
-	r.mag_len = 0.1
-	r.mag_w = 0.03
-	r.mag_d = 0.06
-	r.mag_tilt = 4.0
-	r.top = Vector3(0, y + 0.027, -0.02)
-	r.mount = Vector3(0, y + 0.027, -0.08)
-	r.bolt = port + Vector3(0.002, 0, 0)
-	r.recv = Vector3(0, y - 0.01, -0.03)
-	r.body_w = 0.021
-	r.under = Vector3(0, y - 0.034, -0.36)
-	r.gadget = Vector3(0, y - 0.04, 0.12)
-	r.side = Vector3(0.02, y - 0.02, 0.28)
-
-
-static func _sawed_off(r: Rig) -> void:
-	var y := 0.085
-	_box(r.root, Vector3(0.05, 0.05, 0.085), Vector3(0, 0.072, -0.035), mat("panel", DARK), Vector3.ZERO, 0.008)
-	for sx: float in [-1.0, 1.0]:
-		_box(r.root, Vector3(0.006, 0.024, 0.01), Vector3(sx * 0.012, 0.1, 0.008), mat("panel", DARK), Vector3(25, 0, 0), 0.002)
-	# What is left of the stock: a hacked-off wooden grip, the raw cut showing.
-	_grip(r, Vector3(0, 0.06, 0.03), mat("wood", WOOD), Vector3(0.034, 0.095, 0.05), -32.0)
-	if not r.parts.has("grip"):
-		var cut := r.grip_top + _grip_down(-32.0) * 0.095
-		_box(r.root, Vector3(0.036, 0.008, 0.052), cut, mat("wood", Color(1.5, 1.25, 0.95)), Vector3(-32, 0, 0), 0.002)
-	_box(r.root, Vector3(0.036, 0.04, 0.05), Vector3(0, 0.06, 0.03), mat("wood", WOOD), Vector3(-10, 0, 0), 0.008)
-	_trigger(r, 0.048, 0.0)
-	_twin_barrels(r, Vector3(0, y, -0.078), 0.25, 0.0125, mat("panel", STEEL))
-	# Hacksaw-bright cut at the end, and tape where the forend used to be.
-	for sx: float in [-1.0, 1.0]:
-		_rod(r.root, 0.0128, 0.0128, 0.006, Vector3(sx * r.twin, y, r.muzzle.z + 0.003), mat("panel", NICKEL), 6)
-	_box(r.root, Vector3(0.056, 0.032, 0.05), Vector3(0, y - 0.004, -0.15), mat("panel", TAPE), Vector3.ZERO, 0.006)
-	# Two spare shells taped on the left side.
-	for i in 2:
-		_round(r, _rod(r.root, 0.0075, 0.0075, 0.04, Vector3(-0.027, 0.07, -0.05 + i * 0.016), mat("panel", RED), 6, Vector3.ZERO))
-	_box(r.root, Vector3(0.006, 0.012, 0.04), Vector3(-0.026, 0.07, -0.042), mat("panel", TAPE), Vector3.ZERO, 0.002)
-	r.top = Vector3(0, y + 0.017, -0.06)
-	r.mount = Vector3(0, y + 0.017, -0.12)
-	r.rail_l = Vector3(-0.026, y - 0.004, -0.2)
-	r.mag_style = "none"
-	r.stock = Vector3(0, 0.07, 0.05)
-	r.recv = Vector3(0, 0.072, -0.035)
-	r.body_w = 0.025
-	r.gadget = _grip_bottom(r) + Vector3(0, 0, 0.02)
-	r.side = Vector3(0.026, 0.07, -0.04)
-	r.bolt = Vector3(0.025, 0.072, -0.035)
-	r.under = Vector3(0, y - 0.03, -0.25)
-
 
 
 # --- Anchors ----------------------------------------------------------------------
@@ -2099,87 +999,127 @@ static func _muzzle(r: Rig, id: String) -> void:
 
 ## Draws one muzzle device starting at `m` on a barrel of radius `br`; returns its length.
 static func _muzzle_device(r: Rig, id: String, m: Vector3, br: float) -> float:
+	var black := fin("black")
+	var bore := fin("bore")
 	match id:
+		"rocket_nozzle":
+			# A rocket-engine bell facing forward: the gas goes out the front and pushes you back.
+			_turn(r.root, [Vector2(-0.075, br * 3.4), Vector2(-0.072, br * 3.6), Vector2(-0.05, br * 2.4), Vector2(-0.025, br * 1.6),
+					Vector2(-0.02, br * 1.9), Vector2(0.0, br * 1.9)], m, fin("oxide"), 22)
+			_turn(r.root, [Vector2(-0.073, br * 3.1), Vector2(-0.05, br * 2.0), Vector2(-0.03, br * 1.1)], m, bore, 20)
+			for i in 4:
+				_turn(r.root, [Vector2(-0.0015, br * 2.0), Vector2(0.0015, br * 2.0)], m + Vector3(0, 0, -0.004 - i * 0.005), black, 18)
+			return 0.075
+		"bell_mouth":
+			# A blunderbuss bell in brass.
+			_turn(r.root, [Vector2(-0.09, br * 3.4), Vector2(-0.087, br * 3.5), Vector2(-0.06, br * 2.0), Vector2(-0.02, br * 1.4), Vector2(0.0, br * 1.5)],
+					m, fin("brass"), 22)
+			_turn(r.root, [Vector2(-0.088, br * 3.1), Vector2(-0.06, br * 1.6), Vector2(-0.04, br * 1.0)], m, bore, 20)
+			return 0.09
+		"grapple_spike":
+			# A steel collar with four hooked claws reaching forward.
+			_turn(r.root, [Vector2(-0.03, br * 1.6), Vector2(-0.028, br * 1.9), Vector2(-0.004, br * 1.9), Vector2(0.0, br * 1.6)], m, fin("steel"), 18)
+			for i in 4:
+				var a := TAU * i / 4.0 + PI / 4.0
+				var d := Vector3(cos(a), sin(a), 0)
+				_tube(r.root, [m + d * br * 1.8 + Vector3(0, 0, -0.02), m + d * br * 2.8 + Vector3(0, 0, -0.04), m + d * br * 3.0 + Vector3(0, 0, -0.058),
+						m + d * br * 2.0 + Vector3(0, 0, -0.064)], 0.0022, fin("bare"), 8)
+			_cyl(r.root, br * 0.6, 0.0016, m + Vector3(0, 0, -0.0302), bore, 12)
+			return 0.03
+		"turbine_brake":
+			# A spinning brake: a drum with angled vanes round it.
+			_turn(r.root, [Vector2(-0.055, br * 1.5), Vector2(-0.052, br * 2.0), Vector2(-0.006, br * 2.0), Vector2(0.0, br * 1.5)], m, black, 20)
+			for i in 8:
+				var a := TAU * i / 8.0
+				_box(r.root, Vector3(0.0018, br * 1.4, 0.04), m + Vector3(cos(a), sin(a), 0) * br * 2.3 + Vector3(0, 0, -0.03), fin("bare"),
+						Vector3(0, 25, rad_to_deg(a) + 90.0), 0.0)
+			_cyl(r.root, br * 0.7, 0.0016, m + Vector3(0, 0, -0.0552), bore, 12)
+			return 0.055
 		"suppressor":
-			# An oil filter on a pipe adapter, hose-clamped on.
-			_rod(r.root, br * 1.3, br * 1.3, 0.02, m + Vector3(0, 0, -0.01), mat("panel", DARK), 6)
+			# A direct-thread can: knurled mount, a long body, a stepped front cap.
 			var rad := maxf(br * 2.2, 0.018)
-			_rod(r.root, rad, rad, 0.13, m + Vector3(0, 0, -0.085), mat("panel", Color(0.25, 0.32, 0.6)), 10)
-			_rod(r.root, rad * 1.05, rad * 1.05, 0.03, m + Vector3(0, 0, -0.085), mat("panel", BONE), 10)
-			_rod(r.root, rad * 0.8, rad * 0.8, 0.008, m + Vector3(0, 0, -0.152), mat("panel", BLACK), 10)
+			_turn(r.root, [Vector2(-0.155, rad * 0.5), Vector2(-0.152, rad * 0.85), Vector2(-0.145, rad), Vector2(-0.02, rad), Vector2(-0.018, br * 1.4),
+					Vector2(0.0, br * 1.4)], m, fin("black"), 20)
+			for i in 6:
+				_turn(r.root, [Vector2(-0.0015, rad * 1.015), Vector2(0.0015, rad * 1.015)], m + Vector3(0, 0, -0.03 - i * 0.004), fin("bore"), 20)
+			_cyl(r.root, br * 0.7, 0.0016, m + Vector3(0, 0, -0.1552), bore, 12)
 			return 0.155
 		"compensator":
-			var size := maxf(br * 2.6, 0.024)
-			_box(r.root, Vector3(size, size, 0.045), m + Vector3(0, 0, -0.022), mat("panel", DARK), Vector3.ZERO, 0.004)
+			# A squared comp with three top ports.
+			var size := maxf(br * 2.6, 0.022)
+			_slab(r.root, [Vector2(m.z, m.y + size / 2.0), Vector2(m.z - 0.04, m.y + size / 2.0), Vector2(m.z - 0.045, m.y + size * 0.3),
+					Vector2(m.z - 0.045, m.y - size / 2.0), Vector2(m.z, m.y - size / 2.0)], size, black, m.x, 0.002)
 			for i in 3:
-				_box(r.root, Vector3(size * 0.7, 0.006, 0.006), m + Vector3(0, size / 2.0, -0.01 - i * 0.012), mat("panel", BLACK, FIRE * 0.25), Vector3.ZERO, 0.0)
+				_box(r.root, Vector3(size * 0.6, 0.0016, 0.006), m + Vector3(0, size / 2.0 + 0.0002, -0.01 - i * 0.012), bore, Vector3.ZERO, 0.0)
 			return 0.045
 		"muzzle_brake":
-			# A chunky brake with big side ports.
+			# A tank-style brake: a block with big side windows.
 			var w := maxf(br * 3.4, 0.03)
-			_box(r.root, Vector3(w, br * 2.4, 0.06), m + Vector3(0, 0, -0.03), mat("panel", BLACK), Vector3.ZERO, 0.004)
+			_slab(r.root, [Vector2(m.z, m.y + br * 1.2), Vector2(m.z - 0.056, m.y + br * 1.2), Vector2(m.z - 0.06, m.y + br * 0.8),
+					Vector2(m.z - 0.06, m.y - br * 1.2), Vector2(m.z, m.y - br * 1.2)], w, black, m.x, 0.002)
 			for i in 3:
-				_box(r.root, Vector3(w + 0.002, br * 1.3, 0.008), m + Vector3(0, 0, -0.012 - i * 0.017), mat("panel", DARK, FIRE * 0.12), Vector3.ZERO, 0.0)
+				_box(r.root, Vector3(w + 0.0012, br * 1.4, 0.009), m + Vector3(0, 0, -0.012 - i * 0.016), bore, Vector3.ZERO, 0.0)
+			_cyl(r.root, br * 0.6, 0.0016, m + Vector3(0, 0, -0.0602), bore, 12)
 			return 0.06
 		"flash_hider":
-			# A birdcage: a lathed sleeve with open slots.
-			_lathe_z(r.root, [Vector2(br * 1.25, -0.05), Vector2(br * 1.55, -0.046), Vector2(br * 1.55, -0.01), Vector2(br * 1.2, 0.0)],
-					m, mat("panel", DARK), 6)
-			for i in 3:
-				var a := TAU * i / 3.0 + 0.5
-				_box(r.root, Vector3(0.003, 0.003, 0.028), m + Vector3(cos(a) * br * 1.56, sin(a) * br * 1.56, -0.03), mat("panel", BLACK, FIRE * 0.1),
-						Vector3(0, 0, rad_to_deg(a)), 0.0)
+			_turn(r.root, [Vector2(-0.05, br * 1.3), Vector2(-0.047, br * 1.5), Vector2(-0.008, br * 1.5), Vector2(0.0, br * 1.25)], m, black, 16)
+			for i in 4:
+				var ang := TAU * i / 4.0 + PI / 4.0
+				_box(r.root, Vector3(0.0018, 0.004, 0.03), m + Vector3(cos(ang), sin(ang), 0) * br * 1.5 + Vector3(0, 0, -0.03), bore,
+						Vector3(0, 0, rad_to_deg(ang) + 90.0), 0.0)
+			_cyl(r.root, br * 0.9, 0.0016, m + Vector3(0, 0, -0.0502), bore, 12)
 			return 0.05
 		"thread_adapter":
-			_rod(r.root, br * 1.25, br * 1.25, 0.02, m + Vector3(0, 0, -0.01), mat("brass"), 8)
-			_rod(r.root, br * 1.35, br * 1.35, 0.004, m + Vector3(0, 0, -0.004), mat("panel", DARK), 8)
+			_turn(r.root, [Vector2(-0.02, br * 1.2), Vector2(-0.004, br * 1.2), Vector2(-0.004, br * 1.4), Vector2(0.0, br * 1.4)], m, fin("bare"), 16)
 			return 0.02
 		"linear_comp":
-			_rod(r.root, br * 2.0, br * 1.6, 0.05, m + Vector3(0, 0, -0.025), mat("panel", DARK), 8)
-			_rod(r.root, br * 1.8, br * 1.8, 0.004, m + Vector3(0, 0, -0.05), mat("panel", BLACK, FIRE * 0.1), 8)
-			for i in 4:
-				var a := TAU * i / 4.0
-				_box(r.root, Vector3(0.004, 0.004, 0.006), m + Vector3(cos(a) * br * 1.9, sin(a) * br * 1.9, -0.038), mat("panel", BLACK), Vector3.ZERO, 0.0)
+			_turn(r.root, [Vector2(-0.05, br * 1.6), Vector2(-0.048, br * 2.0), Vector2(-0.006, br * 2.0), Vector2(0.0, br * 1.4)], m, black, 18)
+			for i in 6:
+				var ang := TAU * i / 6.0
+				_cyl_x(r.root, 0.0025, 0.002, m + Vector3(cos(ang), sin(ang), 0) * br * 2.0 + Vector3(0, 0, -0.012), bore, 8).rotation_degrees = Vector3(0, 90, rad_to_deg(ang))
+			_cyl(r.root, br * 1.4, 0.0016, m + Vector3(0, 0, -0.0502), bore, 12)
 			return 0.05
 		"solvent_trap":
-			# A torch tube full of freeze plugs, ribbed, gaffer-taped at the joint.
+			# A ribbed aluminium tube with cups inside, in sand cerakote.
 			var rad := maxf(br * 2.0, 0.019)
-			_rod(r.root, br * 1.3, br * 1.3, 0.02, m + Vector3(0, 0, -0.01), mat("brass"), 6)
-			_rod(r.root, rad, rad, 0.16, m + Vector3(0, 0, -0.1), mat("panel", Color(0.75, 0.78, 0.8)), 8)
+			_turn(r.root, [Vector2(-0.18, rad * 0.7), Vector2(-0.176, rad), Vector2(-0.02, rad), Vector2(-0.016, br * 1.3), Vector2(0.0, br * 1.3)],
+					m, fin("sand"), 20)
 			for i in 6:
-				_rod(r.root, rad * 1.06, rad * 1.06, 0.004, m + Vector3(0, 0, -0.035 - i * 0.025), mat("panel", DARK), 8)
-			_rod(r.root, rad * 1.08, rad * 1.08, 0.02, m + Vector3(0, 0, -0.03), mat("panel", BLACK), 8)
+				_turn(r.root, [Vector2(-0.002, rad * 1.04), Vector2(0.002, rad * 1.04)], m + Vector3(0, 0, -0.035 - i * 0.025), fin("black"), 20)
 			return 0.18
 		"bottle_can":
-			# A soda bottle taped over the muzzle, neck first.
+			# A clear bottle over the muzzle: glass, a rubber collar.
 			var rad := maxf(br * 2.8, 0.03)
 			_lathe_z(r.root, [Vector2(0.0, -0.22), Vector2(rad * 0.8, -0.218), Vector2(rad, -0.2), Vector2(rad, -0.06),
-					Vector2(rad * 0.4, -0.02), Vector2(br * 1.4, 0.0), Vector2(0.0, 0.002)], m, mat("panel", Color(0.45, 0.85, 0.55), Color(0.03, 0.1, 0.05)), 8)
-			_rod(r.root, rad * 1.04, rad * 1.04, 0.06, m + Vector3(0, 0, -0.13), mat("panel", RED), 8)
-			_rod(r.root, br * 1.6, br * 1.6, 0.03, m + Vector3(0, 0, -0.01), mat("panel", TAPE), 6)
+					Vector2(rad * 0.4, -0.02), Vector2(br * 1.4, 0.0), Vector2(0.0, 0.002)], m, fin("glass"), 10)
+			_turn(r.root, [Vector2(-0.03, br * 1.6), Vector2(0.0, br * 1.6)], m, fin("rubber"), 16)
 			return 0.22
 		"choke":
-			_rod(r.root, br * 0.9, br * 1.35, 0.055, m + Vector3(0, 0, -0.027), mat("brass"), 8)
+			_turn(r.root, [Vector2(-0.055, br * 0.95), Vector2(-0.052, br * 1.3), Vector2(-0.006, br * 1.3), Vector2(0.0, br * 1.1)], m, fin("bare"), 18)
+			for i in 6:
+				var ang := TAU * i / 6.0
+				_box(r.root, Vector3(0.002, 0.002, 0.012), m + Vector3(cos(ang), sin(ang), 0) * br * 1.31 + Vector3(0, 0, -0.012), black,
+						Vector3(0, 0, rad_to_deg(ang)), 0.0)
 			return 0.055
 		"duckbill":
-			# Flattened into a wide horizontal slot.
-			_put(r.root, LowPoly.chamfer_box(Vector3(br * 4.0, br * 0.9, 0.05), 0.002), m + Vector3(0, 0, -0.03), mat("panel", DARK))
-			_rod(r.root, br * 1.2, br * 1.2, 0.015, m + Vector3(0, 0, -0.006), mat("panel", DARK), 6)
+			_slab(r.root, [Vector2(m.z, m.y + br * 1.1), Vector2(m.z - 0.05, m.y + br * 0.5), Vector2(m.z - 0.055, m.y + br * 0.4),
+					Vector2(m.z - 0.055, m.y - br * 0.4), Vector2(m.z - 0.05, m.y - br * 0.5), Vector2(m.z, m.y - br * 1.1)], br * 4.0, black, m.x, 0.002)
+			_box(r.root, Vector3(br * 3.4, br * 0.35, 0.0016), m + Vector3(0, 0, -0.0552), bore, Vector3.ZERO, 0.0)
 			return 0.055
 		"breacher":
-			_rod(r.root, br * 1.5, br * 1.5, 0.03, m + Vector3(0, 0, -0.015), mat("panel", DARK), 8)
+			_turn(r.root, [Vector2(-0.03, br * 1.5), Vector2(0.0, br * 1.5)], m, black, 16)
 			for i in 6:
-				var a := TAU * i / 6.0
-				_rod(r.root, 0.0, 0.004, 0.016, m + Vector3(cos(a) * br * 1.3, sin(a) * br * 1.3, -0.036), mat("panel", STEEL), 4)
+				var ang := TAU * i / 6.0
+				_rod(r.root, 0.0, 0.004, 0.016, m + Vector3(cos(ang) * br * 1.3, sin(ang) * br * 1.3, -0.036), fin("bare"), 4)
 			return 0.044
 		"wide_nozzle":
 			_lathe_z(r.root, [Vector2(0.0, -0.075), Vector2(0.05, -0.074), Vector2(0.05, -0.068), Vector2(0.022, -0.02), Vector2(0.018, 0.0),
-					Vector2(0.0, 0.002)], m, mat("brass", COPPER), 10)
+					Vector2(0.0, 0.002)], m, fin("copper"), 12)
 			return 0.075
 		"long_nozzle":
-			_rod(r.root, 0.012, 0.016, 0.18, m + Vector3(0, 0, -0.09), mat("pipe", Color(1.1, 1.0, 0.95)), 6)
-			_rod(r.root, 0.02, 0.014, 0.025, m + Vector3(0, 0, -0.19), mat("brass", COPPER), 8)
-			_rod(r.root, 0.017, 0.017, 0.01, m + Vector3(0, 0, -0.07), mat("panel", YELLOW), 6)
+			_turn(r.root, [Vector2(-0.18, 0.012), Vector2(0.0, 0.016)], m + Vector3(0, 0, 0.0), fin("bare"), 14)
+			_turn(r.root, [Vector2(-0.2, 0.014), Vector2(-0.18, 0.02), Vector2(-0.175, 0.012)], m, fin("copper"), 14)
+			_turn(r.root, [Vector2(-0.075, 0.017), Vector2(-0.065, 0.017)], m, fin("sulfur"), 14)
 			return 0.2
 	_generic(r, m + Vector3(0, 0, -0.015), id)
 	return 0.03
@@ -2192,42 +1132,45 @@ static func _silencer(r: Rig, id: String) -> void:
 	var br := maxf(r.barrel_r, 0.008)
 	var length := maxf(_part_len(id, 0.14), r.device_len + 0.04)
 	var rad := maxf(br * 2.3, 0.02)
-	var body := mat("panel", BLACK)
-	var cap := mat("panel", DARK)
+	var body := fin("black")
 	match id:
 		"can_light":
-			body = mat("panel", Color(0.22, 0.22, 0.24))
+			body = fin("steel")
 		"can_heavy":
 			rad = maxf(br * 2.8, 0.025)
-			body = mat("panel", OD)
+			body = fin("green")
 		"can_titanium":
 			rad = maxf(br * 2.1, 0.018)
-			body = mat("panel", Color(0.55, 0.6, 0.75))
+			body = fin("bare")
 		"can_wet":
-			body = mat("panel", Color(0.3, 0.34, 0.4))
+			body = fin("black")
 		_:
-			body = mat("panel", Color.from_hsv(float(absi(hash(id)) % 360) / 360.0, 0.3, 0.5))
+			body = fin("oxide")
 	if r.twin > 0.0:
 		rad = minf(rad, r.twin * 0.98)
 	var xs: Array = [0.0] if r.twin <= 0.0 else [-r.twin, r.twin]
 	for x: float in xs:
 		var b := back + Vector3(x, 0, 0)
-		_rod(r.root, rad, rad, length, b + Vector3(0, 0, -length / 2.0), body, 10)
-		_rod(r.root, rad * 1.08, rad * 1.08, 0.016, b + Vector3(0, 0, -0.008), cap, 10)
-		_rod(r.root, rad * 0.75, rad, 0.008, b + Vector3(0, 0, -length - 0.004), cap, 10)
+		# Body with a stepped front cap, a QD collar with a ratchet ring at the back.
+		_turn(r.root, [Vector2(-length, rad * 0.4), Vector2(-length + 0.002, rad * 0.78), Vector2(-length + 0.008, rad * 0.86),
+				Vector2(-length + 0.01, rad), Vector2(-0.024, rad), Vector2(-0.022, rad * 1.08), Vector2(0.0, rad * 1.08)], b, body, 22)
+		for i in 8:
+			var ang := TAU * i / 8.0
+			_box(r.root, Vector3(0.0016, 0.0024, 0.018), b + Vector3(cos(ang), sin(ang), 0) * rad * 1.08 + Vector3(0, 0, -0.011), fin("bore"),
+					Vector3(0, 0, rad_to_deg(ang) + 90.0), 0.0)
+		_cyl(r.root, br * 0.7, 0.0016, b + Vector3(0, 0, -length - 0.0002), fin("bore"), 12)
 		match id:
 			"can_light":
-				_box(r.root, Vector3(0.006, 0.008, 0.012), b + Vector3(rad, 0, -0.01), mat("panel", STEEL), Vector3.ZERO, 0.001)
+				_box(r.root, Vector3(0.004, 0.008, 0.012), b + Vector3(rad, 0, -0.012), fin("oxide"), Vector3.ZERO, 0.001)
 			"can_heavy":
-				_rod(r.root, rad * 1.03, rad * 1.03, 0.04, b + Vector3(0, 0, -length * 0.55), mat("panel", TAPE), 10)
-				_box(r.root, Vector3(0.008, 0.01, 0.014), b + Vector3(rad, 0, -0.01), mat("panel", BLACK), Vector3.ZERO, 0.001)
+				for i in 5:
+					_turn(r.root, [Vector2(-0.002, rad * 1.025), Vector2(0.002, rad * 1.025)], b + Vector3(0, 0, -length * 0.3 - i * 0.012), fin("black"), 22)
 			"can_titanium":
 				for i in 3:
-					_rod(r.root, rad * 1.02, rad * 1.02, 0.003, b + Vector3(0, 0, -0.03 - i * 0.015), mat("panel", BLUE), 10)
+					_turn(r.root, [Vector2(-0.0012, rad * 1.012), Vector2(0.0012, rad * 1.012)], b + Vector3(0, 0, -0.04 - i * 0.014), fin("copper"), 22)
 			"can_wet":
-				_rod(r.root, 0.005, 0.005, 0.012, b + Vector3(0, rad + 0.004, -length * 0.5), mat("panel", BLUE), 6, Vector3.ZERO)
-				_ball(r.root, 0.004, b + Vector3(0, -rad - 0.003, -length + 0.02), mat("panel", BLUE, Color(0.05, 0.12, 0.3)), Vector3(1, 1.5, 1))
-	r.muzzle = Vector3(0, back.y, back.z - length - 0.008)
+				_cyl_y(r.root, 0.004, 0.012, b + Vector3(0, rad + 0.004, -length * 0.5), fin("sulfur"), 10)
+	r.muzzle = Vector3(0, back.y, back.z - length - 0.002)
 
 
 ## Gas parts: a cue on the gas block. Under a handguard the knob or rod sticks out the side.
@@ -2259,53 +1202,58 @@ static func _handguard(r: Rig, id: String) -> void:
 	var b := r.hg_end
 	var y := r.hg_y
 	var hr := r.hg_r
-	var black := mat("panel", BLACK)
 	var outer := hr
 	match id:
 		"short_handguard":
 			b = lerpf(a, b, 0.62)
-			_rod(r.root, hr, hr, absf(b - a), Vector3(0, y, (a + b) / 2.0), mat("panel", DARK), 8)
-			_mlok(r, a, b, y, hr)
-			_pic(r, Vector3(0, y + hr * 0.92, (a + b) / 2.0), absf(b - a) - 0.01)
+			GunFrames._mlok_tube(r, y, a, b, hr, fin("black"))
 		"long_handguard":
 			b = minf(b, lerpf(a, r.muzzle.z, 0.82))
-			_rod(r.root, hr + 0.002, hr + 0.002, absf(b - a), Vector3(0, y, (a + b) / 2.0), mat("panel", TAN), 8)
-			_mlok(r, a, b, y, hr + 0.002)
-			_pic(r, Vector3(0, y + hr * 0.94, (a + b) / 2.0), absf(b - a) - 0.01)
+			GunFrames._mlok_tube(r, y, a, b, hr + 0.002, fin("poly_tan"))
 			outer = hr + 0.002
 		"quad_rail":
 			var len := absf(b - a)
-			_box(r.root, Vector3(hr * 1.8, hr * 1.8, len), Vector3(0, y, (a + b) / 2.0), mat("panel", DARK), Vector3(0, 0, 0), 0.006)
+			var oct := GunKit.turned(PackedVector2Array([Vector2(-len / 2.0, hr * 0.85), Vector2(-len / 2.0 + 0.003, hr * 0.95),
+					Vector2(len / 2.0, hr * 0.95)]), 8)
+			_put(r.root, oct, Vector3(0, y, (a + b) / 2.0), fin("black"), Vector3(0, 0, 22.5))
 			for roll: float in [0.0, 90.0, -90.0, 180.0]:
 				var dir := Vector3(0, 1, 0).rotated(Vector3(0, 0, 1), deg_to_rad(roll))
 				_pic(r, Vector3(0, y, (a + b) / 2.0) + dir * hr * 0.9, len - 0.006, roll, 0.019)
-			_box(r.root, Vector3(hr * 1.9, hr * 1.9, 0.012), Vector3(0, y, a - 0.006), black, Vector3.ZERO, 0.002)
+			_turn(r.root, [Vector2(-0.006, hr * 1.05), Vector2(0.006, hr * 1.05)], Vector3(0, y, a - 0.006), fin("black"), 16)
 			outer = hr * 0.9 + 0.007
 		"wood_handguard":
-			_rod(r.root, hr + 0.003, hr + 0.003, absf(b - a), Vector3(0, y, (a + b) / 2.0), mat("wood", WOOD), 8)
+			# Laminate furniture: a two-piece guard held by a pair of steel bands.
+			_turn(r.root, [Vector2(-absf(b - a), hr * 0.9), Vector2(-absf(b - a) + 0.006, hr + 0.003), Vector2(-0.004, hr + 0.003),
+					Vector2(0.0, hr * 0.92)], Vector3(0, y, a), fin("laminate"), 14)
 			for z: float in [a - 0.006, b + 0.006]:
-				_rod(r.root, hr + 0.004, hr + 0.004, 0.008, Vector3(0, y, z), mat("brass", COPPER), 8)
-			for i in 4:
-				_box(r.root, Vector3(0.003, 0.012, 0.014), Vector3(-(hr + 0.003), y, lerpf(a, b, 0.2 + i * 0.2)), black, Vector3.ZERO, 0.0)
+				_turn(r.root, [Vector2(-0.004, hr + 0.0045), Vector2(0.004, hr + 0.0045)], Vector3(0, y, z), fin("steel"), 16)
+			_seam(r, Vector2(a, y), Vector2(b, y), hr + 0.0028)
 			outer = hr + 0.003
 		"heatshield":
-			_rod(r.root, hr + 0.002, hr + 0.002, absf(b - a), Vector3(0, y, (a + b) / 2.0), mat("grate", Color(1.4, 1.4, 1.45)), 10)
+			_turn(r.root, [Vector2(-absf(b - a), hr + 0.002), Vector2(0.0, hr + 0.002)], Vector3(0, y, a), fin("steel"), 16)
+			var holes := int(absf(b - a) / 0.016)
+			for i in holes:
+				for ang: float in [40.0, 90.0, 140.0, 220.0, 320.0]:
+					var dir := Vector3(cos(deg_to_rad(ang)), sin(deg_to_rad(ang)), 0)
+					var hole := _cyl_x(r.root, 0.004, 0.0015, Vector3(0, y, a - 0.01 - i * 0.016 - (0.008 if int(ang) % 80 == 0 else 0.0)) + dir * (hr + 0.0022),
+							fin("bore"), 8)
+					hole.rotation_degrees = Vector3(0, 90, ang)
 			for z: float in [a, b, (a + b) / 2.0]:
-				_rod(r.root, hr + 0.004, hr + 0.004, 0.008, Vector3(0, y, z), mat("panel", DARK), 10)
+				_turn(r.root, [Vector2(-0.004, hr + 0.004), Vector2(0.004, hr + 0.004)], Vector3(0, y, z), fin("black"), 16)
 			_pic(r, Vector3(0, y + hr * 0.95, lerpf(a, b, 0.25)), absf(b - a) * 0.4)
 			outer = hr + 0.002
 		"pump_rail":
-			# A pump with a short rail down the left and a grip spot underneath.
+			# A railed pump: a squared polymer forend with grip ribs, rails left and under.
 			var len := absf(b - a)
-			_box(r.root, Vector3(hr * 2.1, hr * 2.0, len), Vector3(0, y, (a + b) / 2.0), black, Vector3.ZERO, 0.006)
-			for i in 5:
-				_box(r.root, Vector3(hr * 2.15, 0.004, 0.006), Vector3(0, y - hr * 0.5, a - 0.015 - i * len / 6.0), mat("panel", DARK), Vector3.ZERO, 0.0)
+			_slab(r.root, [Vector2(a, y + hr * 0.9), Vector2(b, y + hr * 0.9), Vector2(b - 0.004, y), Vector2(b, y - hr), Vector2(a, y - hr),
+					Vector2(a + 0.004, y)], hr * 2.1, fin("polymer"), 0.0, 0.004)
+			for i in 6:
+				_box(r.root, Vector3(hr * 2.1 + 0.001, 0.003, 0.004), Vector3(0, y - hr * 0.3, a - 0.012 - i * len / 7.0), fin("bore"), Vector3.ZERO, 0.0)
 			_pic(r, Vector3(-hr * 1.05, y, (a + b) / 2.0), len - 0.02, 90.0, 0.018)
 			_pic(r, Vector3(0, y - hr, (a + b) / 2.0), len - 0.02, 180.0, 0.018)
 			outer = hr * 1.05 + 0.007
 		_:
-			_rod(r.root, hr + 0.002, hr + 0.002, absf(b - a), Vector3(0, y, (a + b) / 2.0), mat("panel", Color.from_hsv(float(absi(hash(id)) % 360) / 360.0, 0.3, 0.6)), 8)
-			_rod(r.root, hr + 0.004, hr + 0.004, 0.03, Vector3(0, y, lerpf(a, b, 0.5)), mat("panel", TAPE), 8)
+			GunFrames._mlok_tube(r, y, a, b, hr + 0.002, fin("oxide"))
 	r.hg_end = b
 	r.rail_l = Vector3(-(outer + 0.001), y, lerpf(a, b, 0.62))
 	r.rail_r = Vector3(outer + 0.001, y, lerpf(a, b, 0.62))
@@ -2332,36 +1280,40 @@ static func _rail_part(r: Rig, slot: String, id: String) -> void:
 	var side := absf(a.x) > 0.001
 	var dir := Vector3(signf(a.x), 0, 0) if side else Vector3(0, -1, 0)
 	var clamp_size := Vector3(0.008, 0.016, 0.022) if side else Vector3(0.016, 0.008, 0.022)
-	_box(r.root, clamp_size, a + dir * 0.004, mat("panel", DARK), Vector3.ZERO, 0.002)
+	var black := fin("black")
+	_box(r.root, clamp_size, a + dir * 0.004, black, Vector3.ZERO, 0.0015)
 	var c := a + dir * 0.017
+	var beam := fin("dust", Color(1.0, 0.95, 0.75) * 1.2)
 	match id:
-		"flashlight":
-			_rod(r.root, 0.011, 0.011, 0.07, c + Vector3(0, 0, 0.008), mat("panel", Color(0.75, 0.6, 0.2)), 8)
-			_rod(r.root, 0.015, 0.012, 0.024, c + Vector3(0, 0, -0.038), mat("panel", BLACK), 8)
-			_rod(r.root, 0.013, 0.013, 0.003, c + Vector3(0, 0, -0.051), mat("panel", BONE, Color(1.0, 0.95, 0.7)), 8)
-			_rod(r.root, 0.0115, 0.0115, 0.015, c + Vector3(0, 0, 0.02), mat("panel", TAPE), 8)
-		"laser":
-			_box(r.root, Vector3(0.02, 0.018, 0.05), c, mat("panel", Color(0.55, 0.15, 0.15)), Vector3.ZERO, 0.004)
-			_rod(r.root, 0.005, 0.005, 0.004, c + Vector3(0, 0, -0.026), mat("panel", BLACK, Color(1.0, 0.05, 0.05)), 6)
-		"laser_ir":
-			_box(r.root, Vector3(0.022, 0.02, 0.055), c, mat("panel", OD), Vector3.ZERO, 0.004)
-			_rod(r.root, 0.007, 0.007, 0.006, c + Vector3(0, 0, -0.03), mat("panel", BLACK, Color(0.18, 0.0, 0.08)), 6)
-			_box(r.root, Vector3(0.008, 0.006, 0.01), c + Vector3(0, 0.012, 0.012), mat("panel", BLACK), Vector3.ZERO, 0.001)
+		"flashlight", "strobe_light":
+			# A weapon light: knurled body, a stepped head, tail cap; the strobe has a crenellated bezel.
+			var big := id == "strobe_light"
+			var hr := 0.017 if big else 0.015
+			_turn(r.root, [Vector2(-0.05, hr), Vector2(-0.045, hr), Vector2(-0.03, 0.011), Vector2(0.035, 0.011), Vector2(0.038, 0.0095),
+					Vector2(0.045, 0.0095)], c + Vector3(0, 0, 0.004), black, 20)
+			for i in 5:
+				_turn(r.root, [Vector2(-0.0012, 0.0114), Vector2(0.0012, 0.0114)], c + Vector3(0, 0, -0.01 + i * 0.008), fin("bore"), 20)
+			_cyl(r.root, hr - 0.002, 0.002, c + Vector3(0, 0, -0.0465), beam, 20)
+			if big:
+				for i in 6:
+					var ang := TAU * i / 6.0
+					_box(r.root, Vector3(0.004, 0.004, 0.005), c + Vector3(cos(ang), sin(ang), 0) * hr + Vector3(0, 0, -0.048), black, Vector3(0, 0, rad_to_deg(ang)), 0.0)
+				_turn(r.root, [Vector2(-0.003, 0.0118), Vector2(0.003, 0.0118)], c + Vector3(0, 0, 0.02), fin("oxide"), 20)
+		"laser", "laser_ir":
+			var ir := id == "laser_ir"
+			_slab(r.root, [Vector2(c.z + 0.026, c.y + 0.01), Vector2(c.z - 0.024, c.y + 0.01), Vector2(c.z - 0.028, c.y + 0.004),
+					Vector2(c.z - 0.028, c.y - 0.01), Vector2(c.z + 0.026, c.y - 0.01)], 0.02, fin("green") if ir else black, c.x, 0.003)
+			_cyl(r.root, 0.004, 0.002, c + Vector3(0, 0.003, -0.0285), fin("bore", Color(0.18, 0.0, 0.08) if ir else Color(1.0, 0.05, 0.05) * 1.4), 12)
+			_cyl_y(r.root, 0.0035, 0.004, c + Vector3(0, 0.011, 0.01), fin("rubber"), 10)
 		"combo_light":
-			_box(r.root, Vector3(0.026, 0.026, 0.065), c + dir * 0.003, mat("panel", TAN), Vector3.ZERO, 0.005)
-			_rod(r.root, 0.009, 0.009, 0.003, c + dir * 0.003 + Vector3(0, 0.004, -0.033), mat("panel", BONE, Color(1.0, 0.95, 0.7)), 8)
-			_rod(r.root, 0.003, 0.003, 0.003, c + dir * 0.003 + Vector3(0, -0.008, -0.033), mat("panel", BLACK, Color(1.0, 0.05, 0.05)), 6)
-		"strobe_light":
-			_rod(r.root, 0.012, 0.012, 0.075, c + Vector3(0, 0, 0.006), mat("panel", BLACK), 8)
-			_rod(r.root, 0.017, 0.013, 0.026, c + Vector3(0, 0, -0.042), mat("panel", DARK), 8)
-			_rod(r.root, 0.015, 0.015, 0.003, c + Vector3(0, 0, -0.056), mat("panel", BONE, Color(0.85, 0.9, 1.2)), 8)
-			_rod(r.root, 0.0125, 0.0125, 0.008, c + Vector3(0, 0, 0.0), mat("panel", BLUE, Color(0.05, 0.1, 0.5)), 8)
-			for i in 4:
-				var ang := TAU * i / 4.0
-				_box(r.root, Vector3(0.004, 0.004, 0.006), c + Vector3(cos(ang), sin(ang), 0) * 0.016 + Vector3(0, 0, -0.056), mat("panel", DARK), Vector3.ZERO, 0.0)
+			_slab(r.root, [Vector2(c.z + 0.032, c.y + 0.013), Vector2(c.z - 0.03, c.y + 0.013), Vector2(c.z - 0.034, c.y + 0.008),
+					Vector2(c.z - 0.034, c.y - 0.013), Vector2(c.z + 0.032, c.y - 0.013)], 0.026, fin("poly_tan"), c.x + dir.x * 0.003, 0.004)
+			_cyl(r.root, 0.009, 0.002, c + dir * 0.003 + Vector3(0, 0.004, -0.0345), beam, 18)
+			_cyl(r.root, 0.003, 0.002, c + dir * 0.003 + Vector3(0, -0.008, -0.0345), fin("bore", Color(1.0, 0.05, 0.05) * 1.4), 10)
 		"rail_counter":
-			_box(r.root, Vector3(0.016, 0.018, 0.03), c - dir * 0.005, mat("panel", BLACK), Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.012, 0.004, 0.02), c - dir * 0.005 + Vector3(0, 0.009, 0.002), mat("panel", BLACK, Color(0.2, 0.9, 0.3)), Vector3.ZERO, 0.0)
+			_slab(r.root, [Vector2(c.z + 0.015, c.y + 0.009), Vector2(c.z - 0.015, c.y + 0.009), Vector2(c.z - 0.015, c.y - 0.009),
+					Vector2(c.z + 0.015, c.y - 0.009)], 0.016, black, c.x - dir.x * 0.005, 0.002)
+			_box(r.root, Vector3(0.012, 0.002, 0.02), c - dir * 0.005 + Vector3(0, 0.0095, 0.002), fin("bore", Color(0.2, 0.9, 0.3)), Vector3.ZERO, 0.0)
 		_:
 			_generic(r, c, id)
 
@@ -2369,38 +1321,43 @@ static func _rail_part(r: Rig, slot: String, id: String) -> void:
 ## Foregrips and bipods hang from the bottom of the handguard.
 static func _foregrip(r: Rig, id: String) -> void:
 	var f := r.foregrip
-	var black := mat("panel", BLACK)
-	_box(r.root, Vector3(0.016, 0.006, 0.024), f + Vector3(0, -0.003, 0), mat("panel", DARK), Vector3.ZERO, 0.001)
+	var black := fin("black")
+	_box(r.root, Vector3(0.016, 0.006, 0.026), f + Vector3(0, -0.003, 0), black, Vector3.ZERO, 0.0012)
 	match id:
 		"vertical_grip":
-			_rod(r.root, 0.011, 0.013, 0.08, f + Vector3(0, -0.045, 0), black, 8, Vector3.ZERO)
-			for i in 3:
-				_rod(r.root, 0.0135, 0.0135, 0.004, f + Vector3(0, -0.025 - i * 0.02, 0), mat("panel", DARK), 8, Vector3.ZERO)
-			_rod(r.root, 0.012, 0.012, 0.006, f + Vector3(0, -0.087, 0), mat("panel", TAN), 8, Vector3.ZERO)
+			_slab(r.root, [Vector2(f.z + 0.012, f.y - 0.004), Vector2(f.z - 0.014, f.y - 0.004), Vector2(f.z - 0.016, f.y - 0.05),
+					Vector2(f.z - 0.012, f.y - 0.085), Vector2(f.z + 0.012, f.y - 0.085), Vector2(f.z + 0.014, f.y - 0.05)], 0.024, fin("polymer"), 0.0, 0.005)
+			_slab(r.root, [Vector2(f.z + 0.013, f.y - 0.085), Vector2(f.z - 0.013, f.y - 0.085), Vector2(f.z - 0.013, f.y - 0.091),
+					Vector2(f.z + 0.013, f.y - 0.091)], 0.025, fin("oxide"), 0.0, 0.002)
+			for i in 4:
+				_box(r.root, Vector3(0.0252, 0.0016, 0.022), f + Vector3(0, -0.025 - i * 0.014, 0), fin("rubber"), Vector3.ZERO, 0.0)
 		"angled_grip":
-			_profile(r.root, [Vector2(0.035, 0.0), Vector2(-0.06, 0.0), Vector2(-0.045, -0.012), Vector2(0.02, -0.042),
-					Vector2(0.036, -0.036)], 0.022, f + Vector3(0, -0.006, 0), mat("panel", TAN))
+			_slab(r.root, [Vector2(f.z + 0.035, f.y - 0.004), Vector2(f.z - 0.06, f.y - 0.004), Vector2(f.z - 0.045, f.y - 0.018), Vector2(f.z + 0.02, f.y - 0.044),
+					Vector2(f.z + 0.034, f.y - 0.04)], 0.022, fin("poly_tan"), 0.0, 0.004)
 		"stubby_grip":
-			_rod(r.root, 0.011, 0.012, 0.04, f + Vector3(0, -0.025, 0), black, 8, Vector3.ZERO)
+			_slab(r.root, [Vector2(f.z + 0.012, f.y - 0.004), Vector2(f.z - 0.012, f.y - 0.004), Vector2(f.z - 0.013, f.y - 0.042),
+					Vector2(f.z + 0.013, f.y - 0.042)], 0.024, fin("polymer"), 0.0, 0.006)
 		"handstop":
-			_profile(r.root, [Vector2(0.014, 0.0), Vector2(-0.014, 0.0), Vector2(0.006, -0.022), Vector2(0.016, -0.02)], 0.018,
-					f + Vector3(0, -0.006, 0), black)
+			_slab(r.root, [Vector2(f.z + 0.014, f.y - 0.004), Vector2(f.z - 0.014, f.y - 0.004), Vector2(f.z + 0.006, f.y - 0.026),
+					Vector2(f.z + 0.016, f.y - 0.024)], 0.018, black, 0.0, 0.003)
 		"bipod", "grip_pod":
 			var big := float(Arsenal.frame(r.frame).get("length", 80.0)) / 100.0
 			var leg := clampf(big * 0.2, 0.1, 0.3)
 			if id == "grip_pod":
-				_rod(r.root, 0.012, 0.013, 0.085, f + Vector3(0, -0.048, 0), black, 8, Vector3.ZERO)
+				_slab(r.root, [Vector2(f.z + 0.013, f.y - 0.004), Vector2(f.z - 0.013, f.y - 0.004), Vector2(f.z - 0.014, f.y - 0.088),
+						Vector2(f.z + 0.014, f.y - 0.088)], 0.026, fin("polymer"), 0.0, 0.006)
 				leg = 0.035
 				f += Vector3(0, -0.085, 0)
 			else:
-				_box(r.root, Vector3(0.03, 0.016, 0.024), f + Vector3(0, -0.012, 0), black, Vector3.ZERO, 0.003)
+				_slab(r.root, [Vector2(f.z + 0.014, f.y - 0.004), Vector2(f.z - 0.014, f.y - 0.004), Vector2(f.z - 0.014, f.y - 0.022),
+						Vector2(f.z + 0.014, f.y - 0.022)], 0.032, black, 0.0, 0.003)
 				f += Vector3(0, -0.016, 0)
-			# Two legs splayed out and forward, with feet.
+			# Two legs splayed out and forward, telescoping, with rubber feet.
 			for sx: float in [-1.0, 1.0]:
 				var foot := f + Vector3(sx * leg * 0.45, -leg * 0.85, -leg * 0.3)
-				_rod_between(r.root, f + Vector3(sx * 0.008, 0, 0), foot, 0.004 if id == "grip_pod" else 0.0055, mat("panel", DARK))
-				_rod_between(r.root, (f + Vector3(sx * 0.008, 0, 0)).lerp(foot, 0.55), foot, 0.0042, mat("panel", STEEL))
-				_box(r.root, Vector3(0.01, 0.006, 0.012), foot, black, Vector3.ZERO, 0.002)
+				_rod_between(r.root, f + Vector3(sx * 0.008, 0, 0), foot, 0.0045 if id == "grip_pod" else 0.0055, black, 10)
+				_rod_between(r.root, (f + Vector3(sx * 0.008, 0, 0)).lerp(foot, 0.55), foot, 0.0036, fin("bare"), 10)
+				_ball(r.root, 0.006, foot, fin("rubber"), Vector3(1, 0.6, 1.2))
 		_:
 			_generic(r, f + Vector3(0, -0.015, 0), id)
 
@@ -2443,6 +1400,31 @@ static func _underbarrel(r: Rig, id: String) -> void:
 			_box(r.root, Vector3(0.21, 0.02, 0.012), c + Vector3(0, 0.06, 0), mat("panel", YELLOW), Vector3(-6, 0, 0), 0.002)
 			_box(r.root, Vector3(0.21, 0.012, 0.013), c + Vector3(0, 0.06, 0), mat("panel", BLACK), Vector3(-6, 0, 0), 0.0)
 			_box(r.root, Vector3(0.012, 0.03, 0.03), u + Vector3(0, -0.008, 0.012), mat("panel", DARK), Vector3.ZERO, 0.002)
+		"grappling_hook":
+			# A launch tube under the barrel, a three-claw hook in its mouth, a coil of line behind.
+			var c := u + Vector3(0, -0.022, 0.0)
+			_box(r.root, Vector3(0.012, 0.02, 0.03), u + Vector3(0, -0.006, 0.01), fin("black"), Vector3.ZERO, 0.002)
+			_turn(r.root, [Vector2(-0.07, 0.013), Vector2(-0.066, 0.016), Vector2(0.05, 0.016), Vector2(0.055, 0.012)], c, fin("black"), 16)
+			_cyl(r.root, 0.004, 0.03, c + Vector3(0, 0, -0.08), fin("steel"), 10)
+			for i in 3:
+				var a := TAU * i / 3.0 + PI / 2.0
+				var d := Vector3(cos(a), sin(a), 0)
+				_tube(r.root, [c + Vector3(0, 0, -0.09), c + d * 0.016 + Vector3(0, 0, -0.088), c + d * 0.02 + Vector3(0, 0, -0.072),
+						c + d * 0.014 + Vector3(0, 0, -0.064)], 0.0025, fin("steel"), 8)
+			_cyl(r.root, 0.017, 0.022, c + Vector3(0, 0, 0.06), fin("sand"), 16)
+			_cyl(r.root, 0.019, 0.003, c + Vector3(0, 0, 0.048), fin("black"), 16)
+			_cyl(r.root, 0.019, 0.003, c + Vector3(0, 0, 0.072), fin("black"), 16)
+		"jet_can":
+			# A small extinguisher strapped under the barrel, nozzle forward, with a gauge.
+			var c := u + Vector3(0, -0.03, 0.02)
+			_turn(r.root, [Vector2(-0.07, 0.0), Vector2(-0.068, 0.012), Vector2(-0.058, 0.02), Vector2(0.05, 0.02), Vector2(0.056, 0.014),
+					Vector2(0.058, 0.0)], c, fin("oxide"), 18)
+			_turn(r.root, [Vector2(-0.1, 0.008), Vector2(-0.095, 0.006), Vector2(-0.07, 0.004)], c, fin("black"), 12)
+			for z: float in [-0.03, 0.03]:
+				_turn(r.root, [Vector2(-0.005, 0.021), Vector2(0.005, 0.021)], c + Vector3(0, 0, z), fin("black"), 18)
+			_cyl_x(r.root, 0.007, 0.006, c + Vector3(0.02, 0.006, 0.0), fin("black"), 14)
+			_cyl_x(r.root, 0.0055, 0.002, c + Vector3(0.024, 0.006, 0.0), fin("dust"), 14)
+			_box(r.root, Vector3(0.012, 0.016, 0.02), u + Vector3(0, -0.006, 0.02), fin("black"), Vector3.ZERO, 0.002)
 		_:
 			_generic(r, u + Vector3(0, -0.012, 0), id)
 
@@ -2450,125 +1432,173 @@ static func _underbarrel(r: Rig, id: String) -> void:
 ## Offset and backup sights on the top rail; risers and cantilevers move the main sight.
 static func _mount(r: Rig, id: String) -> void:
 	var m := r.mount
-	var dark := mat("panel", DARK)
+	var black := fin("black")
 	match id:
 		"canted_dot":
-			# A mini dot rolled 45° to the right, on its own little arm.
-			_box(r.root, Vector3(0.022, 0.008, 0.024), m + Vector3(0, 0.004, 0), dark, Vector3.ZERO, 0.001)
-			var arm := m + Vector3(0.014, 0.012, 0)
-			_box(r.root, Vector3(0.024, 0.006, 0.02), arm, dark, Vector3(0, 0, -45), 0.001)
-			var c := m + Vector3(0.026, 0.024, 0)
-			_box(r.root, Vector3(0.02, 0.012, 0.028), c, mat("panel", BLACK), Vector3(0, 0, -45), 0.003)
-			_box(r.root, Vector3(0.018, 0.016, 0.004), c + Vector3(0.006, 0.006, -0.01), mat("panel", BLACK), Vector3(0, 0, -45), 0.001)
-			_box(r.root, Vector3(0.013, 0.011, 0.002), c + Vector3(0.006, 0.006, -0.013), mat("panel", GLASS, Color(0.3, 0.05, 0.05)), Vector3(0, 0, -45), 0.0)
+			# A mini dot on a 45° offset plate to the right.
+			_slab(r.root, [Vector2(m.z + 0.012, m.y), Vector2(m.z - 0.012, m.y), Vector2(m.z - 0.012, m.y + 0.008), Vector2(m.z + 0.012, m.y + 0.008)],
+					0.022, black, 0.0, 0.0012)
+			var c := m + Vector3(0.024, 0.022, 0)
+			_box(r.root, Vector3(0.03, 0.006, 0.022), m + Vector3(0.012, 0.012, 0), black, Vector3(0, 0, -45), 0.0012)
+			_box(r.root, Vector3(0.022, 0.012, 0.028), c, black, Vector3(0, 0, -45), 0.002)
+			_box(r.root, Vector3(0.02, 0.016, 0.004), c + Vector3(0.006, 0.006, -0.01), black, Vector3(0, 0, -45), 0.001)
+			_box(r.root, Vector3(0.015, 0.011, 0.002), c + Vector3(0.006, 0.006, -0.0125), fin("lens"), Vector3(0, 0, -45), 0.0)
 		"backup_irons":
-			# Two little flip-ups folded flat, one at each end of the rail.
-			for z: float in [0.0, 1.0]:
-				var at := m if z == 0.0 else r.top + Vector3(0, 0, 0.05)
-				_box(r.root, Vector3(0.02, 0.008, 0.024), at + Vector3(0, 0.004, 0), dark, Vector3.ZERO, 0.001)
-				_box(r.root, Vector3(0.016, 0.004, 0.022), at + Vector3(0, 0.011, 0.004 if z == 0.0 else -0.004), mat("panel", BLACK),
-						Vector3(-8.0 if z == 0.0 else 8.0, 0, 0), 0.0)
-				_box(r.root, Vector3(0.004, 0.004, 0.004), at + Vector3(0, 0.014, 0.0), mat("panel", BONE), Vector3.ZERO, 0.0)
+			# Two flip-ups folded flat, one at each end of the rail.
+			for k in 2:
+				var at := m if k == 0 else r.top + Vector3(0, 0, 0.05)
+				_slab(r.root, [Vector2(at.z + 0.012, at.y), Vector2(at.z - 0.012, at.y), Vector2(at.z - 0.01, at.y + 0.01), Vector2(at.z + 0.01, at.y + 0.01)],
+						0.02, black, 0.0, 0.0012)
+				_box(r.root, Vector3(0.016, 0.003, 0.022), at + Vector3(0, 0.0115, 0.002 if k == 0 else -0.002), fin("steel"), Vector3.ZERO, 0.0006)
 		"cantilever":
-			_box(r.root, Vector3(0.026, 0.01, 0.05), r.top + Vector3(0, 0.005, 0.01), dark, Vector3.ZERO, 0.002)
-			_box(r.root, Vector3(0.022, 0.008, 0.07), r.top + Vector3(0, 0.014, -0.025), dark, Vector3.ZERO, 0.002)
+			_slab(r.root, [Vector2(r.top.z + 0.035, r.top.y), Vector2(r.top.z - 0.015, r.top.y), Vector2(r.top.z - 0.02, r.top.y + 0.01),
+					Vector2(r.top.z - 0.065, r.top.y + 0.01), Vector2(r.top.z - 0.065, r.top.y + 0.018), Vector2(r.top.z + 0.035, r.top.y + 0.018)],
+					0.024, black, 0.0, 0.0015)
 			r.top += Vector3(0, 0.012, -0.04)
+			_pic(r, r.top + Vector3(0, -0.006, 0.02), 0.07)
 		"riser":
-			_box(r.root, Vector3(0.024, 0.02, 0.06), r.top + Vector3(0, 0.01, 0), dark, Vector3.ZERO, 0.002)
-			_box(r.root, Vector3(0.026, 0.005, 0.03), r.top + Vector3(0, 0.012, 0), mat("panel", ORANGE), Vector3.ZERO, 0.001)
+			_slab(r.root, [Vector2(r.top.z + 0.03, r.top.y), Vector2(r.top.z - 0.03, r.top.y), Vector2(r.top.z - 0.03, r.top.y + 0.014),
+					Vector2(r.top.z + 0.03, r.top.y + 0.014)], 0.024, black, 0.0, 0.0015)
+			_box(r.root, Vector3(0.0244, 0.003, 0.03), r.top + Vector3(0, 0.007, 0), fin("oxide"), Vector3.ZERO, 0.0)
 			r.top += Vector3(0, 0.02, 0)
+			_pic(r, r.top + Vector3(0, -0.006, 0), 0.06)
 		_:
 			_generic(r, m + Vector3(0.015, 0.01, 0), id)
 
 
+## Optics on the top rail: each has a mount, a machined housing and coated glass.
 static func _sight(r: Rig, id: String) -> void:
 	var t := r.top
-	var dark := mat("panel", BLACK)
-	var lens := mat("panel", GLASS, Color(0.1, 0.25, 0.4))
-	if id != "pistol_dot":
-		_box(r.root, Vector3(0.018, 0.008, 0.07), t + Vector3(0, 0.004, 0), mat("panel", DARK), Vector3.ZERO, 0.002)
+	var black := fin("black")
+	var lens := fin("lens")
+	var bore := fin("bore")
 	match id:
-		"red_dot":
-			_box(r.root, Vector3(0.03, 0.012, 0.045), t + Vector3(0, 0.014, 0), dark, Vector3.ZERO, 0.004)
-			_box(r.root, Vector3(0.03, 0.03, 0.006), t + Vector3(0, 0.032, -0.016), dark, Vector3.ZERO, 0.002)
-			_box(r.root, Vector3(0.022, 0.022, 0.002), t + Vector3(0, 0.032, -0.02), mat("panel", Color(0.3, 0.1, 0.1), Color(0.35, 0.02, 0.02)), Vector3.ZERO, 0.0)
-			_ball(r.root, 0.0035, t + Vector3(0, 0.032, -0.022), mat("panel", BLACK, Color(1.0, 0.1, 0.05)))
-			_box(r.root, Vector3(0.008, 0.008, 0.012), t + Vector3(0.018, 0.02, 0.005), mat("panel", RED))
-		"peep_sight":
-			_box(r.root, Vector3(0.008, 0.024, 0.012), t + Vector3(0, 0.018, 0.02), mat("panel", DARK), Vector3.ZERO, 0.002)
-			_tube(r.root, _ring(t + Vector3(0, 0.034, 0.02), 0.008, 8), 0.0028, mat("panel", DARK), 4)
-		"pistol_dot":
-			# A mini dot screwed straight to the slide: a sloped hood round a small window.
-			_box(r.root, Vector3(0.022, 0.008, 0.032), t + Vector3(0, 0.004, 0), dark, Vector3.ZERO, 0.002)
-			_profile(r.root, [Vector2(0.012, 0.0), Vector2(0.016, 0.0), Vector2(0.012, 0.02), Vector2(0.008, 0.02)], 0.022,
-					t + Vector3(0, 0.006, 0), dark)
-			_box(r.root, Vector3(0.016, 0.014, 0.002), t + Vector3(0, 0.017, -0.009), mat("panel", Color(0.3, 0.1, 0.1), Color(0.3, 0.02, 0.02)), Vector3.ZERO, 0.0)
-			_ball(r.root, 0.0025, t + Vector3(0, 0.017, -0.01), mat("panel", BLACK, Color(1.0, 0.1, 0.05)))
-		"holo":
-			# A box with a big window under a hood, buttons at the back.
-			_box(r.root, Vector3(0.036, 0.016, 0.07), t + Vector3(0, 0.016, 0.002), mat("panel", DARK), Vector3.ZERO, 0.004)
-			for sx: float in [-1.0, 1.0]:
-				_box(r.root, Vector3(0.004, 0.034, 0.04), t + Vector3(sx * 0.016, 0.04, -0.012), dark, Vector3.ZERO, 0.001)
-			_box(r.root, Vector3(0.036, 0.004, 0.044), t + Vector3(0, 0.058, -0.012), dark, Vector3.ZERO, 0.001)
-			_box(r.root, Vector3(0.028, 0.03, 0.002), t + Vector3(0, 0.04, -0.03), mat("panel", Color(0.3, 0.25, 0.15), Color(0.25, 0.08, 0.02)), Vector3.ZERO, 0.0)
-			_tube(r.root, _ring(t + Vector3(0, 0.04, -0.032), 0.007, 8), 0.0012, mat("panel", BLACK, Color(1.0, 0.15, 0.05)), 3)
-			for i in 2:
-				_box(r.root, Vector3(0.006, 0.004, 0.006), t + Vector3(-0.006 + i * 0.012, 0.025, 0.03), mat("panel", BLACK), Vector3.ZERO, 0.0)
-		"acog":
-			# A short fat prism scope with a glowing fibre on top.
-			var c := t + Vector3(0, 0.032, 0.0)
-			_box(r.root, Vector3(0.024, 0.02, 0.05), t + Vector3(0, 0.016, 0.0), mat("panel", DARK), Vector3.ZERO, 0.003)
-			_lathe_z(r.root, [Vector2(0.0, -0.05), Vector2(0.02, -0.05), Vector2(0.021, -0.03), Vector2(0.015, -0.01),
-					Vector2(0.015, 0.03), Vector2(0.013, 0.045), Vector2(0.0, 0.046)], c, mat("panel", TAN), 8)
-			_rod(r.root, 0.018, 0.018, 0.003, c + Vector3(0, 0, -0.05), lens, 8)
-			_rod(r.root, 0.003, 0.003, 0.04, c + Vector3(0, 0.018, 0.0), mat("panel", OLIVE, Color(0.25, 0.6, 0.1)), 4)
-		"scope":
-			var c := t + Vector3(0, 0.03, 0.0)
-			for z: float in [-0.025, 0.025]:
-				_box(r.root, Vector3(0.012, 0.024, 0.012), t + Vector3(0, 0.016, z), mat("panel", DARK))
-			_rod(r.root, 0.012, 0.012, 0.1, c, dark, 8)
-			_rod(r.root, 0.021, 0.013, 0.045, c + Vector3(0, 0, -0.07), dark, 8)
-			_rod(r.root, 0.016, 0.012, 0.03, c + Vector3(0, 0, 0.06), dark, 8)
-			_rod(r.root, 0.019, 0.019, 0.003, c + Vector3(0, 0, -0.093), lens, 8)
-			_rod(r.root, 0.007, 0.007, 0.012, c + Vector3(0, 0.016, 0), mat("panel", DARK), 6, Vector3.ZERO)
-			_disc_x(r.root, 0.007, 0.012, c + Vector3(0.016, 0, 0), mat("panel", DARK), 6)
-			# A strip of tape where the scope was taped on a bit crooked.
-			_box(r.root, Vector3(0.03, 0.03, 0.012), c + Vector3(0, -0.005, 0.03), mat("panel", TAPE), Vector3(0, 0, 8), 0.004)
-		"variable_scope":
-			# A long LPVO: big objective, turrets, a magnification ring and its throw lever.
-			var c := t + Vector3(0, 0.032, 0.0)
+		"eagle_eye":
+			# A long high-power scope with an oversized objective in an oxide ring.
+			var c := t + Vector3(0, 0.032, 0)
 			for z: float in [-0.03, 0.03]:
-				_box(r.root, Vector3(0.026, 0.026, 0.014), t + Vector3(0, 0.017, z), mat("panel", DARK), Vector3.ZERO, 0.003)
-			_rod(r.root, 0.0125, 0.0125, 0.12, c, dark, 10)
-			_rod(r.root, 0.02, 0.013, 0.04, c + Vector3(0, 0, -0.078), dark, 10)
-			_rod(r.root, 0.017, 0.017, 0.004, c + Vector3(0, 0, -0.099), lens, 10)
-			_rod(r.root, 0.016, 0.013, 0.035, c + Vector3(0, 0, 0.074), dark, 10)
-			_rod(r.root, 0.0165, 0.0165, 0.01, c + Vector3(0, 0, 0.065), mat("panel", ORANGE), 10)
-			var zoom := float(r.tune.get("sight", 0.0))
-			var lever := Vector3(0.02, 0.0, 0).rotated(Vector3(0, 0, 1), deg_to_rad(20.0 + zoom * 60.0))
-			_rod_between(r.root, c + Vector3(0, 0, 0.065), c + lever + Vector3(0, 0, 0.065), 0.0025, mat("panel", BLACK))
-			_rod(r.root, 0.007, 0.007, 0.014, c + Vector3(0, 0.017, -0.005), mat("panel", DARK), 8, Vector3.ZERO)
-			_disc_x(r.root, 0.007, 0.014, c + Vector3(0.017, 0, -0.005), mat("panel", DARK), 8)
+				_slab(r.root, [Vector2(t.z + z + 0.01, t.y), Vector2(t.z + z - 0.01, t.y), Vector2(t.z + z - 0.01, c.y), Vector2(t.z + z + 0.01, c.y)],
+						0.02, black, 0.0, 0.001)
+				_turn(r.root, [Vector2(-0.006, 0.0165), Vector2(0.006, 0.0165)], c + Vector3(0, 0, z), black, 20)
+			_turn(r.root, [Vector2(-0.13, 0.03), Vector2(-0.126, 0.032), Vector2(-0.09, 0.032), Vector2(-0.06, 0.0145), Vector2(0.05, 0.0145),
+					Vector2(0.07, 0.019), Vector2(0.1, 0.019), Vector2(0.104, 0.017)], c, black, 24)
+			_turn(r.root, [Vector2(-0.124, 0.0325), Vector2(-0.11, 0.0325)], c, fin("oxide"), 24)
+			_cyl(r.root, 0.029, 0.002, c + Vector3(0, 0, -0.128), lens, 22)
+			_cyl(r.root, 0.017, 0.002, c + Vector3(0, 0, 0.103), lens, 18)
+			_cyl_y(r.root, 0.009, 0.014, c + Vector3(0, 0.02, 0.0), black, 14)
+			_cyl_x(r.root, 0.009, 0.014, c + Vector3(0.02, 0.0, 0.0), black, 14)
+			r.top = c + Vector3(0, 0.032, 0)
+		"sky_sight":
+			# A reflex pane tilted back hard on an open frame: only lines up when you're airborne.
+			var black_m := black
+			_slab(r.root, [Vector2(t.z + 0.025, t.y), Vector2(t.z - 0.025, t.y), Vector2(t.z - 0.022, t.y + 0.008), Vector2(t.z + 0.022, t.y + 0.008)],
+					0.026, black_m, 0.0, 0.0015)
+			for sx: float in [-1.0, 1.0]:
+				_slab(r.root, [Vector2(t.z + 0.012, t.y + 0.006), Vector2(t.z - 0.02, t.y + 0.006), Vector2(t.z - 0.004, t.y + 0.04),
+						Vector2(t.z + 0.008, t.y + 0.04)], 0.004, black_m, sx * 0.013, 0.0008)
+			_box(r.root, Vector3(0.022, 0.03, 0.002), t + Vector3(0, 0.024, -0.004), fin("glass"), Vector3(-35, 0, 0), 0.0)
+			_box(r.root, Vector3(0.024, 0.004, 0.012), t + Vector3(0, 0.042, 0.004), fin("sulfur"), Vector3.ZERO, 0.001)
+			_ball(r.root, 0.0016, t + Vector3(0, 0.024, -0.004), fin("bore", Color(1.0, 0.12, 0.05) * 1.5))
+		"red_dot":
+			# A closed tube dot on a QD mount.
+			_slab(r.root, [Vector2(t.z + 0.026, t.y), Vector2(t.z - 0.026, t.y), Vector2(t.z - 0.022, t.y + 0.012), Vector2(t.z + 0.022, t.y + 0.012)],
+					0.022, black, 0.0, 0.0015)
+			_cyl_x(r.root, 0.006, 0.006, t + Vector3(0.013, 0.006, 0.008), black, 12)
+			var c := t + Vector3(0, 0.03, 0)
+			_turn(r.root, [Vector2(-0.032, 0.016), Vector2(-0.028, 0.018), Vector2(-0.02, 0.018), Vector2(-0.018, 0.0155), Vector2(0.02, 0.0155),
+					Vector2(0.022, 0.017), Vector2(0.03, 0.017), Vector2(0.032, 0.015)], c, black, 22)
+			_cyl(r.root, 0.0158, 0.002, c + Vector3(0, 0, -0.028), lens, 20)
+			_cyl(r.root, 0.0145, 0.002, c + Vector3(0, 0, 0.028), lens, 20)
+			_ball(r.root, 0.0018, c + Vector3(0, 0, -0.026), fin("bore", Color(1.0, 0.12, 0.05) * 1.5))
+			_cyl_y(r.root, 0.006, 0.008, c + Vector3(0, 0.019, 0.0), black, 12)
+			_cyl_x(r.root, 0.006, 0.008, c + Vector3(0.019, 0.0, 0.0), black, 12)
+			_slab(r.root, [Vector2(c.z + 0.012, c.y - 0.014), Vector2(c.z - 0.012, c.y - 0.014), Vector2(c.z - 0.012, t.y + 0.01), Vector2(c.z + 0.012, t.y + 0.01)],
+					0.014, black, 0.0, 0.001)
+		"peep_sight":
+			_slab(r.root, [Vector2(t.z + 0.014, t.y), Vector2(t.z - 0.014, t.y), Vector2(t.z - 0.01, t.y + 0.022), Vector2(t.z + 0.008, t.y + 0.022)],
+					0.014, black, 0.0, 0.0015)
+			_turn(r.root, [Vector2(-0.003, 0.0085), Vector2(0.003, 0.0085)], t + Vector3(0, 0.03, 0.002), black, 18)
+			_cyl(r.root, 0.0032, 0.0064, t + Vector3(0, 0.03, 0.002), bore, 12)
+		"pistol_dot":
+			# A shielded mini dot milled flat to the slide.
+			_slab(r.root, [Vector2(t.z + 0.016, t.y), Vector2(t.z - 0.016, t.y), Vector2(t.z - 0.016, t.y + 0.006), Vector2(t.z - 0.012, t.y + 0.022),
+					Vector2(t.z - 0.008, t.y + 0.022), Vector2(t.z - 0.006, t.y + 0.008), Vector2(t.z + 0.008, t.y + 0.008), Vector2(t.z + 0.012, t.y + 0.018),
+					Vector2(t.z + 0.016, t.y + 0.018)], 0.022, black, 0.0, 0.0012)
+			_box(r.root, Vector3(0.017, 0.012, 0.002), t + Vector3(0, 0.015, -0.0085), lens, Vector3(-18, 0, 0), 0.0)
+			_ball(r.root, 0.0016, t + Vector3(0, 0.015, -0.01), fin("bore", Color(1.0, 0.12, 0.05) * 1.5))
+		"holo":
+			# A box sight with a big window under a hood, buttons at the back.
+			_slab(r.root, [Vector2(t.z + 0.035, t.y), Vector2(t.z - 0.035, t.y), Vector2(t.z - 0.035, t.y + 0.022), Vector2(t.z + 0.035, t.y + 0.022)],
+					0.034, black, 0.0, 0.003)
+			_slab(r.root, [Vector2(t.z + 0.012, t.y + 0.022), Vector2(t.z - 0.034, t.y + 0.022), Vector2(t.z - 0.034, t.y + 0.058),
+					Vector2(t.z - 0.03, t.y + 0.062), Vector2(t.z + 0.012, t.y + 0.062), Vector2(t.z + 0.012, t.y + 0.058), Vector2(t.z - 0.028, t.y + 0.056),
+					Vector2(t.z - 0.028, t.y + 0.026), Vector2(t.z + 0.012, t.y + 0.026)], 0.036, black, 0.0, 0.0012)
+			for sx: float in [-1.0, 1.0]:
+				_box(r.root, Vector3(0.003, 0.034, 0.04), t + Vector3(sx * 0.0165, 0.042, -0.011), black, Vector3.ZERO, 0.0008)
+			_box(r.root, Vector3(0.029, 0.03, 0.002), t + Vector3(0, 0.042, -0.03), lens, Vector3.ZERO, 0.0)
+			_box(r.root, Vector3(0.029, 0.03, 0.002), t + Vector3(0, 0.042, 0.01), lens, Vector3.ZERO, 0.0)
+			_tube(r.root, _ring(t + Vector3(0, 0.042, -0.031), 0.007, 12), 0.0008, fin("bore", Color(1.0, 0.15, 0.05) * 1.4), 6)
+			for i in 2:
+				_cyl_y(r.root, 0.003, 0.004, t + Vector3(-0.006 + i * 0.012, 0.024, 0.026), fin("rubber"), 10)
+		"acog":
+			# A short prism scope on a flat-top mount, a sulfur fibre on top.
+			var c := t + Vector3(0, 0.034, 0.0)
+			_slab(r.root, [Vector2(t.z + 0.028, t.y), Vector2(t.z - 0.028, t.y), Vector2(t.z - 0.022, t.y + 0.022), Vector2(t.z + 0.022, t.y + 0.022)],
+					0.024, black, 0.0, 0.002)
+			_turn(r.root, [Vector2(-0.052, 0.019), Vector2(-0.05, 0.021), Vector2(-0.03, 0.021), Vector2(-0.016, 0.015), Vector2(0.03, 0.015),
+					Vector2(0.04, 0.0135), Vector2(0.046, 0.0135), Vector2(0.048, 0.012)], c, fin("poly_tan"), 22)
+			_cyl(r.root, 0.0195, 0.002, c + Vector3(0, 0, -0.05), lens, 22)
+			_cyl(r.root, 0.012, 0.002, c + Vector3(0, 0, 0.047), lens, 18)
+			_cyl(r.root, 0.0025, 0.04, c + Vector3(0, 0.0165, 0.006), fin("sulfur", Color(0.35, 0.3, 0.05)), 8)
+			_cyl_y(r.root, 0.006, 0.006, c + Vector3(0, 0.016, -0.014), black, 12)
+		"scope", "variable_scope":
+			# A 30 mm tube in two rings: objective bell, turrets, the eyepiece. The LPVO adds a
+			# magnification ring with its throw lever.
+			var long := id == "variable_scope"
+			var c := t + Vector3(0, 0.034, 0.0)
+			for z: float in [-0.03, 0.03]:
+				_slab(r.root, [Vector2(t.z + z + 0.008, t.y), Vector2(t.z + z - 0.008, t.y), Vector2(t.z + z - 0.008, c.y),
+						Vector2(t.z + z + 0.008, c.y)], 0.02, black, 0.0, 0.0015)
+				_turn(r.root, [Vector2(-0.008, 0.0145), Vector2(0.008, 0.0145)], c + Vector3(0, 0, z), black, 22)
+			var obj := 0.024 if long else 0.021
+			_turn(r.root, [Vector2(-0.11, obj - 0.002), Vector2(-0.108, obj), Vector2(-0.075, obj), Vector2(-0.05, 0.0125), Vector2(0.05, 0.0125),
+					Vector2(0.06, 0.016), Vector2(0.09, 0.0175), Vector2(0.095, 0.016)], c, black, 24)
+			_cyl(r.root, obj - 0.0015, 0.002, c + Vector3(0, 0, -0.108), lens, 24)
+			_cyl(r.root, 0.015, 0.002, c + Vector3(0, 0, 0.094), lens, 22)
+			_cyl_y(r.root, 0.008, 0.016, c + Vector3(0, 0.017, -0.006), black, 14)
+			_cyl_x(r.root, 0.008, 0.016, c + Vector3(0.017, 0, -0.006), black, 14)
+			for i in 6:
+				_box(r.root, Vector3(0.0012, 0.0018, 0.004), c + Vector3(cos(TAU * i / 6.0) * 0.0081, 0.025, -0.006 + sin(TAU * i / 6.0) * 0.0081),
+						bore, Vector3.ZERO, 0.0)
+			if long:
+				_turn(r.root, [Vector2(-0.006, 0.0172), Vector2(0.006, 0.0172)], c + Vector3(0, 0, 0.066), fin("oxide"), 22)
+				var zoom := float(r.tune.get("sight", 0.0))
+				var lever := Vector3(0.022, 0.0, 0).rotated(Vector3(0, 0, 1), deg_to_rad(20.0 + zoom * 60.0))
+				_rod_between(r.root, c + Vector3(0, 0, 0.066), c + lever + Vector3(0, 0, 0.066), 0.0022, black)
 		"thermal":
+			# A thermal imager: a squared housing, a germanium lens, a screen glowing at the back.
 			var c := t + Vector3(0, 0.03, 0.0)
-			_box(r.root, Vector3(0.042, 0.044, 0.09), c, mat("panel", Color(0.42, 0.48, 0.38)), Vector3.ZERO, 0.008)
-			_rod(r.root, 0.02, 0.02, 0.02, c + Vector3(0, 0, -0.055), dark, 8)
-			_rod(r.root, 0.016, 0.016, 0.003, c + Vector3(0, 0, -0.066), mat("panel", Color(0.3, 0.1, 0.05), Color(0.6, 0.15, 0.02)), 8)
-			_box(r.root, Vector3(0.032, 0.026, 0.003), c + Vector3(0, 0.002, 0.046), mat("panel", BLACK, Color(1.0, 0.45, 0.05)), Vector3.ZERO, 0.0)
-			_box(r.root, Vector3(0.01, 0.006, 0.01), c + Vector3(0.016, 0.025, 0.02), mat("panel", RED, Color(0.6, 0.0, 0.0)), Vector3.ZERO, 0.0)
-			_tube(r.root, [c + Vector3(-0.021, -0.01, 0.03), c + Vector3(-0.03, -0.03, 0.05), r.side * Vector3(-1, 1, 1) + Vector3(0, 0, 0.06)],
-					0.003, mat("panel", BLACK), 4)
+			_slab(r.root, [Vector2(c.z + 0.045, c.y + 0.022), Vector2(c.z - 0.04, c.y + 0.022), Vector2(c.z - 0.045, c.y + 0.016),
+					Vector2(c.z - 0.045, c.y - 0.022), Vector2(c.z + 0.045, c.y - 0.022)], 0.042, fin("green"), 0.0, 0.004)
+			_slab(r.root, [Vector2(t.z + 0.03, t.y), Vector2(t.z - 0.03, t.y), Vector2(t.z - 0.03, c.y - 0.022), Vector2(t.z + 0.03, c.y - 0.022)],
+					0.024, black, 0.0, 0.002)
+			_turn(r.root, [Vector2(-0.022, 0.018), Vector2(-0.02, 0.021), Vector2(0.0, 0.021)], c + Vector3(0, 0, -0.045), black, 22)
+			_cyl(r.root, 0.0175, 0.002, c + Vector3(0, 0, -0.0665), fin("lens", Color(0.25, 0.08, 0.02)), 22)
+			_box(r.root, Vector3(0.03, 0.024, 0.002), c + Vector3(0, 0.0, 0.0462), fin("bore", Color(1.0, 0.45, 0.05) * 0.9), Vector3.ZERO, 0.0)
+			for i in 3:
+				_cyl_y(r.root, 0.003, 0.004, c + Vector3(-0.01 + i * 0.01, 0.023, 0.02), fin("rubber"), 10)
 		"night_vision":
-			# An olive tube with an IR torch on the side and the eyepiece glowing green.
+			# A green-grey intensifier tube, an IR illuminator alongside, the eyepiece lit green.
 			var c := t + Vector3(0, 0.032, 0.0)
-			_box(r.root, Vector3(0.024, 0.024, 0.06), t + Vector3(0, 0.016, 0), mat("panel", DARK), Vector3.ZERO, 0.003)
-			_rod(r.root, 0.02, 0.02, 0.1, c, mat("panel", OD), 8)
-			_rod(r.root, 0.024, 0.02, 0.025, c + Vector3(0, 0, -0.06), mat("panel", OD), 8)
-			_rod(r.root, 0.021, 0.021, 0.003, c + Vector3(0, 0, -0.073), lens, 8)
-			_rod(r.root, 0.014, 0.014, 0.003, c + Vector3(0, 0, 0.051), mat("panel", BLACK, Color(0.2, 0.9, 0.2)), 8)
-			_rod(r.root, 0.008, 0.008, 0.05, c + Vector3(-0.028, -0.004, -0.02), mat("panel", BLACK), 6)
-			_rod(r.root, 0.007, 0.007, 0.003, c + Vector3(-0.028, -0.004, -0.046), mat("panel", BLACK, Color(0.25, 0.0, 0.05)), 6)
-			_box(r.root, Vector3(0.012, 0.006, 0.01), c + Vector3(-0.018, -0.004, -0.02), mat("panel", DARK), Vector3.ZERO, 0.0)
+			_slab(r.root, [Vector2(t.z + 0.03, t.y), Vector2(t.z - 0.03, t.y), Vector2(t.z - 0.03, c.y - 0.012), Vector2(t.z + 0.03, c.y - 0.012)],
+					0.024, black, 0.0, 0.002)
+			_turn(r.root, [Vector2(-0.075, 0.022), Vector2(-0.072, 0.024), Vector2(-0.05, 0.024), Vector2(-0.045, 0.02), Vector2(0.045, 0.02),
+					Vector2(0.05, 0.016), Vector2(0.055, 0.016)], c, fin("green"), 22)
+			_cyl(r.root, 0.022, 0.002, c + Vector3(0, 0, -0.0735), lens, 22)
+			_cyl(r.root, 0.014, 0.002, c + Vector3(0, 0, 0.0545), fin("bore", Color(0.2, 0.9, 0.25) * 0.8), 18)
+			_turn(r.root, [Vector2(-0.028, 0.008), Vector2(0.024, 0.008)], c + Vector3(-0.03, -0.004, -0.02), black, 14)
+			_cyl(r.root, 0.007, 0.002, c + Vector3(-0.03, -0.004, -0.048), fin("bore", Color(0.25, 0.0, 0.05)), 12)
+			_box(r.root, Vector3(0.012, 0.006, 0.01), c + Vector3(-0.02, -0.004, -0.02), black, Vector3.ZERO, 0.0)
 		_:
 			_generic(r, t + Vector3(0, 0.02, 0), id)
 
@@ -2579,34 +1609,51 @@ static func _grip_part(r: Rig, id: String) -> void:
 	var size := r.grip_size
 	var rake := r.grip_rake
 	var down := _grip_down(rake)
-	var fwd := Vector3(0, 0, -1).rotated(Vector3(1, 0, 0), deg_to_rad(rake))
+	var fwd := Vector3(0, sin(deg_to_rad(rake)), -cos(deg_to_rad(rake)))
 	match id:
 		"rubber_grip":
-			_grip_shape(r, top, mat("panel", BLACK), size, rake, false)
-			for i in 3:
-				_ball(r.root, size.x * 0.42, top + down * size.y * (0.25 + i * 0.25) + fwd * size.z * 0.48, mat("panel", BLACK), Vector3(1.05, 0.7, 0.6))
+			# An overmoulded rubber grip with deep finger grooves.
+			_put(r.root, GunKit.slab(_grip_outline(top, size + Vector3(0.003, 0, 0.003), rake, true, 1.0), size.x + 0.003, 0.005), Vector3.ZERO, fin("rubber"))
 		"skeleton_grip":
-			var a := top + fwd * size.z * 0.4
-			var b := top - fwd * size.z * 0.4
-			var m := mat("panel", DARK)
-			_tube(r.root, [a, a + down * size.y, b + down * size.y, b], 0.005, m, 5)
-			_box(r.root, Vector3(size.x, 0.012, size.z), top + down * 0.006, m, Vector3(rake, 0, 0), 0.002)
-			_rod_between(r.root, a + down * size.y * 0.5, b + down * size.y * 0.5, 0.004, m)
-		"wood_grip":
-			_grip_shape(r, top, mat("wood", WOOD), size + Vector3(0.002, 0.0, 0.002), rake, false)
+			# A machined skeleton: the outline frame with the middle cut away.
+			var outline := _grip_outline(top, size, rake, false, 1.0)
+			var inner := _grip_outline(top, size, rake, false, 0.62)
+			var m := fin("black")
+			_put(r.root, GunKit.slab(outline, size.x * 0.5, 0.0012), Vector3.ZERO, m)
+			_put(r.root, GunKit.slab(inner, size.x * 0.5 + 0.001, 0.0), Vector3.ZERO, fin("bore"))
 			for sx: float in [-1.0, 1.0]:
-				_box(r.root, Vector3(0.002, size.y * 0.55, size.z * 0.55), top + down * size.y * 0.5 + Vector3(sx * (size.x * 0.5 + 0.001), 0, 0),
-						mat("wood", Color(0.75, 0.55, 0.4)), Vector3(rake, 0, 0), 0.0)
+				_put(r.root, GunKit.slab(_grip_outline(top, size, rake, false, 1.0), size.x * 0.12, 0.0006), Vector3(sx * size.x * 0.32, 0, 0), m)
+		"wood_grip":
+			_grip_shape(r, top, fin("laminate"), size + Vector3(0.002, 0.0, 0.002), rake, false, false)
+			_pins(r, [Vector2((top + down * size.y * 0.3).z, (top + down * size.y * 0.3).y), Vector2((top + down * size.y * 0.75).z, (top + down * size.y * 0.75).y)],
+					size.x * 0.5 + 0.002, 0.003)
 		"tape_grip":
-			_grip_shape(r, top, mat("panel", DARK), size, rake, false)
-			var colours := [TAPE, RED, TAPE, YELLOW, TAPE]
-			for i in colours.size():
-				_box(r.root, Vector3(size.x + 0.004, size.y / 6.0, size.z + 0.004), top + down * size.y * (0.12 + i * 0.18),
-						mat("panel", colours[i]), Vector3(rake + (i % 2) * 6.0 - 3.0, 0, 0), 0.002)
+			# Wrapped in grip tape: a sleeve of rubber with sulfur bands.
+			_grip_shape(r, top, fin("black"), size, rake, false, false)
+			for i in 4:
+				_box(r.root, Vector3(size.x + 0.003, 0.004, size.z * 1.1), top + down * size.y * (0.2 + i * 0.2), fin("sulfur" if i % 2 == 0 else "rubber"),
+						Vector3(rake, 0, 0), 0.001)
 		"stippled_grip":
-			_grip_shape(r, top, mat("concrete", Color(0.42, 0.4, 0.38)), size, rake, false)
+			_grip_shape(r, top, fin("poly_tan"), size, rake, false, true)
+			for i in 12:
+				var p := top + down * size.y * (0.2 + (i / 3) * 0.18) + fwd * size.z * (-0.25 + (i % 3) * 0.25)
+				for sx: float in [-1.0, 1.0]:
+					_box(r.root, Vector3(0.0014, 0.004, 0.004), p + Vector3(sx * (size.x * 0.5 + 0.0012), 0, 0), fin("bore"), Vector3(45, 0, 0), 0.0)
+		"runner_grip":
+			# A slim grip with an oxide stripe down its back strap.
+			_grip_shape(r, top, fin("poly_grey"), size - Vector3(0.0, 0.0, 0.004), rake, false, true)
+			_box(r.root, Vector3(size.x + 0.002, size.y * 0.75, 0.006), top + down * size.y * 0.5 - fwd * size.z * 0.48, fin("oxide"), Vector3(rake, 0, 0), 0.001)
+		"spur_grip":
+			# A cowboy's spur rowel spinning on the heel of the grip.
+			_grip_shape(r, top, fin("black"), size, rake, false, true)
+			var heel := top + down * size.y * 0.95 - fwd * size.z * 0.6
+			_cyl_x(r.root, 0.004, size.x + 0.006, heel, fin("chrome"), 12)
+			for i in 8:
+				var a := TAU * i / 8.0
+				_box(r.root, Vector3(0.002, 0.012, 0.003), heel + Vector3(size.x * 0.5 + 0.004, cos(a) * 0.008, sin(a) * 0.008), fin("brass"),
+						Vector3(-rad_to_deg(a), 0, 0), 0.0)
 		_:
-			_grip_shape(r, top, mat("panel", Color.from_hsv(float(absi(hash(id)) % 360) / 360.0, 0.35, 0.55)), size, rake, true)
+			_grip_shape(r, top, fin("oxide"), size, rake, true)
 
 
 ## Trigger groups: a different blade in the guard and a cue on the selector.
@@ -2632,8 +1679,21 @@ static func _trigger_part(r: Rig, id: String) -> void:
 		"double_set":
 			_box(r.root, Vector3(0.006, 0.02, 0.006), t + Vector3(0, 0.0, 0.012), mat("brass"), Vector3(-10, 0, 0), 0.001)
 			_box(r.root, Vector3(0.0065, 0.022, 0.007), t, mat("brass"), Vector3(-15, 0, 0), 0.001)
+		"dead_mans_trigger":
+			# A long oxide lever that hangs out under the guard.
+			_slab(r.root, [Vector2(t.z + 0.002, t.y + 0.012), Vector2(t.z - 0.004, t.y - 0.01), Vector2(t.z - 0.002, t.y - 0.03), Vector2(t.z + 0.004, t.y - 0.032),
+					Vector2(t.z + 0.006, t.y - 0.012), Vector2(t.z + 0.006, t.y + 0.012)], 0.007, fin("oxide"), 0.0, 0.001)
+		"gamble_trigger":
+			# A die set into the side of the frame, pips up.
+			_box(r.root, Vector3(0.012, 0.012, 0.012), side, fin("dust"), Vector3(10, 20, 0), 0.002)
+			for i in 3:
+				_ball(r.root, 0.0013, side + Vector3(0.0062, -0.003 + i * 0.003, -0.003 + i * 0.003), fin("bore"))
+		"overclock_trigger":
+			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("oxide"))
+			for i in 5:
+				_box(r.root, Vector3(0.004, 0.014, 0.0016), side + Vector3(0.002, 0.0, -0.012 + i * 0.006), fin("bare"), Vector3.ZERO, 0.0)
 		_:
-			_box(r.root, Vector3(0.008, 0.022, 0.008), t, mat("panel", Color.from_hsv(float(absi(hash(id)) % 360) / 360.0, 0.5, 0.9)), Vector3(-15, 0, 0), 0.001)
+			_blade_at(r, t.z + 0.002, t.y + 0.012, fin("oxide"))
 
 
 ## Bolt parts: what shows through the ejection port, a buffer band, or a bigger handle.
@@ -2669,6 +1729,19 @@ static func _bolt_part(r: Rig, id: String) -> void:
 				_box(r.root, Vector3(0.012, 0.006, 0.03), Vector3(0, -0.038, 0.06), mat("panel", TAPE), Vector3(-20, 0, 0), 0.002)
 			else:
 				_generic(r, b, id)
+		"eject_bolt":
+			# A stiff spring showing through the port, the bolt face in oxide.
+			var points := []
+			for i in 25:
+				var a := TAU * i / 6.0
+				points.append(b + out * 0.002 + Vector3(0, cos(a) * 0.004, sin(a) * 0.004 - 0.016 + i * 0.0013))
+			_tube(r.root, points, 0.0011, fin("chrome"), 8)
+			_box(r.root, Vector3(0.003, 0.009, 0.008), b + out * 0.001 + Vector3(0, 0, -0.02), fin("oxide"), Vector3.ZERO, 0.0)
+		"feather_bolt":
+			# A skeletonised bolt: a plate full of holes behind the port.
+			_box(r.root, Vector3(0.003, 0.011, 0.028), b + out * 0.0005, fin("bare"), Vector3.ZERO, 0.0)
+			for i in 4:
+				_cyl_x(r.root, 0.0022, 0.0034, b + out * 0.0008 + Vector3(0, 0, -0.01 + i * 0.0068), fin("bore"), 10)
 		_:
 			_generic(r, b + out * 0.008, id)
 
@@ -2834,6 +1907,24 @@ static func _box_magazine(r: Rig, id: String) -> void:
 				_box(r.root, Vector3(w + 0.002, base * 0.5, 0.006), t.lerp(bottom, 0.45) + Vector3(0, 0, d * 0.25), mat("panel", SMOKE), Vector3(r.mag_tilt + r.mag_curve * 0.5, 0, 0), 0.0)
 		"casket_mag":
 			_mag_body(r, t, maxf(base, 0.03), w * 1.9, d, r.mag_tilt, r.mag_curve * 0.6, mat("panel", Color(0.4, 0.42, 0.46)))
+		"hourglass_mag":
+			# A glass magazine pinched in the middle, sand running through it.
+			var length := maxf(base, 0.05)
+			var bottom := _mag_body(r, t, length, w, d, r.mag_tilt, r.mag_curve, fin("glass"))
+			var mid := t.lerp(bottom, 0.5)
+			_box(r.root, Vector3(w + 0.004, 0.008, d + 0.004), mid, fin("brass"), Vector3(r.mag_tilt, 0, 0), 0.002)
+			_box(r.root, Vector3(w * 0.7, length * 0.3, d * 0.7), t.lerp(bottom, 0.8), fin("sand"), Vector3(r.mag_tilt, 0, 0), 0.003)
+			_box(r.root, Vector3(w * 0.5, length * 0.12, d * 0.5), t.lerp(bottom, 0.2), fin("sand"), Vector3(r.mag_tilt, 0, 0), 0.002)
+		"jumbo_mag":
+			var bottom := _mag_body(r, t, maxf(base * 2.6, 0.12), w * 1.2, d * 1.1, r.mag_tilt, r.mag_curve * 1.6, steel)
+			for k: float in [0.3, 0.65]:
+				_box(r.root, Vector3(w * 1.2 + 0.004, 0.02, d * 1.1 + 0.004), t.lerp(bottom, k), fin("sulfur" if k < 0.5 else "black"),
+						Vector3(r.mag_tilt + r.mag_curve * k * 1.6, 0, 0), 0.002)
+		"one_shot_mag":
+			# A stub of a magazine holding one fat round, its tip showing.
+			var bottom := _mag_body(r, t, maxf(base * 0.25, 0.02), w, d, r.mag_tilt, 0.0, fin("oxide"), false)
+			_round(r, _cyl(r.root, minf(w, d) * 0.4, minf(d * 0.9, 0.05), t + Vector3(0, 0.004, -0.002), fin("brass"), 12))
+			_box(r.root, Vector3(w + 0.004, 0.006, d + 0.006), bottom, fin("black"), Vector3(r.mag_tilt, 0, 0), 0.0015)
 		"tube_extension", "side_saddle", "box_mag_conv", "belt_box":
 			# Only fits frames whose own style draws it; anywhere else, a plain magazine.
 			_mag_body(r, t, maxf(base, 0.012), w, d, r.mag_tilt, r.mag_curve, steel)
@@ -2892,99 +1983,152 @@ static func _stock(r: Rig, id: String) -> void:
 		r.side = Vector3(sx * (r.body_w + 0.002), at.y, at.z + 0.03)
 	match id:
 		"heavy_stock":
-			_profile(r.root, [Vector2(0.0, 0.016), Vector2(-0.22, 0.022), Vector2(-0.235, -0.085), Vector2(-0.2, -0.092),
-					Vector2(-0.06, -0.035), Vector2(0.0, -0.025)], 0.036, s, mat("wood", WOOD))
-			_box(r.root, Vector3(0.04, 0.112, 0.016), s + Vector3(0, -0.033, 0.232), black, Vector3(-4, 0, 0), 0.004)
-			_box(r.root, Vector3(0.04, 0.03, 0.03), s + Vector3(0, 0.0, 0.01), mat("panel", DARK), Vector3.ZERO, 0.004)
-			_stock_ends(r, s + Vector3(0, -0.033, 0.24), 0.11, s + Vector3(0, 0.02, 0.14))
+			# A laminated sporter stock: straight comb, pistol-grip wrist, a thick rubber pad.
+			_box(r.root, Vector3(0.036, 0.034, 0.018), s + Vector3(0, -0.002, 0.008), fin("steel"), Vector3.ZERO, 0.002)
+			_sl(r, s, [Vector2(0.012, 0.018), Vector2(0.21, 0.024), Vector2(0.226, 0.018), Vector2(0.228, -0.082), Vector2(0.2, -0.09),
+					Vector2(0.13, -0.06), Vector2(0.07, -0.04), Vector2(0.03, -0.03), Vector2(0.012, -0.026)], 0.036, fin("laminate"))
+			_sl(r, s, [Vector2(0.228, 0.022), Vector2(0.244, 0.022), Vector2(0.246, -0.088), Vector2(0.228, -0.086)], 0.038, fin("rubber"), 0.002)
+			for z: float in [0.08, 0.17]:
+				_cyl_x(r.root, 0.004, 0.039, s + Vector3(0, -0.01, z), fin("steel"), 10)
+			_stock_ends(r, s + Vector3(0, -0.033, 0.246), 0.11, s + Vector3(0, 0.022, 0.14))
 		"light_stock":
-			var steel := mat("panel", STEEL)
-			_tube(r.root, [s, s + Vector3(0, 0.002, 0.2)], 0.005, steel, 5)
-			_tube(r.root, [s + Vector3(0, -0.03, 0.0), s + Vector3(0, -0.07, 0.19)], 0.005, steel, 5)
-			_tube(r.root, [s + Vector3(0, 0.012, 0.2), s + Vector3(0, -0.085, 0.2)], 0.006, steel, 5)
-			_box(r.root, Vector3(0.03, 0.014, 0.05), s + Vector3(0, 0.004, 0.13), mat("panel", TAPE), Vector3.ZERO, 0.004)
-			_box(r.root, Vector3(0.026, 0.1, 0.012), s + Vector3(0, -0.036, 0.205), black, Vector3.ZERO, 0.004)
-			_stock_ends(r, s + Vector3(0, -0.036, 0.211), 0.1, s + Vector3(0, 0.008, 0.13))
+			# A skeletonised two-strut stock machined from one plate, with a bare-steel butt.
+			var plate := fin("black")
+			_sl(r, s, [Vector2(0.0, 0.012), Vector2(0.21, 0.012), Vector2(0.21, -0.004), Vector2(0.0, -0.004)], 0.022, plate, 0.002)
+			_sl(r, s, [Vector2(0.0, -0.022), Vector2(0.02, -0.034), Vector2(0.21, -0.074), Vector2(0.21, -0.09), Vector2(0.196, -0.09),
+					Vector2(0.0, -0.04)], 0.022, plate, 0.002)
+			_sl(r, s, [Vector2(0.12, -0.002), Vector2(0.132, -0.002), Vector2(0.118, -0.05), Vector2(0.106, -0.048)], 0.018, plate, 0.0015)
+			_sl(r, s, [Vector2(0.0, 0.012), Vector2(0.012, 0.012), Vector2(0.012, -0.04), Vector2(0.0, -0.04)], 0.026, plate, 0.002)
+			_sl(r, s, [Vector2(0.204, 0.016), Vector2(0.218, 0.016), Vector2(0.218, -0.092), Vector2(0.204, -0.092)], 0.03, fin("bare"), 0.0015)
+			_stock_ends(r, s + Vector3(0, -0.036, 0.218), 0.1, s + Vector3(0, 0.012, 0.13))
 		"folding_stock":
-			# Folded flat along the right of the receiver, butt forward.
-			var hinge := s + Vector3(r.body_w + 0.008, 0, 0)
-			var m := mat("panel", DARK)
-			_box(r.root, Vector3(0.012, 0.022, 0.016), hinge + Vector3(-0.004, 0, -0.004), black, Vector3.ZERO, 0.002)
-			var tip := hinge + Vector3(0.004, -0.004, -0.2)
-			_tube(r.root, [hinge, tip], 0.006, m, 5)
-			_tube(r.root, [hinge + Vector3(0, -0.022, 0), tip + Vector3(0, -0.05, 0.01)], 0.005, m, 5)
-			_box(r.root, Vector3(0.012, 0.08, 0.02), tip + Vector3(0.002, -0.03, 0.004), black, Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.014, 0.016, 0.03), hinge + Vector3(0.002, -0.006, -0.1), mat("panel", TAPE), Vector3.ZERO, 0.002)
+			# Folded flat along the right of the receiver, butt forward: a triangle of flat bar.
+			var hinge := s + Vector3(r.body_w + 0.007, 0, 0)
+			_cyl_y(r.root, 0.007, 0.03, hinge + Vector3(0, -0.006, -0.004), fin("black"), 12)
+			var x := hinge.x + 0.002
+			_slab(r.root, [Vector2(hinge.z, hinge.y + 0.006), Vector2(hinge.z - 0.2, hinge.y + 0.004), Vector2(hinge.z - 0.212, hinge.y - 0.004),
+					Vector2(hinge.z - 0.212, hinge.y - 0.08), Vector2(hinge.z - 0.2, hinge.y - 0.084), Vector2(hinge.z - 0.19, hinge.y - 0.074),
+					Vector2(hinge.z - 0.02, hinge.y - 0.024), Vector2(hinge.z, hinge.y - 0.02)], 0.008, fin("steel"), x, 0.0012)
+			_slab(r.root, [Vector2(hinge.z - 0.03, hinge.y - 0.004), Vector2(hinge.z - 0.18, hinge.y - 0.006), Vector2(hinge.z - 0.19, hinge.y - 0.014),
+					Vector2(hinge.z - 0.19, hinge.y - 0.062), Vector2(hinge.z - 0.04, hinge.y - 0.02)], 0.0084, fin("bore"), x, 0.0)
+			_slab(r.root, [Vector2(hinge.z - 0.212, hinge.y + 0.004), Vector2(hinge.z - 0.222, hinge.y + 0.004),
+					Vector2(hinge.z - 0.222, hinge.y - 0.084), Vector2(hinge.z - 0.212, hinge.y - 0.084)], 0.016, fin("rubber"), x, 0.002)
 		"adjustable_stock":
 			# A collapsible stock on a buffer tube; its tune slides it in and out.
 			var t := float(r.tune.get("stock", 0.0))
 			var off := 0.1 * t if t < 0.0 else 0.06 * t
 			if not r.has_buffer:
-				_box(r.root, Vector3(0.03, 0.03, 0.024), s + Vector3(0, 0, 0.01), mat("panel", DARK), Vector3.ZERO, 0.004)
-				_rod(r.root, 0.014, 0.014, 0.22, s + Vector3(0, 0, 0.11), black, 8)
-			var front := s.z + 0.12 + off
-			_profile(r.root, [Vector2(-front, 0.018), Vector2(-front - 0.14, 0.018), Vector2(-front - 0.145, -0.075),
-					Vector2(-front - 0.12, -0.08), Vector2(-front, -0.02)], 0.036, Vector3(0, s.y, 0), mat("panel", TAN))
-			_box(r.root, Vector3(0.038, 0.098, 0.014), Vector3(0, s.y - 0.03, front + 0.147), black, Vector3.ZERO, 0.004)
-			_box(r.root, Vector3(0.006, 0.014, 0.03), Vector3(0, s.y - 0.02, front + 0.01), black, Vector3.ZERO, 0.001)
-			_stock_ends(r, Vector3(0, s.y - 0.03, front + 0.154), 0.098, Vector3(0, s.y + 0.018, front + 0.08))
+				_box(r.root, Vector3(0.03, 0.03, 0.024), s + Vector3(0, 0, 0.01), fin("black"), Vector3.ZERO, 0.002)
+				_cyl(r.root, 0.0145, 0.22, s + Vector3(0, 0, 0.11), fin("black"), 16)
+			var front := 0.12 + off
+			var m := fin("poly_tan")
+			_sl(r, s, [Vector2(front, 0.02), Vector2(front + 0.14, 0.022), Vector2(front + 0.146, 0.014), Vector2(front + 0.148, -0.072),
+					Vector2(front + 0.13, -0.08), Vector2(front + 0.1, -0.068), Vector2(front + 0.04, -0.03), Vector2(front, -0.022)], 0.036, m)
+			_sl(r, s, [Vector2(front + 0.07, -0.024), Vector2(front + 0.122, -0.02), Vector2(front + 0.124, -0.052), Vector2(front + 0.108, -0.054)],
+					0.0372, fin("bore"), 0.0)
+			_sl(r, s, [Vector2(front + 0.148, 0.02), Vector2(front + 0.16, 0.02), Vector2(front + 0.16, -0.078), Vector2(front + 0.148, -0.08)],
+					0.038, fin("rubber"), 0.002)
+			_box(r.root, Vector3(0.008, 0.006, 0.036), s + Vector3(0, -0.024, front + 0.03), fin("black"), Vector3(-6, 0, 0), 0.0015)
+			_stock_ends(r, s + Vector3(0, -0.03, front + 0.16), 0.098, s + Vector3(0, 0.02, front + 0.08))
 		"precision_stock":
-			var m := mat("panel", Color(0.32, 0.33, 0.35))
-			_box(r.root, Vector3(0.03, 0.03, 0.03), s + Vector3(0, 0, 0.012), mat("panel", DARK), Vector3.ZERO, 0.004)
-			_profile(r.root, [Vector2(-0.02, 0.005), Vector2(-0.27, 0.005), Vector2(-0.275, -0.085), Vector2(-0.24, -0.09),
-					Vector2(-0.15, -0.05), Vector2(-0.08, -0.05), Vector2(-0.02, -0.03)], 0.036, s, m)
-			# Adjustable cheek piece on two posts, spacers in the butt and a monopod knob.
+			# A chassis stock: aluminium spine, adjustable cheek on two posts, spacer stack, monopod.
+			var m := fin("black")
+			_box(r.root, Vector3(0.03, 0.03, 0.03), s + Vector3(0, 0, 0.012), fin("steel"), Vector3.ZERO, 0.002)
+			_sl(r, s, [Vector2(0.02, 0.006), Vector2(0.27, 0.006), Vector2(0.274, -0.084), Vector2(0.24, -0.09), Vector2(0.15, -0.052),
+					Vector2(0.08, -0.05), Vector2(0.02, -0.03)], 0.032, m)
+			_sl(r, s, [Vector2(0.09, -0.008), Vector2(0.22, -0.008), Vector2(0.24, -0.03), Vector2(0.24, -0.06), Vector2(0.15, -0.038),
+					Vector2(0.09, -0.036)], 0.0332, fin("bore"), 0.0)
 			for z: float in [0.12, 0.21]:
-				_rod(r.root, 0.003, 0.003, 0.016, s + Vector3(0, 0.012, z), mat("panel", NICKEL), 4, Vector3.ZERO)
-			_box(r.root, Vector3(0.03, 0.012, 0.12), s + Vector3(0, 0.024, 0.165), black, Vector3.ZERO, 0.004)
+				_cyl_y(r.root, 0.003, 0.018, s + Vector3(0, 0.014, z), fin("chrome"), 10)
+			_sl(r, s, [Vector2(0.1, 0.03), Vector2(0.23, 0.03), Vector2(0.236, 0.024), Vector2(0.236, 0.02), Vector2(0.1, 0.02)], 0.03, fin("polymer"), 0.002)
 			for i in 3:
-				_box(r.root, Vector3(0.038, 0.1, 0.005), s + Vector3(0, -0.04, 0.275 + i * 0.006), mat("panel", BLACK if i % 2 == 0 else DARK), Vector3.ZERO, 0.001)
-			_rod(r.root, 0.008, 0.008, 0.03, s + Vector3(0, -0.075, 0.23), mat("panel", DARK), 6, Vector3.ZERO)
-			_stock_ends(r, s + Vector3(0, -0.04, 0.29), 0.1, s + Vector3(0, 0.03, 0.165))
+				_sl(r, s, [Vector2(0.274 + i * 0.006, 0.008), Vector2(0.28 + i * 0.006, 0.008), Vector2(0.28 + i * 0.006, -0.088),
+						Vector2(0.274 + i * 0.006, -0.088)], 0.034, fin("rubber" if i == 2 else ("black" if i == 0 else "steel")), 0.0008)
+			_cyl_y(r.root, 0.008, 0.03, s + Vector3(0, -0.078, 0.23), fin("steel"), 12)
+			_cyl_y(r.root, 0.011, 0.006, s + Vector3(0, -0.095, 0.23), fin("rubber"), 14)
+			_stock_ends(r, s + Vector3(0, -0.04, 0.292), 0.1, s + Vector3(0, 0.03, 0.165))
 			r.comb = s + Vector3(0, 0.03, 0.2)
 		"wire_stock":
-			var m := mat("panel", STEEL)
-			_tube(r.root, [s + Vector3(0.012, 0.01, 0.0), s + Vector3(0.012, 0.008, 0.22), s + Vector3(0.012, -0.085, 0.22),
-					s + Vector3(0.012, -0.03, 0.0)], 0.0035, m, 4)
-			_tube(r.root, [s + Vector3(-0.012, 0.01, 0.0), s + Vector3(-0.012, 0.008, 0.22), s + Vector3(-0.012, -0.085, 0.22),
-					s + Vector3(-0.012, -0.03, 0.0)], 0.0035, m, 4)
-			_rod_between(r.root, s + Vector3(-0.012, -0.04, 0.22), s + Vector3(0.012, -0.04, 0.22), 0.004, m)
-			_box(r.root, Vector3(0.03, 0.02, 0.02), s + Vector3(0, -0.01, 0.005), mat("panel", DARK), Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.03, 0.012, 0.03), s + Vector3(0, 0.008, 0.15), mat("panel", TAPE), Vector3.ZERO, 0.002)
-			_stock_ends(r, s + Vector3(0, -0.04, 0.224), 0.1, s + Vector3(0, 0.01, 0.15))
+			# Bent rod: two side loops, a cross bar for a butt, a strip of tape for the cheek.
+			var m := fin("bare")
+			for sx: float in [-1.0, 1.0]:
+				_tube(r.root, [s + Vector3(sx * 0.012, 0.01, 0.0), s + Vector3(sx * 0.012, 0.008, 0.21), s + Vector3(sx * 0.012, 0.0, 0.222),
+						s + Vector3(sx * 0.012, -0.078, 0.222), s + Vector3(sx * 0.012, -0.085, 0.21), s + Vector3(sx * 0.012, -0.03, 0.0)], 0.0035, m, 10)
+			for y: float in [-0.005, -0.07]:
+				_cyl_x(r.root, 0.004, 0.028, s + Vector3(0, y, 0.222), m, 10)
+			_box(r.root, Vector3(0.03, 0.02, 0.02), s + Vector3(0, -0.01, 0.005), fin("black"), Vector3.ZERO, 0.002)
+			_box(r.root, Vector3(0.03, 0.01, 0.04), s + Vector3(0, 0.01, 0.15), fin("sand"), Vector3.ZERO, 0.002)
+			_stock_ends(r, s + Vector3(0, -0.04, 0.226), 0.1, s + Vector3(0, 0.01, 0.15))
 		"pistol_brace":
 			# A tube off the back of the pistol, a finned arm brace and its velcro strap.
-			_box(r.root, Vector3(0.022, 0.024, 0.03), s + Vector3(0, 0, 0.01), black, Vector3.ZERO, 0.004)
-			_rod(r.root, 0.011, 0.011, 0.12, s + Vector3(0, 0.0, 0.08), black, 8)
-			_box(r.root, Vector3(0.034, 0.05, 0.11), s + Vector3(0, -0.012, 0.12), mat("panel", POLY), Vector3.ZERO, 0.008)
+			_box(r.root, Vector3(0.022, 0.024, 0.03), s + Vector3(0, 0, 0.01), fin("black"), Vector3.ZERO, 0.002)
+			_cyl(r.root, 0.011, 0.12, s + Vector3(0, 0.0, 0.08), fin("black"), 14)
+			var m := fin("polymer")
 			for sx: float in [-1.0, 1.0]:
-				_box(r.root, Vector3(0.006, 0.06, 0.08), s + Vector3(sx * 0.02, -0.03, 0.13), mat("panel", POLY), Vector3(0, 0, sx * 12.0), 0.003)
-			_box(r.root, Vector3(0.05, 0.016, 0.022), s + Vector3(0, -0.055, 0.15), mat("panel", OD), Vector3.ZERO, 0.002)
-			_stock_ends(r, s + Vector3(0, -0.012, 0.18), 0.05, s + Vector3(0, 0.013, 0.12))
+				_slab(r.root, [Vector2(s.z + 0.07, s.y + 0.006), Vector2(s.z + 0.18, s.y + 0.012), Vector2(s.z + 0.186, s.y - 0.004),
+						Vector2(s.z + 0.17, s.y - 0.06), Vector2(s.z + 0.08, s.y - 0.03)], 0.006, m, sx * 0.016, 0.0015)
+			_sl(r, s, [Vector2(0.07, 0.008), Vector2(0.18, 0.014), Vector2(0.18, -0.004), Vector2(0.07, -0.014)], 0.028, m)
+			_box(r.root, Vector3(0.046, 0.012, 0.022), s + Vector3(0, -0.052, 0.15), fin("poly_green"), Vector3(-20, 0, 0), 0.002)
+			_stock_ends(r, s + Vector3(0, -0.012, 0.186), 0.05, s + Vector3(0, 0.013, 0.12))
 		"hydraulic_stock":
-			var m := mat("panel", Color(0.3, 0.33, 0.3))
-			_box(r.root, Vector3(0.03, 0.03, 0.03), s + Vector3(0, 0, 0.012), mat("panel", DARK), Vector3.ZERO, 0.004)
-			_profile(r.root, [Vector2(-0.04, 0.0), Vector2(-0.25, 0.0), Vector2(-0.255, -0.09), Vector2(-0.22, -0.095),
-					Vector2(-0.04, -0.04)], 0.036, s, m)
-			# The oil cylinder and its chrome rod along the top.
-			_rod(r.root, 0.012, 0.012, 0.1, s + Vector3(0, 0.012, 0.1), mat("panel", YELLOW), 8)
-			_rod(r.root, 0.005, 0.005, 0.08, s + Vector3(0, 0.012, 0.19), mat("panel", NICKEL), 6)
-			_rod(r.root, 0.013, 0.013, 0.01, s + Vector3(0, 0.012, 0.05), mat("panel", BLACK), 8)
-			_box(r.root, Vector3(0.04, 0.11, 0.02), s + Vector3(0, -0.04, 0.255), black, Vector3.ZERO, 0.004)
-			_stock_ends(r, s + Vector3(0, -0.04, 0.265), 0.11, s + Vector3(0, 0.002, 0.15))
+			# A recoil-damping stock: oil cylinder and chrome ram along the top of the frame.
+			var m := fin("steel")
+			_box(r.root, Vector3(0.03, 0.03, 0.03), s + Vector3(0, 0, 0.012), fin("black"), Vector3.ZERO, 0.002)
+			_sl(r, s, [Vector2(0.04, -0.004), Vector2(0.25, -0.004), Vector2(0.256, -0.09), Vector2(0.22, -0.096), Vector2(0.04, -0.04)], 0.034, m)
+			_sl(r, s, [Vector2(0.08, -0.016), Vector2(0.2, -0.016), Vector2(0.21, -0.06), Vector2(0.08, -0.034)], 0.0352, fin("bore"), 0.0)
+			_turn(r.root, [Vector2(0.05, 0.0), Vector2(0.05, 0.012), Vector2(0.15, 0.012), Vector2(0.155, 0.009), Vector2(0.155, 0.0)],
+					Vector3(0, s.y + 0.014, s.z), fin("sulfur"), 16)
+			_cyl(r.root, 0.005, 0.09, s + Vector3(0, 0.014, 0.2), fin("chrome"), 12)
+			_cyl(r.root, 0.013, 0.008, s + Vector3(0, 0.014, 0.05), fin("black"), 16)
+			_sl(r, s, [Vector2(0.244, 0.02), Vector2(0.264, 0.02), Vector2(0.264, -0.096), Vector2(0.244, -0.096)], 0.04, fin("rubber"), 0.002)
+			_stock_ends(r, s + Vector3(0, -0.04, 0.264), 0.11, s + Vector3(0, 0.002, 0.15))
 		"bump_stock":
 			# A bulky slide-fire shell over a buffer, its finger rest reaching for the trigger.
-			_box(r.root, Vector3(0.04, 0.05, 0.2), s + Vector3(0, -0.01, 0.11), black, Vector3.ZERO, 0.01)
-			_box(r.root, Vector3(0.042, 0.09, 0.03), s + Vector3(0, -0.035, 0.2), black, Vector3.ZERO, 0.008)
-			_box(r.root, Vector3(0.036, 0.016, 0.05), s + Vector3(0, 0.022, 0.12), mat("panel", ORANGE), Vector3.ZERO, 0.004)
+			var m := fin("polymer")
+			_sl(r, s, [Vector2(0.0, 0.02), Vector2(0.2, 0.024), Vector2(0.214, 0.014), Vector2(0.216, -0.08), Vector2(0.196, -0.086),
+					Vector2(0.17, -0.07), Vector2(0.1, -0.036), Vector2(0.0, -0.034)], 0.042, m, 0.004)
+			_grooves(r, s.z + 0.04, s.z + 0.14, s.y - 0.006, 0.02, 0.0215, 5)
+			_box(r.root, Vector3(0.036, 0.008, 0.05), s + Vector3(0, 0.026, 0.12), fin("oxide"), Vector3.ZERO, 0.002)
 			var rest := r.grip_top + Vector3(0, -0.004, -0.01)
-			_box(r.root, Vector3(0.034, 0.012, absf(s.z - rest.z) + 0.02), Vector3(0, rest.y, (s.z + rest.z) / 2.0 + 0.01), black, Vector3.ZERO, 0.003)
-			_box(r.root, Vector3(0.008, 0.016, 0.008), Vector3(0.016, rest.y - 0.01, rest.z), mat("panel", ORANGE), Vector3.ZERO, 0.002)
-			_stock_ends(r, s + Vector3(0, -0.035, 0.215), 0.09, s + Vector3(0, 0.022, 0.12))
+			_box(r.root, Vector3(0.03, 0.01, absf(s.z - rest.z) + 0.02), Vector3(0, rest.y, (s.z + rest.z) / 2.0 + 0.01), m, Vector3.ZERO, 0.002)
+			_box(r.root, Vector3(0.008, 0.016, 0.008), Vector3(0.016, rest.y - 0.01, rest.z), fin("oxide"), Vector3.ZERO, 0.002)
+			_stock_ends(r, s + Vector3(0, -0.035, 0.216), 0.09, s + Vector3(0, 0.024, 0.12))
+		"spring_stock":
+			# A tube with a big exposed coil spring between the receiver and a sliding butt.
+			_box(r.root, Vector3(0.03, 0.03, 0.024), s + Vector3(0, 0, 0.01), fin("black"), Vector3.ZERO, 0.002)
+			_cyl(r.root, 0.007, 0.2, s + Vector3(0, 0, 0.11), fin("chrome"), 12)
+			var coil := []
+			for i in 57:
+				var a := TAU * i / 8.0
+				coil.append(s + Vector3(cos(a) * 0.014, sin(a) * 0.014, 0.025 + i * 0.0026))
+			_tube(r.root, coil, 0.0022, fin("oxide"), 8)
+			_sl(r, s, [Vector2(0.175, 0.02), Vector2(0.2, 0.02), Vector2(0.205, 0.012), Vector2(0.205, -0.075), Vector2(0.19, -0.08),
+					Vector2(0.175, -0.072)], 0.034, fin("black"))
+			_sl(r, s, [Vector2(0.205, 0.016), Vector2(0.217, 0.016), Vector2(0.217, -0.078), Vector2(0.205, -0.078)], 0.036, fin("rubber"), 0.002)
+			_stock_ends(r, s + Vector3(0, -0.03, 0.217), 0.094, s + Vector3(0, 0.02, 0.19))
+		"counterweight_stock":
+			# A solid stock with a stack of lead weights bolted through it.
+			_box(r.root, Vector3(0.03, 0.03, 0.03), s + Vector3(0, 0, 0.012), fin("black"), Vector3.ZERO, 0.002)
+			_sl(r, s, [Vector2(0.02, 0.012), Vector2(0.24, 0.016), Vector2(0.246, 0.008), Vector2(0.248, -0.088), Vector2(0.226, -0.094),
+					Vector2(0.12, -0.06), Vector2(0.02, -0.034)], 0.036, fin("poly_grey"))
+			for i in 4:
+				_cyl_x(r.root, 0.018, 0.012, s + Vector3(0.024, -0.036, 0.13 + i * 0.026), fin("steel"), 18)
+				_cyl_x(r.root, 0.018, 0.012, s + Vector3(-0.024, -0.036, 0.13 + i * 0.026), fin("steel"), 18)
+			_cyl_x(r.root, 0.004, 0.064, s + Vector3(0, -0.036, 0.17), fin("chrome"), 10)
+			_sl(r, s, [Vector2(0.248, 0.014), Vector2(0.26, 0.014), Vector2(0.26, -0.092), Vector2(0.248, -0.092)], 0.038, fin("rubber"), 0.002)
+			_stock_ends(r, s + Vector3(0, -0.04, 0.26), 0.106, s + Vector3(0, 0.016, 0.15))
 		_:
-			_box(r.root, Vector3(0.034, 0.05, 0.2), s + Vector3(0, -0.02, 0.1), mat("panel", Color.from_hsv(float(absi(hash(id)) % 360) / 360.0, 0.3, 0.5)), Vector3.ZERO, 0.006)
+			_sl(r, s, [Vector2(0.0, 0.004), Vector2(0.2, 0.004), Vector2(0.2, -0.045), Vector2(0.0, -0.045)], 0.034, fin("poly_grey"))
 			_generic(r, s + Vector3(0, 0.0, 0.1), id)
 			_stock_ends(r, s + Vector3(0, -0.02, 0.2), 0.05, s + Vector3(0, 0.005, 0.1))
+
+
+## A stock silhouette from `s` (points are (back, up) offsets from the stock anchor).
+static func _sl(r: Rig, s: Vector3, pts: Array, thick: float, m: Material, bevel := 0.003) -> void:
+	var out := []
+	for v: Vector2 in pts:
+		out.append(Vector2(s.z + v.x, s.y + v.y))
+	_slab(r.root, out, thick, m, s.x, bevel)
 
 
 static func _stock_ends(r: Rig, butt: Vector3, height: float, comb: Vector3) -> void:
@@ -3114,5 +2258,30 @@ static func _gadget(r: Rig, id: String) -> void:
 			_ball(r.root, 0.009, c + Vector3(0, -0.01, 0), fur, Vector3(1, 1.8, 1), 0.25)
 			_ball(r.root, 0.007, c + Vector3(0, -0.026, -0.004), mat("panel", Color(0.8, 0.6, 0.45)), Vector3(1, 1, 1.3), 0.3)
 			_rod(r.root, 0.006, 0.006, 0.006, c + Vector3(0, 0.002, 0), mat("brass"), 6, Vector3.ZERO)
+		"feather_charm":
+			_slab(r.root, [Vector2(c.z, c.y + 0.004), Vector2(c.z - 0.006, c.y - 0.01), Vector2(c.z - 0.004, c.y - 0.03), Vector2(c.z, c.y - 0.04),
+					Vector2(c.z + 0.005, c.y - 0.028), Vector2(c.z + 0.006, c.y - 0.008)], 0.002, fin("dust"), c.x, 0.0)
+			_cyl_y(r.root, 0.0008, 0.046, c + Vector3(0, -0.018, 0), fin("sand"), 6)
+		"skull_charm":
+			var bone := fin("dust")
+			_ball(r.root, 0.011, c + Vector3(0, -0.004, 0), bone, Vector3(1, 1, 1.1))
+			_box(r.root, Vector3(0.012, 0.008, 0.01), c + Vector3(0, -0.015, -0.004), bone, Vector3.ZERO, 0.002)
+			for sx: float in [-1.0, 1.0]:
+				_ball(r.root, 0.0032, c + Vector3(sx * 0.0045, -0.004, -0.0095), fin("bore"))
+		"propeller":
+			_cyl_y(r.root, 0.004, 0.012, c, fin("chrome"), 12)
+			for sx: float in [-1.0, 1.0]:
+				_box(r.root, Vector3(0.05, 0.002, 0.012), c + Vector3(sx * 0.026, 0.006, 0), fin("oxide"), Vector3(0, 0, sx * 8.0), 0.0008)
+		"anchor_charm":
+			var iron := fin("steel")
+			_cyl_y(r.root, 0.0035, 0.05, c + Vector3(0, -0.022, 0), iron, 10)
+			_cyl_x(r.root, 0.003, 0.03, c + Vector3(0, -0.006, 0), iron, 8)
+			_tube(r.root, [c + Vector3(-0.02, -0.036, 0), c + Vector3(-0.014, -0.046, 0), c + Vector3(0, -0.05, 0), c + Vector3(0.014, -0.046, 0),
+					c + Vector3(0.02, -0.036, 0)], 0.0035, iron, 8)
+		"lucky_dice":
+			for k in 2:
+				var at := c + Vector3(-0.006 + k * 0.012, -0.008 - k * 0.006, 0)
+				_box(r.root, Vector3(0.011, 0.011, 0.011), at, fin("dust"), Vector3(15 + k * 30, 25, 10), 0.002)
+				_ball(r.root, 0.0014, at + Vector3(0, 0, -0.0058), fin("oxide"))
 		_:
 			_generic(r, c + Vector3(0, -0.006, 0), id)
