@@ -143,6 +143,7 @@ static func _assemble(build: Dictionary) -> Node3D:
 	r.root.add_child(marker)
 	r.root.set_meta("muzzle", r.muzzle)
 	r.root.set_meta("frame", r.frame)
+	r.root.set_meta("mag_style", r.mag_style)
 	return r.root
 
 
@@ -230,6 +231,7 @@ class Rig:
 	var device_start := Vector3.INF        # where the muzzle device starts (a can slides over it)
 	var device_len := 0.0
 	var has_buffer := false
+	var mag_root: Node3D = null            # the "Magazine" node (see _into_mag)
 	var barrel_end := Vector3.ZERO         # the bare muzzle, before devices and cans                # an AR buffer tube is already there for stocks
 
 
@@ -503,8 +505,29 @@ static func _pic(r: Rig, centre: Vector3, length: float, roll := 0.0, width := 0
 		_box(r.root, Vector3(width + 0.002, 0.004, 0.005), centre + up * 0.0062 + Vector3(0, 0, z), bar, Vector3(0, 0, roll), 0.0008)
 
 
+## Magazine drawing goes into one "Magazine" node (at the gun's origin), so the view
+## model can pull it out and slot a fresh one in on a reload. Returns the node to draw
+## into afterwards; nested calls keep drawing into the magazine.
+static func _into_mag(r: Rig) -> Node3D:
+	var keep := r.root
+	if r.mag_root == null:
+		r.mag_root = Node3D.new()
+		r.mag_root.name = "Magazine"
+		r.root.add_child(r.mag_root)
+	r.root = r.mag_root
+	return keep
+
+
 ## A box magazine (optionally curved like a banana) hanging from `top`; returns its bottom.
 static func _mag_body(r: Rig, top: Vector3, length: float, w: float, d: float, tilt: float, curve: float,
+		m: Material, plate := true) -> Vector3:
+	var keep := _into_mag(r)
+	var out := _mag_body_draw(r, top, length, w, d, tilt, curve, m, plate)
+	r.root = keep
+	return out
+
+
+static func _mag_body_draw(r: Rig, top: Vector3, length: float, w: float, d: float, tilt: float, curve: float,
 		m: Material, plate := true) -> Vector3:
 	# The magazine's side silhouette along a curve (a banana when curve > 0), with stiffening
 	# ribs down its side and a flared base plate.
@@ -548,6 +571,13 @@ static func _mag_body(r: Rig, top: Vector3, length: float, w: float, d: float, t
 
 ## The frame's own magazine, in its usual shape, with the top round showing.
 static func _std_mag(r: Rig, m: Material, length_scale := 1.0) -> Vector3:
+	var keep := _into_mag(r)
+	var out := _std_mag_draw(r, m, length_scale)
+	r.root = keep
+	return out
+
+
+static func _std_mag_draw(r: Rig, m: Material, length_scale := 1.0) -> Vector3:
 	_box(r.root, Vector3(r.mag_w + 0.008, 0.014, r.mag_d + 0.008), r.mag + Vector3(0, -0.004, 0), mat("panel", DARK))
 	_round(r, _rod(r.root, 0.0055, 0.0055, minf(r.mag_d * 0.8, 0.06), r.mag + Vector3(0, 0.004, -0.002), mat("brass"), 5))
 	return _mag_body(r, r.mag, r.mag_len * length_scale, r.mag_w, r.mag_d, r.mag_tilt, r.mag_curve, m)
@@ -707,6 +737,12 @@ static func _round(r: Rig, node: MeshInstance3D) -> MeshInstance3D:
 
 ## A straight box magazine hanging from `top`, with the top round showing.
 static func _box_mag(r: Rig, top: Vector3, length: float, m: Material, width := 0.022, depth := 0.034, tilt := 8.0) -> void:
+	var keep := _into_mag(r)
+	_box_mag_draw(r, top, length, m, width, depth, tilt)
+	r.root = keep
+
+
+static func _box_mag_draw(r: Rig, top: Vector3, length: float, m: Material, width := 0.022, depth := 0.034, tilt := 8.0) -> void:
 	var down := Vector3(0, -cos(deg_to_rad(tilt)), -sin(deg_to_rad(tilt)))
 	_box(r.root, Vector3(width + 0.008, 0.02, depth + 0.008), top + Vector3(0, -0.006, 0), mat("panel", DARK))
 	_box(r.root, Vector3(width, length, depth), top + down * length * 0.5, m, Vector3(tilt, 0, 0))
@@ -718,6 +754,12 @@ static func _box_mag(r: Rig, top: Vector3, length: float, m: Material, width := 
 # --- Frames ---------------------------------------------------------------------------
 
 static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Material) -> void:
+	var keep := _into_mag(r)
+	_tank_draw(r, pos, radius, length, m)
+	r.root = keep
+
+
+static func _tank_draw(r: Rig, pos: Vector3, radius: float, length: float, m: Material) -> void:
 	var h := length / 2.0
 	_lathe_z(r.root, [Vector2(0, -h), Vector2(radius * 0.7, -h + 0.008), Vector2(radius, -h + 0.03),
 			Vector2(radius, h - 0.03), Vector2(radius * 0.7, h - 0.008), Vector2(0, h)], pos, m, 10)
@@ -730,6 +772,12 @@ static func _tank(r: Rig, pos: Vector3, radius: float, length: float, m: Materia
 
 
 static func _cells(r: Rig, top: Vector3, count: int, radius: float, length: float, m: Material) -> void:
+	var keep := _into_mag(r)
+	_cells_draw(r, top, count, radius, length, m)
+	r.root = keep
+
+
+static func _cells_draw(r: Rig, top: Vector3, count: int, radius: float, length: float, m: Material) -> void:
 	for i in count:
 		var x := (i - (count - 1) / 2.0) * radius * 2.1
 		var pos := top + Vector3(x, -radius, 0)
@@ -764,6 +812,12 @@ static func _blade(p: Node3D, pos: Vector3, radius: float) -> void:
 
 ## Spare blades stacked in a little cage under the body.
 static func _blade_stack(r: Rig, top: Vector3, count: int) -> void:
+	var keep := _into_mag(r)
+	_blade_stack_draw(r, top, count)
+	r.root = keep
+
+
+static func _blade_stack_draw(r: Rig, top: Vector3, count: int) -> void:
 	for i in count:
 		_put(r.root, LowPoly.prism(12, 0.045, 0.045, 0.004), top + Vector3(0, -0.006 - i * 0.008, 0), mat("panel", STEEL))
 	for sx: float in [-1.0, 1.0]:
@@ -782,6 +836,12 @@ static func _ring(centre: Vector3, radius: float, segments: int) -> Array:
 # --- Handguns (gunsmith v2) --------------------------------------------------------
 
 static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
+	var keep := _into_mag(r)
+	_pistol_mag_draw(r, stick, m)
+	r.root = keep
+
+
+static func _pistol_mag_draw(r: Rig, stick := 0.0, m: Material = null) -> void:
 	r.mag = _grip_bottom(r)
 	r.mag_style = "pistol"
 	r.mag_tilt = r.grip_rake
@@ -801,6 +861,12 @@ static func _pistol_mag(r: Rig, stick := 0.0, m: Material = null) -> void:
 # --- PDW -----------------------------------------------------------------------------
 
 static func _top_mag(r: Rig, length: float, m: Material, width := 0.044) -> void:
+	var keep := _into_mag(r)
+	_top_mag_draw(r, length, m, width)
+	r.root = keep
+
+
+static func _top_mag_draw(r: Rig, length: float, m: Material, width := 0.044) -> void:
 	_box(r.root, Vector3(width, 0.026, length), r.mag + Vector3(0, 0.013, 0), m, Vector3.ZERO, 0.006)
 	# Two staggered rows of rounds inside (seen through a clear body), the feed lips in black.
 	for sx: float in [-1.0, 1.0]:
@@ -819,6 +885,12 @@ static func _lever(r: Rig, s: float) -> void:
 
 
 static func _belt_box(r: Rig, size: Vector3, m: Material) -> void:
+	var keep := _into_mag(r)
+	_belt_box_draw(r, size, m)
+	r.root = keep
+
+
+static func _belt_box_draw(r: Rig, size: Vector3, m: Material) -> void:
 	var c := r.mag + Vector3(0, -size.y / 2.0 - 0.004, 0)
 	_box(r.root, Vector3(0.03, 0.01, 0.04), r.mag + Vector3(0, -0.002, 0), mat("panel", BLACK), Vector3.ZERO, 0.002)
 	_box(r.root, size, c, m, Vector3.ZERO, 0.006)
@@ -1779,6 +1851,12 @@ static func _charging(r: Rig, id: String) -> void:
 
 
 static func _magazine(r: Rig, id: String) -> void:
+	var keep := _into_mag(r)
+	_magazine_draw(r, id)
+	r.root = keep
+
+
+static func _magazine_draw(r: Rig, id: String) -> void:
 	var t := r.mag
 	match r.mag_style:
 		"tank":
@@ -1965,6 +2043,12 @@ static func _shell_box_mag(r: Rig) -> void:
 
 ## A nail gun's coil canister of nails.
 static func _nail_coil(r: Rig, at: Vector3, radius: float, big: bool) -> void:
+	var keep := _into_mag(r)
+	_nail_coil_draw(r, at, radius, big)
+	r.root = keep
+
+
+static func _nail_coil_draw(r: Rig, at: Vector3, radius: float, big: bool) -> void:
 	var c := at + Vector3(0, -radius + 0.008, 0)
 	_disc_x(r.root, radius, 0.034 + (0.01 if big else 0.0), c, mat("panel", RED if big else DARK), 10)
 	_round(r, _disc_x(r.root, radius * 0.76, 0.036 + (0.01 if big else 0.0), c, mat("panel", STEEL), 10))

@@ -36,6 +36,9 @@ var _tune: HSlider
 var _tune_label: Label
 var _blueprints: VBoxContainer
 var _frame_mode := false
+var _status: Label
+## Opened out in the field (not in a safe zone): a hit closes it (see Main).
+var field := false
 var _rng := RandomNumberGenerator.new()
 
 
@@ -64,6 +67,9 @@ func _ready() -> void:
 	title.position = Vector2(28, 12)
 	title.size = Vector2(480, 50)
 	add_child(title)
+	_status = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
+	_status.position = Vector2(540, 24)
+	add_child(_status)
 	var root := HBoxContainer.new()
 	root.set_anchors_preset(PRESET_FULL_RECT)
 	root.offset_left = 30
@@ -168,7 +174,11 @@ func _ready() -> void:
 	right.add_child(_desc)
 
 
-func open(current: Dictionary, current_name: String) -> void:
+func open(current: Dictionary, current_name: String, in_field := false) -> void:
+	field = in_field
+	_status.text = ("野外改槍：一被攻擊就會關上（已改的部分會保留）" if field
+		else "安全區：敵人打不到你，慢慢改")
+	_status.add_theme_color_override("font_color", Counterform.SULFUR if field else Faultprint.ui_ink)
 	build = Arsenal.clean(current)
 	gun_name = current_name
 	_named = Blueprints.is_custom_name(build, current_name)

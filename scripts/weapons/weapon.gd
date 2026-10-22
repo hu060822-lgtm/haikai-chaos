@@ -197,6 +197,7 @@ func fire(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, conte
 	var rounds := 2 if mode() == "double" and ammo >= 2 else 1
 	var fx: Dictionary = stats.effects
 	context.last_round = ammo <= rounds
+	context.from_safe = SafeZone.is_safe(origin, int(context.get("team", -1)))
 	ammo -= rounds
 	shots_fired += 1
 	if fx.has("ghost") and shots_fired % maxi(int(fx.ghost), 2) == 0:
@@ -311,7 +312,7 @@ func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: f
 			result.hit_body = true
 			result.target = target
 			result.zone = info.zone
-			result.damage = info.damage
+			result.damage = 0.0 if info.get("blocked", false) else info.damage
 			if stats.effects.has("chain"):
 				_chain(shooter, target, hit.position, info, int(stats.effects.chain), context)
 			if stats.effects.has("explode"):
@@ -379,6 +380,7 @@ func _hit_info(origin: Vector3, point: Vector3, dir: Vector3, zone: String, powe
 		"attacker": context.get("attacker"), "attacker_name": context.get("name", "?"),
 		"team": context.get("team", -1), "gun_name": name, "build": build.duplicate(true),
 		"effects": stats.effects, "moves": context.get("moves", []), "through_wall": false,
+		"from_safe": context.get("from_safe", false),
 	}
 
 

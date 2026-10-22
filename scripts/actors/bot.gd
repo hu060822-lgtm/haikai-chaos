@@ -241,6 +241,10 @@ func _try_shoot() -> void:
 func take_hit(info: Dictionary) -> bool:
 	if not alive:
 		return false
+	if info.get("team", -1) == team and info.get("attacker") != self:
+		return false
+	if SafeZone.blocks(info, team, global_position):
+		return false
 	var e: Dictionary = info.get("effects", {})
 	if e.has("knock"):
 		velocity += (info.dir as Vector3) * float(e.knock) * 2.5 + Vector3(0, 2.5, 0)

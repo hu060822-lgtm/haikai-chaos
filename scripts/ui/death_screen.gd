@@ -54,6 +54,7 @@ func _ready() -> void:
 	root.add_child(_sub)
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.clip_contents = true
 	body.add_theme_constant_override("separation", 24)
 	root.add_child(body)
 	var view_panel := PanelContainer.new()
@@ -71,28 +72,40 @@ func _ready() -> void:
 	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	vbox.add_child(_view)
+	# The exchange and the numbers come first; the parts list of a heavily modded gun is
+	# long, so it scrolls in what is left of the column instead of growing it. The buttons
+	# below always stay on screen at any window size.
 	var side := VBoxContainer.new()
 	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	side.add_theme_constant_override("separation", 12)
+	side.add_theme_constant_override("separation", 8)
 	body.add_child(side)
-	side.add_child(FpUi.label("零件", 16, Faultprint.SLATE, FpUi.bold()))
-	_parts = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
-	_parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	side.add_child(_parts)
-	side.add_child(FpUi.label("數值", 16, Faultprint.SLATE, FpUi.bold()))
-	_stats = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
-	side.add_child(_stats)
 	side.add_child(FpUi.label("交手", 16, Faultprint.SLATE, FpUi.bold()))
 	_exchange = FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
 	side.add_child(_exchange)
+	side.add_child(FpUi.label("數值", 16, Faultprint.SLATE, FpUi.bold()))
+	_stats = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
+	side.add_child(_stats)
+	side.add_child(FpUi.label("零件", 16, Faultprint.SLATE, FpUi.bold()))
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side.add_child(scroll)
+	_parts = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
+	_parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_parts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_parts)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 14)
+	buttons.size_flags_vertical = Control.SIZE_SHRINK_END
 	root.add_child(buttons)
 	_copy = FpUi.button("抄下這把槍  [F]", 22)
 	_copy.pressed.connect(_on_copy)
+	# Room to spare: scaled windows measure the text a little narrower than they draw it.
+	_copy.custom_minimum_size = Vector2(300, 48)
 	buttons.add_child(_copy)
 	var again := FpUi.button("重生  [Space / Enter]", 22)
 	again.pressed.connect(func() -> void: respawn_requested.emit())
+	again.custom_minimum_size = Vector2(300, 48)
 	buttons.add_child(again)
 
 
@@ -120,6 +133,7 @@ func show_death(info: Dictionary, dealt: float, taken: float) -> void:
 		add_child(_vp)
 		_view.texture = _vp.get_texture()
 		_parts.text = _parts_text(build)
+		_parts.add_theme_font_size_override("font_size", 16 if _parts.text.count("\n") < 9 else 14)
 		_stats.text = _stats_text(Arsenal.stats(build))
 		_copy.disabled = false
 	else:

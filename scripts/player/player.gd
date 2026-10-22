@@ -38,6 +38,10 @@ const SLAM_RADIUS := 5.0
 const SLAM_DAMAGE := 30.0
 const MAX_HEALTH := 100.0
 const MOUSE_SENS := 0.0022
+## Out of combat (the bench opens anywhere): this long since you last took or dealt damage
+## in a fight, or COMBAT_FIRE since you last fired. Inside your safe zone it always opens.
+const COMBAT_LOCK := 4.0
+const COMBAT_FIRE := 1.5
 
 ## Movement state, for the HUD, the view model and the kill feed's move tags.
 enum Move { GROUND, AIR, SLIDE, WALLRUN, CLIMB, MANTLE, DASH, SLAM }
@@ -120,6 +124,8 @@ var _burn := 0.0
 var _last_attacker: Dictionary = {}
 var damage_dealt := {}   # name -> damage you did to them (death screen)
 var damage_taken := {}   # name -> damage they did to you
+## Seconds until you count as out of combat (see COMBAT_LOCK).
+var combat_left := 0.0
 var _spawn := Transform3D.IDENTITY
 var _hitboxes: Array[Area3D] = []
 
@@ -250,6 +256,7 @@ func spawn_at(xform: Transform3D) -> void:
 	_recoil_pitch = 0.0
 	_recoil_yaw = 0.0
 	accel = 0.0
+	combat_left = 0.0
 	damage_dealt.clear()
 	damage_taken.clear()
 	weapon.set_build(weapon.build, weapon.name)
@@ -337,9 +344,13 @@ func _timers(delta: float) -> void:
 		_wall_ban = null
 	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), 1.0)
 	_slow = maxf(_slow - delta, 0.0)
+	combat_left = maxf(combat_left - delta, 0.0)
 	if _burn > 0.0:
 		_burn -= delta
 		_apply_damage(6.0 * delta, _last_attacker, false)
+	var repel := SafeZone.repel_at(global_position, team)
+	if repel > 0.0:
+		_apply_damage(repel * delta, {"attacker_name": "安全區", "gun_name": "安全區", "zone_hit": true}, false)
 
 
 func _want(action: String, just := false) -> bool:
@@ -1168,8 +1179,10 @@ func _weapon_frame(delta: float) -> void:
 	_aim = move_toward(_aim, 1.0 if aiming else 0.0, aim_rate)
 	if not input_enabled:
 		return
-	if _want("reload", true) and weapon.start_reload():
-		view.reload(weapon.reload_time())
+	if _want("reload", true) and weapon.ammo > 0 and weapon.start_reload():
+		view.reload(weapon.reload_time(), false)
+	elif _want("reload", true) and weapon.start_reload():
+		view.reload(weapon.reload_time(), true)
 	if _want("fire_mode", true):
 		weapon.cycle_mode()
 	var held := _want("fire") and move != Move.MANTLE
@@ -1179,7 +1192,7 @@ func _weapon_frame(delta: float) -> void:
 		_shoot()
 	elif weapon.ammo == 0 and not weapon.is_reloading() and weapon.reserve > 0 and weapon.cooldown <= 0.0:
 		if weapon.start_reload():
-			view.reload(weapon.reload_time())
+			view.reload(weapon.reload_time(), true)
 
 
 ## Cone of fire now, in degrees. Moving and being airborne widen the hip cone; aiming uses
@@ -1213,6 +1226,8 @@ func _shoot() -> void:
 		if r.has("target"):
 			PrintFx.impact(world, r.to, r.normal, weapon.klass, true)
 			if r.target != self:
+				if r.get("damage", 0.0) > 0.0 and r.target.get("team") != null and r.target.team != team:
+					combat_left = COMBAT_LOCK
 				var dmg: float = r.get("damage", 0.0)
 				var key: String = r.target.get("display_name") if r.target.get("display_name") != null else "?"
 				damage_dealt[key] = damage_dealt.get(key, 0.0) + dmg
@@ -1227,6 +1242,7 @@ func _shoot() -> void:
 	_recoil_yaw += deg_to_rad(randf_range(-1.0, 1.0) * float(weapon.stats.recoil_h) * 0.3)
 	_recoil_hold = 0.08
 	Sfx.shot(self, weapon.klass, weapon.stats.get("suppressed", false))
+	combat_left = maxf(combat_left, COMBAT_FIRE)
 	fired.emit()
 
 
@@ -1281,6 +1297,8 @@ func take_hit(info: Dictionary) -> bool:
 		return false
 	if info.get("team", -1) == team and info.get("attacker") != self:
 		return false
+	if SafeZone.blocks(info, team, global_position):
+		return false
 	var effects: Dictionary = info.get("effects", {})
 	if effects.has("knock"):
 		velocity += (info.dir as Vector3) * float(effects.knock) * 2.0 + Vector3(0, 2.0, 0)
@@ -1291,6 +1309,7 @@ func take_hit(info: Dictionary) -> bool:
 	if effects.has("burn") or effects.has("bleed"):
 		_burn = maxf(_burn, float(effects.get("burn", effects.get("bleed", 0.0))))
 	if info.get("attacker") != self:
+		combat_left = COMBAT_LOCK
 		_last_attacker = info
 		var who: String = info.get("attacker_name", "?")
 		damage_taken[who] = damage_taken.get(who, 0.0) + float(info.damage)
@@ -1298,6 +1317,11 @@ func take_hit(info: Dictionary) -> bool:
 		_cam.hurt(signf(global_basis.x.dot(from)))
 	damaged.emit(info)
 	return _apply_damage(float(info.damage), info, true)
+
+
+## Whether the bench may open now: at home, or out of combat.
+func can_mod() -> bool:
+	return alive and (SafeZone.is_safe(global_position, team) or combat_left <= 0.0)
 
 
 ## A kill with a kill_dash gun: the dash is ready again.

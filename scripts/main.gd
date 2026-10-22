@@ -37,6 +37,10 @@ func _ready() -> void:
 	else:
 		map = FoldedWorks.new()
 	add_child(map)
+	SafeZone.clear()
+	if not lab:
+		SafeZone.add(map.player_spawn.origin, 6.0, 0)
+		SafeZone.draw(map, 0)
 	for xf in map.range_targets:
 		var t := RangeTarget.new()
 		add_child(t)
@@ -176,7 +180,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("route_reset") and lab and player.alive:
 		lab.restart()
 	elif event.is_action_pressed("bench") and player.alive and not bench.visible:
-		bench.open(player.weapon.build, player.weapon.name)
+		get_viewport().set_input_as_handled()
+		if not player.can_mod():
+			hud.show_hint("戰鬥中不能改槍：%.1f 秒沒有交火，或回到重生區" % player.combat_left)
+			return
+		bench.open(player.weapon.build, player.weapon.name, not SafeZone.is_safe(player.global_position, player.team))
 		player.input_enabled = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
@@ -208,6 +216,9 @@ func _on_hit_confirmed(info: Dictionary, killed: bool) -> void:
 
 
 func _on_player_damaged(info: Dictionary) -> void:
+	if bench.visible and info.get("attacker") != player:
+		bench.close()
+		hud.show_hint("遭到攻擊：工作台關上了（改好的部分已經裝上）", 3.0)
 	if info.get("attacker") != player:
 		hud.damage_from(-(info.dir as Vector3))
 
