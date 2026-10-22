@@ -23,7 +23,7 @@ const BEACON_PORT := 24681
 const GAME_ID := "HAIKAI_CHAOS"
 const PROTOCOL := 3
 ## The relay this build uses unless the settings name another (see relay/README.md).
-const DEFAULT_RELAY := ""
+const DEFAULT_RELAY := "wss://haikai-relay.hu060822.workers.dev"
 const SEARCH := 2.5
 const FORGET := 3.5
 ## Crockford base32: no I, L, O, U, so codes survive being read aloud or retyped.

@@ -15,6 +15,8 @@ var port := NetSession.PORT + 7
 var failures := 0
 var _t0 := 0.0
 var _finished := false
+## Meeting through a relay: only when the test was given one (--relay=), never the built-in.
+var via_relay := false
 
 
 func _init() -> void:
@@ -23,6 +25,7 @@ func _init() -> void:
 		role = args[0]
 	if args.size() > 1:
 		port = int(args[1])
+	via_relay = Array(args).any(func(a: String) -> bool: return a.begins_with("--relay="))
 	_t0 = Time.get_ticks_msec() / 1000.0
 	NetSession.my_name = "主機" if role == "host" else "訪客"
 	change_scene_to_file("res://scenes/main.tscn")
@@ -80,7 +83,7 @@ func _code_file() -> String:
 
 func _host() -> void:
 	var m := main()
-	if Matchmaker.has_relay():
+	if via_relay:
 		DirAccess.remove_absolute(_code_file())
 		check(m.net.host_relay() == OK, "opened a room on the relay")
 		var coded := await _until(func() -> bool: return NetSession.room_code.length() == 5, 8.0)
@@ -156,7 +159,7 @@ func _host() -> void:
 func _client() -> void:
 	var m := main()
 	var ok := false
-	if Matchmaker.has_relay():
+	if via_relay:
 		var have := await _until(func() -> bool: return FileAccess.file_exists(_code_file()), 15.0)
 		var code := FileAccess.get_file_as_string(_code_file()) if have else ""
 		ok = have and m.net.join_code(code) == OK
