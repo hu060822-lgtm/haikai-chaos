@@ -110,7 +110,7 @@ func _make_hands(slots: Dictionary) -> Node3D:
 		# Rubberised gloves, an oxide-orange cuff tab, a grey-green technical sleeve.
 		glove = Counterform.material("rubber", Color("#2A2C2E"), false)
 		cuff = Counterform.material("paint", Counterform.OXIDE_ORANGE, false)
-		sleeve = Counterform.material("polymer", Color("#4E5450"), false)
+		sleeve = Counterform.material("polymer", Color("#525A4E"), false)
 	var grip_at: Vector3 = slots.get("grip", Vector3(0, -0.03, 0.0))
 	var front: Vector3 = slots.get("foregrip", slots.get("handguard", slots.get("underbarrel", Vector3(0, 0.02, -0.2))))
 	if Settings.look == Faultprint.COUNTERFORM:
@@ -139,45 +139,108 @@ func _make_hands(slots: Dictionary) -> Node3D:
 	return root
 
 
-## A sculpted glove round a grip: a rounded palm, four curled fingers across the front,
-## a thumb over the top, a cuff ring and a tapered forearm running back out of view.
-## `side` is 1 for the right hand on the pistol grip, -1 for the support hand.
+## A sculpted glove round a grip: a padded palm, jointed fingers curled across the front
+## with a knuckle plate over them, a thumb over the top, a strapped gauntlet and a real
+## forearm (C4): flattened and tapered like an arm, in a pushed-up jacket sleeve with folds
+## and a patch, running back out of view. `side` is 1 for the right hand on the pistol
+## grip, -1 for the support hand (which also wears the wrist unit).
 func _cf_hand(root: Node3D, at: Vector3, rot: Vector3, glove: Material, cuff: Material, sleeve: Material, side: float) -> void:
 	var hand := Node3D.new()
 	hand.position = at
 	hand.rotation = rot
 	root.add_child(hand)
+	var plate := Counterform.material("polymer", Color("#1B1D1F"), false)
 	var palm := MeshInstance3D.new()
 	palm.mesh = LowPoly.chamfer_box(Vector3(0.05, 0.08, 0.062), 0.018)
 	palm.material_override = glove
 	palm.position = Vector3(side * 0.012, 0, 0.012)
 	hand.add_child(palm)
+	# Knuckle plate on the back of the hand.
+	var knuckles := MeshInstance3D.new()
+	knuckles.mesh = LowPoly.chamfer_box(Vector3(0.012, 0.07, 0.034), 0.004)
+	knuckles.material_override = plate
+	knuckles.position = Vector3(side * 0.04, 0.002, 0.0)
+	hand.add_child(knuckles)
+	# Fingers in two joints, curling round the grip.
 	for i in 4:
-		var finger := MeshInstance3D.new()
-		finger.mesh = GunKit.rod(0.0095, 0.05 - absf(i - 1.5) * 0.004, 10)
-		finger.material_override = glove
-		finger.position = Vector3(-side * 0.008, 0.026 - i * 0.018, -0.03)
-		finger.rotation = Vector3(0, PI / 2.0 + side * 0.35, 0)
-		hand.add_child(finger)
+		var length := 0.03 - absf(i - 1.5) * 0.003
+		var base := MeshInstance3D.new()
+		base.mesh = GunKit.rod(0.0098, length, 10)
+		base.material_override = glove
+		base.position = Vector3(side * 0.008, 0.028 - i * 0.0185, -0.024)
+		base.rotation = Vector3(0, PI / 2.0 + side * 0.25, 0)
+		hand.add_child(base)
+		var tip := MeshInstance3D.new()
+		tip.mesh = GunKit.rod(0.0088, length * 0.85, 10)
+		tip.material_override = glove
+		tip.position = Vector3(-side * 0.022, 0.028 - i * 0.0185, -0.036)
+		tip.rotation = Vector3(0, PI / 2.0 - side * 0.75, 0)
+		hand.add_child(tip)
 	var thumb := MeshInstance3D.new()
 	thumb.mesh = GunKit.rod(0.0105, 0.05, 10)
 	thumb.material_override = glove
 	thumb.position = Vector3(-side * 0.02, 0.045, -0.006)
 	thumb.rotation = Vector3(0.3, side * 0.25, 0)
 	hand.add_child(thumb)
-	var ring := MeshInstance3D.new()
-	ring.mesh = GunKit.turned(PackedVector2Array([Vector2(-0.008, 0.034), Vector2(0.008, 0.034)]), 16)
-	ring.material_override = cuff
-	ring.position = Vector3(side * 0.012, -0.004, 0.05)
-	ring.scale = Vector3(1.0, 1.15, 1.0)
-	hand.add_child(ring)
-	var arm := MeshInstance3D.new()
-	# Long enough that its back end always leaves the frame; it starts inside the cuff.
-	arm.mesh = GunKit.turned(PackedVector2Array([Vector2(0.0, 0.027), Vector2(0.18, 0.032), Vector2(0.62, 0.04), Vector2(0.63, 0.03)]), 16)
-	arm.material_override = sleeve
-	arm.position = Vector3(side * 0.012, -0.006, 0.045)
+	_forearm(hand, side, glove, cuff, sleeve)
+
+
+## Gauntlet, wrist and forearm, along +Z from the heel of the hand (in hand space).
+func _forearm(hand: Node3D, side: float, glove: Material, cuff: Material, sleeve: Material) -> void:
+	var arm := Node3D.new()
+	arm.position = Vector3(side * 0.012, -0.006, 0.04)
 	arm.rotation = Vector3(0.32, 0.18, 0) if side > 0.0 else Vector3(0.55, -0.1, 0.0)
 	hand.add_child(arm)
+	# Flattened like a real forearm: wider across than deep.
+	var flat := Vector3(1.14, 0.86, 1.0)
+	var gauntlet := MeshInstance3D.new()
+	gauntlet.mesh = GunKit.turned(PackedVector2Array([Vector2(0.0, 0.029), Vector2(0.01, 0.033), Vector2(0.07, 0.035),
+		Vector2(0.085, 0.037), Vector2(0.09, 0.03)]), 18)
+	gauntlet.material_override = glove
+	gauntlet.scale = flat
+	arm.add_child(gauntlet)
+	# The strap across the gauntlet, with its orange pull tab.
+	var strap := MeshInstance3D.new()
+	strap.mesh = GunKit.turned(PackedVector2Array([Vector2(0.03, 0.0365), Vector2(0.05, 0.0365)]), 18)
+	strap.material_override = Counterform.material("polymer", Color("#1B1D1F"), false)
+	strap.scale = flat
+	arm.add_child(strap)
+	var tab := MeshInstance3D.new()
+	tab.mesh = LowPoly.chamfer_box(Vector3(0.016, 0.008, 0.024), 0.003)
+	tab.material_override = cuff
+	tab.position = Vector3(side * 0.03, 0.022, 0.04)
+	tab.rotation = Vector3(0, 0, side * -0.6)
+	arm.add_child(tab)
+	# The sleeve, pushed up: a rolled cuff, then the forearm swelling toward the elbow,
+	# with soft folds. Long enough that its back end always leaves the frame.
+	var sleeve_mesh := MeshInstance3D.new()
+	sleeve_mesh.mesh = GunKit.turned(PackedVector2Array([
+		Vector2(0.08, 0.034), Vector2(0.088, 0.043), Vector2(0.115, 0.044), Vector2(0.122, 0.039),
+		Vector2(0.16, 0.041), Vector2(0.2, 0.046), Vector2(0.215, 0.0445), Vector2(0.26, 0.049),
+		Vector2(0.3, 0.052), Vector2(0.315, 0.05), Vector2(0.38, 0.054), Vector2(0.5, 0.056),
+		Vector2(0.6, 0.057), Vector2(0.61, 0.045)]), 22)
+	sleeve_mesh.material_override = sleeve
+	sleeve_mesh.scale = flat
+	arm.add_child(sleeve_mesh)
+	# A darker reinforcement panel on top of the sleeve.
+	var panel := MeshInstance3D.new()
+	panel.mesh = LowPoly.chamfer_box(Vector3(0.05, 0.004, 0.12), 0.002)
+	panel.material_override = Counterform.material("polymer", Color("#444B40"), false)
+	panel.position = Vector3(0.0, 0.047, 0.36)
+	panel.rotation = Vector3(-0.02, 0, 0)
+	arm.add_child(panel)
+	if side < 0.0:
+		# The wrist unit on the support arm: a small rugged screen showing the time.
+		var unit := MeshInstance3D.new()
+		unit.mesh = LowPoly.chamfer_box(Vector3(0.034, 0.012, 0.03), 0.004)
+		unit.material_override = Counterform.material("polymer", Color("#202325"), false)
+		unit.position = Vector3(0.0, 0.034, 0.06)
+		arm.add_child(unit)
+		var screen := MeshInstance3D.new()
+		screen.mesh = LowPoly.chamfer_box(Vector3(0.024, 0.002, 0.02), 0.0005)
+		screen.material_override = Counterform.material("paint", Color("#2A3326"), false, Counterform.SULFUR * 0.6)
+		screen.position = Vector3(0.0, 0.0405, 0.06)
+		arm.add_child(screen)
 
 
 func gun_node() -> Node3D:
