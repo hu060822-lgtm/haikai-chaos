@@ -6,7 +6,8 @@ const KEYS := {
 	"jump": [KEY_SPACE], "sprint": [KEY_SHIFT], "crouch": [KEY_CTRL, KEY_C], "dash": [KEY_Q],
 	"reload": [KEY_R], "fire_mode": [KEY_B], "bench": [KEY_TAB], "copy_gun": [KEY_F],
 	"respawn": [KEY_ENTER], "help": [KEY_F1], "info_colors": [KEY_F2], "bot_toggle": [KEY_F3],
-	"pause": [KEY_ESCAPE],
+	"pause": [KEY_ESCAPE], "move_debug": [KEY_F4], "camera_fx": [KEY_F5], "tick_rate": [KEY_F7],
+	"route_reset": [KEY_T],
 }
 const MOUSE := {"fire": MOUSE_BUTTON_LEFT, "aim": MOUSE_BUTTON_RIGHT}
 

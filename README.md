@@ -3,7 +3,7 @@
 HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架），核心是自由、不講道理的改槍和高上限身法。
 美術風格：**FAULTPRINT 斷層印刷體**。引擎：Godot 4.3（GL Compatibility）。
 
-目前是 **C0 原型**：單機、一張灰盒地圖 FOLDED WORKS、三個陪練機器人、靶場、改槍工作台、擊殺列表、死亡畫面。還沒有連線（C2 才做）。
+目前是 **C1 原型（移動手感）**：單機、兩張地圖（灰盒對戰圖 FOLDED WORKS、移動測試場 MOVEMENT LAB）、三個陪練機器人、靶場、改槍工作台、擊殺列表、死亡畫面、移動除錯面板。還沒有連線（C2 才做）。
 
 ## 怎麼玩
 
@@ -13,15 +13,31 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 | 按鍵 | 動作 |
 |---|---|
 | WASD / Shift / Space | 移動 / 衝刺跑 / 跳 |
-| Ctrl 或 C | 蹲；快跑中按下 = 滑鏟（下坡更快，滑鏟中跳 = 滑鏟跳） |
-| 空中靠近有橘色線的牆 + 按住 W | 牆跑；牆跑中 Space = 蹬牆跳 |
+| Ctrl 或 C | 蹲；跑動中按下 = 滑鏟（下坡越滑越快，滑鏟中跳 = 滑鏟跳，空中按住蹲落地 = 接滑鏟） |
+| 空中靠近有橘色線的牆 + 方向鍵沿著牆 | 牆跑；牆跑中 Space = 蹬牆跳（往外按方向鍵跳得更遠），離牆後一瞬間內按也算 |
 | 空中貼任何牆按 Space | 踢牆（每次離地可踢幾次，看左下角菱形） |
 | 面對牆按住 Space | 攀牆；手碰到邊緣會自動翻越 |
 | Q | 衝刺閃避（有冷卻） |
-| 空中高處按蹲 | 重踩：砸向地面，震傷附近的人 |
+| 空中低頭看地面按蹲 | 重踩：砸向地面，震傷附近的人（平視時按蹲只是準備落地滑鏟） |
 | 左鍵 / 右鍵 / R / B | 開火 / 瞄準 / 換彈 / 射擊模式 |
 | Tab | 改槍工作台 |
 | F1 / F2 / F3 | 操作說明 / 敵我顏色（色盲模式）/ 機器人開火開關 |
+| F4 / F5 / F7 | 移動除錯面板 / 鏡頭效果（完整、減少、關閉）/ 物理頻率 60·120·240 Hz |
+| T | 移動測試場：回到目前路線起點 |
+
+## 移動測試場
+
+標題畫面選「移動測試場」。三條計時路線從南邊的起點區往北跑，穿過藍綠色起點門開始計時、黃色終點門停止，會記錄最佳時間、平均與最低速度、動量中斷次數：
+
+- **A 滑鏟循環**：衝刺 → 下坡滑鏟 → 滑鏟跳過欄 → 落地接滑鏟 → 再跳
+- **B 牆跑連段**：跳上左牆 → 蹬牆跳（W+D）→ 右牆 → 蹬牆跳（W+A）→ 四面牆
+- **C 高速綜合**：長坡滑鏟 → 滑鏟跳過溝並在空中射擊標靶 → 踢右牆上平台 → 高速落地
+
+東邊是自由練習區：五種高度的障礙、長牆、短牆、相鄰雙牆、轉角、踢牆井、窄平台、12 m 落地塔、落點修正區。
+
+## 移動系統
+
+所有參數都在 `scripts/player/move_tuning.gd`，附單位和說明。原則：速度向量是唯一的真相，任何狀態都不會直接把速度設成固定值，只會加速、摩擦、阻力。每個狀態有自己的上限：地面超速時線性衰減、快速落地後 0.22 秒不減速、滑鏟下坡加速、空中轉向速率隨速度降低、牆跑趨近 9.2 m/s。
 
 **槍越重，身法越鈍。** 右下角的「機動性」就是槍的重量換算出來的：輕手槍跑得快、踢牆次數多；12 kg 的機槍幾乎只能在地上走。
 
@@ -37,7 +53,11 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 | `scripts/weapons/weapon.gd` | 一把槍的使用狀態與射擊判定（玩家、機器人共用）；PvP 傷害表 `STK` |
 | `scripts/weapons/gun_names.gd` | 自動槍名、隨機組槍 |
 | `scripts/weapons/blueprints.gd` | 藍圖存檔（`user://blueprints.json`） |
-| `scripts/player/player.gd` | 玩家：動量移動與所有身法、開槍、受傷 |
+| `scripts/player/player.gd` | 玩家：動量移動與所有身法、輸入緩衝、狀態轉換紀錄、開槍、受傷 |
+| `scripts/player/move_tuning.gd` | 所有移動參數（單位、說明） |
+| `scripts/player/camera_fx.gd` | 鏡頭效果：每種效果獨立的彈簧或平滑，強度可調 |
+| `scripts/ui/move_debug.gd` | F4 移動除錯面板與場景內的射線、速度向量、碰撞體 |
+| `scripts/maps/movement_lab.gd` | 移動測試場、計時路線 |
 | `scripts/player/view_model.gd` | 第一人稱槍（手套、晃動、後座、換彈、瞄準對準準心） |
 | `scripts/actors/` | 陪練機器人、角色模型、靶 |
 | `scripts/maps/geo.gd`, `folded_works.gd` | 關卡積木（可牆跑的牆、楔形、坡道、樓梯）與測試地圖 |
@@ -48,7 +68,11 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 ## 測試與截圖
 
 ```
+tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、手感 16 項、三條路線，各在 60/120/240 Hz
 godot --headless --path . --script res://tests/movement_test.gd      # 身法、開槍、TTK 自動測試
+godot --headless --fixed-fps 120 --path . --script res://tests/movement_feel_test.gd -- 120
+godot --headless --fixed-fps 120 --path . --script res://tests/route_test.gd -- 120
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/lab_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/game_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/map_shots.gd -- <資料夾>
 ```

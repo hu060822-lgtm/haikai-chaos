@@ -1,12 +1,19 @@
 class_name Main
 extends Node3D
-## The prototype: FOLDED WORKS with you, three sparring bots and a firing range. Tab opens
-## the bench, dying shows who got you with what. No networking yet (that is phase C2).
+## The prototype: FOLDED WORKS with you, three sparring bots and a firing range, or the
+## MOVEMENT LAB with its timed routes. Tab opens the bench, dying shows who got you with
+## what, F4 opens the movement debug panel. No networking yet (that is phase C2).
 
 const BOTS := 3
 const BOT_RESPAWN := 4.0
 
-var map: FoldedWorks
+## Which map the next load builds ("folded" or "lab"), and whether to skip the title.
+static var map_id := "folded"
+static var skip_title := false
+
+var map: Node3D
+var lab: MovementLab
+var move_debug: MoveDebug
 var player: Player
 var hud: Hud
 var bench: Bench
@@ -22,7 +29,12 @@ var _seed := 1
 
 func _ready() -> void:
 	InputSetup.register()
-	map = FoldedWorks.new()
+	CameraFx.load_settings()
+	if map_id == "lab":
+		lab = MovementLab.new()
+		map = lab
+	else:
+		map = FoldedWorks.new()
 	add_child(map)
 	for xf in map.range_targets:
 		var t := RangeTarget.new()
@@ -37,7 +49,7 @@ func _ready() -> void:
 	player.died.connect(_on_player_died)
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	player.damaged.connect(_on_player_damaged)
-	for i in BOTS:
+	for i in (BOTS if not map.bot_spawns.is_empty() else 0):
 		var bot := Bot.new()
 		bot.target = player
 		bot.waypoints = map.waypoints
@@ -50,6 +62,9 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.player = player
 	_ui.add_child(hud)
+	move_debug = MoveDebug.new()
+	move_debug.player = player
+	_ui.add_child(move_debug)
 	bench = Bench.new()
 	bench.closed.connect(_on_bench_closed)
 	_ui.add_child(bench)
@@ -64,6 +79,9 @@ func _ready() -> void:
 	_ui.add_child(_title)
 	player.input_enabled = false
 	hud.visible = false
+	if skip_title:
+		skip_title = false
+		_start.call_deferred()
 
 
 func _next_seed() -> int:
@@ -91,17 +109,30 @@ func _make_title() -> Control:
 	logo.size = Vector2(1400, 140)
 	logo.offset = 5.0
 	t.add_child(logo)
-	var sub := FpUi.label("FAULTPRINT 斷層印刷體　｜　FOLDED WORKS 折疊工廠　｜　原型 C0", 22, Faultprint.CARBON, FpUi.bold())
+	var sub := FpUi.label("FAULTPRINT 斷層印刷體　｜　原型 C1：移動手感", 22, Faultprint.CARBON, FpUi.bold())
 	sub.position = Vector2(76, 400)
 	t.add_child(sub)
 	var help := FpUi.label(Hud.HELP, 18, Faultprint.CARBON, FpUi.bold())
 	help.position = Vector2(76, 450)
 	t.add_child(help)
-	var go := FpUi.button("點一下開始", 26)
-	go.position = Vector2(76, 760)
-	go.pressed.connect(_start)
-	t.add_child(go)
+	var row := HBoxContainer.new()
+	row.position = Vector2(76, 760)
+	row.add_theme_constant_override("separation", 18)
+	t.add_child(row)
+	for spec in [["folded", "折疊工廠（對戰練習）"], ["lab", "移動測試場（計時路線）"]]:
+		var go := FpUi.button(spec[1], 24)
+		go.pressed.connect(_choose_map.bind(spec[0]))
+		row.add_child(go)
 	return t
+
+
+func _choose_map(id: String) -> void:
+	if id == map_id:
+		_start()
+		return
+	map_id = id
+	skip_title = true
+	get_tree().reload_current_scene()
 
 
 func _start() -> void:
@@ -109,7 +140,10 @@ func _start() -> void:
 	hud.visible = true
 	player.input_enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	hud.show_hint("Tab 打開改槍工作台　F1 操作說明", 4.0)
+	if lab:
+		hud.show_hint("移動測試場：穿過起點門開始計時　T 回到起點　F4 除錯面板", 6.0)
+	else:
+		hud.show_hint("Tab 打開改槍工作台　F1 操作說明　F4 移動除錯", 4.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -125,6 +159,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		for b in bots:
 			b.passive = _bots_passive
 		hud.show_hint("機器人開火：" + ("關" if _bots_passive else "開"))
+	elif event.is_action_pressed("move_debug"):
+		move_debug.toggle()
+	elif event.is_action_pressed("camera_fx"):
+		CameraFx.cycle()
+		hud.show_hint("鏡頭效果：" + CameraFx.level_name())
+	elif event.is_action_pressed("tick_rate"):
+		hud.show_hint("物理頻率：%d Hz" % MoveDebug.cycle_ticks())
+	elif event.is_action_pressed("route_reset") and lab and player.alive:
+		lab.restart()
 	elif event.is_action_pressed("bench") and player.alive and not bench.visible:
 		bench.open(player.weapon.build, player.weapon.name)
 		player.input_enabled = false
@@ -171,7 +214,7 @@ func _on_bot_died(bot: Bot, info: Dictionary) -> void:
 	hud.feed.add_kill(killer, 0 if by_you else 1, info.get("gun_name", "?"), info.get("build", {}), _tags(info),
 		bot.display_name, 1, by_you)
 	get_tree().create_timer(BOT_RESPAWN).timeout.connect(func() -> void:
-		var spots := map.bot_spawns.duplicate()
+		var spots: Array = map.bot_spawns.duplicate()
 		spots.sort_custom(func(a: Vector3, b: Vector3) -> bool:
 			return a.distance_to(player.global_position) > b.distance_to(player.global_position))
 		bot.spawn(spots[randi() % 2], _next_seed())
@@ -195,6 +238,9 @@ func _respawn() -> void:
 	if not _pending_build.is_empty():
 		player.equip(_pending_build, _pending_name)
 		_pending_build = {}
-	player.spawn_at(map.player_spawn)
+	if lab:
+		lab.restart()
+	else:
+		player.spawn_at(map.player_spawn)
 	player.input_enabled = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED

@@ -28,6 +28,11 @@ var _bob := 0.0
 var _lower := 0.0
 var _tilt := 0.0
 var _scale := SCALE
+## Short knocks (landings, jumps, wall kicks) on a spring, so they settle the same way at
+## any tick rate and never pile up.
+var _jolt := Vector3.ZERO
+var _jolt_speed := Vector3.ZERO
+var _air_lag := 0.0
 
 
 func _ready() -> void:
@@ -110,6 +115,16 @@ func reload(seconds: float) -> void:
 	_reload_total = maxf(seconds, 0.01)
 
 
+## A knock in view space (metres per second of push).
+func jolt(push: Vector3) -> void:
+	_jolt_speed += push * 12.0
+
+
+## Landing: `strength` 0..1.
+func land(strength: float) -> void:
+	jolt(Vector3(0, -0.02 - 0.05 * strength, 0.01))
+
+
 func sway(mouse: Vector2) -> void:
 	_sway += Vector2(-mouse.x, mouse.y) * 0.0009
 
@@ -132,6 +147,14 @@ func update_pose(delta: float, p: Dictionary) -> void:
 		Player.Move.WALLRUN: tilt_target = -float(p.roll) * 1.4
 		Player.Move.CLIMB, Player.Move.MANTLE: tilt_target = 0.6
 	_tilt = lerpf(_tilt, tilt_target, 1.0 - exp(-10.0 * delta))
+	var steps := maxi(ceili(delta / 0.0042), 1)
+	for i in steps:
+		var h := delta / steps
+		_jolt_speed += (-260.0 * _jolt - 26.0 * _jolt_speed) * h
+		_jolt += _jolt_speed * h
+	# In the air the gun lags the fall a little: up when falling, down when rising.
+	var vy: float = p.get("vy", 0.0) if p.move == Player.Move.AIR else 0.0
+	_air_lag = lerpf(_air_lag, clampf(-vy * 0.0016, -0.012, 0.018), 1.0 - exp(-8.0 * delta))
 	var e := aim * aim * (3.0 - 2.0 * aim)
 	var aim_pos := Vector3(0, 0, -AIM_DEPTH) - (_sight + Vector3(0, SIGHT_LIFT, 0)) * _scale
 	var pos := HIP.lerp(aim_pos, e)
@@ -144,8 +167,8 @@ func update_pose(delta: float, p: Dictionary) -> void:
 	var rot := Vector3(kick_curve * 0.22 * _kick_strength + 0.03 * (1.0 - e), _sway.x * 0.4 + 0.05 * (1.0 - e), 0.0)
 	pos += Vector3(0.02, -0.05, 0.03) * _lower
 	rot += Vector3(-0.35, 0.55, 0.15) * _lower
-	if p.move == Player.Move.AIR:
-		pos.y += 0.006
+	pos += (_jolt + Vector3(0, _air_lag, 0)) * (1.0 - e * 0.7)
+	rot.x += _jolt.y * 2.5 * (1.0 - e * 0.7)
 	pos += Vector3(-0.015, -0.015, 0) * absf(_tilt)
 	rot.z += _tilt * (1.0 - e * 0.6)
 	if _reload > 0.0:

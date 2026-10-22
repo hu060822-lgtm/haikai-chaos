@@ -5,18 +5,21 @@ extends CharacterBody3D
 ## a feather pistol makes you faster, kick off walls more and dash more often; a 12 kg
 ## machine gun keeps you mostly on the ground. That trade is the core of CHAOS.
 ##
-## Movement tech:
-##   sprint (Shift), crouch (Ctrl/C), jump (Space) with coyote time and a jump buffer
-##   bunny hop    jumping the moment you land skips ground friction; air strafing (turn
-##                while holding a side key in the air) adds speed, Quake-style
-##   slide        crouch while running fast: a speed boost, low friction, faster downhill
-##   slide jump   jump out of a slide and keep its speed
-##   wall run     in the air beside an orange-banded wall, hold forward: run along it
-##   wall jump    jump off a wall run, or kick off any wall in the air (a few per air time)
-##   wall climb   run at a wall face-on and hold jump: run up it for a moment
-##   mantle       reach a ledge while in the air (or climbing): pull yourself up onto it
-##   dash         Q: a short burst in the direction you're moving (one charge, recharges)
-##   slam         crouch in the air high up: drive into the ground, shock anyone close
+## Movement model (numbers in MoveTuning): velocity is the only truth. No state sets a
+## fixed speed; each applies accelerations, friction and drag to the velocity it inherits,
+## so speed carries through every transition. The core loop is
+##   sprint -> slide -> slide jump -> steer in the air -> land (into a slide) -> again
+## and the walls extend it:
+##   wall run     in the air beside an orange-banded wall, input along it: run along it
+##   wall jump    jump off a wall run (or just after leaving one): out along the wall's
+##                normal plus your input, keeping the speed along the wall
+##   wall kick    jump beside any wall in the air (a few per air time)
+##   wall climb   jump at a wall face-on and hold jump: run up it for a moment
+##   mantle       reach a ledge in the air: pull up onto it and keep going
+##   dash         Q: a short burst in the direction you're moving (recharges)
+##   slam         look down and crouch high in the air: drive into the ground
+## Input is buffered (jump, crouch) and forgiving (coyote time off ledges and walls);
+## animation never blocks a move. The debug panel (F4) shows all of it.
 
 signal died(info: Dictionary)
 signal hit_confirmed(info: Dictionary, killed: bool)
@@ -29,51 +32,10 @@ const HEIGHT := 1.8
 const CROUCH_HEIGHT := 1.0
 const EYE := 1.62
 const CROUCH_EYE := 0.88
-
-const GRAVITY := 21.0
-const RUN_SPEED := 6.4
-const SPRINT_SPEED := 8.4
-const CROUCH_SPEED := 3.2
-const GROUND_ACCEL := 11.0
-const FRICTION := 7.0
-const STOP_SPEED := 2.5
-const AIR_ACCEL := 70.0
-const AIR_CAP := 1.0
-const MAX_FLAT := 24.0
-const JUMP := 7.3
-const COYOTE := 0.12
-const BUFFER := 0.14
-
-const SLIDE_MIN := 6.2
-const SLIDE_BOOST := 3.6
-const SLIDE_FRICTION := 0.55
-const SLIDE_TIME := 1.15
-const SLIDE_COOLDOWN := 1.2
-
-const WALLRUN_MIN := 4.5
-const WALLRUN_SPEED := 9.2
-const WALLRUN_TIME := 1.7
-const WALLRUN_GRAVITY := 3.2
-const WALL_REACH := 0.75
-const WALL_KICK_OUT := 6.8
-const WALL_KICK_UP := 7.2
 const WALL_KICKS := 3
-
-const CLIMB_SPEED := 6.2
-const CLIMB_TIME := 0.6
-const CLIMB_TIME_MARKED := 1.15
-const MANTLE_MAX := 2.3
-const MANTLE_TIME := 0.24
-
-const DASH_SPEED := 14.0
-const DASH_TIME := 0.15
-const DASH_RECHARGE := 3.2
-
-const SLAM_MIN_HEIGHT := 2.4
 const SLAM_SPEED := 30.0
 const SLAM_RADIUS := 5.0
 const SLAM_DAMAGE := 30.0
-
 const MAX_HEALTH := 100.0
 const MOUSE_SENS := 0.0022
 
@@ -88,6 +50,7 @@ var alive := true
 var input_enabled := true
 var weapon: Weapon
 var mobility := 1.0
+var tune := MoveTuning.new()
 
 var move := Move.GROUND
 var head: Node3D
@@ -95,37 +58,56 @@ var camera: Camera3D
 var view: ViewModel
 var base_fov := 96.0
 
+# What the debug panel shows (filled every tick; cheap).
+var transitions: Array = []      # newest first: {t, from, to, why}
+var failures: Array = []         # newest first: {t, why}
+var landing := ""                # the last landing: 一般 / 高速 / 滑鏟 / 重 / 重踩
+var limiter := ""                # what shaped the speed this tick
+var accel := 0.0                 # horizontal acceleration, m/s² (smoothed)
+var air_control := 0.0           # steering rate available now, deg/s
+var wish_dir := Vector3.ZERO
+var rays: Array = []             # this tick's wall probes: [from, to, hit, runnable]
+var wall_info := {}              # nearest wall seen this tick
+var clock := 0.0
+
 var _pitch := 0.0
 var _recoil_pitch := 0.0
 var _recoil_yaw := 0.0
 var _recoil_hold := 0.0
+var _cam := CameraFx.new()
 var _coyote := 0.0
 var _buffer := 0.0
+var _crouch_buf := 0.0
+var _land_grace := 0.0
 var _was_on_floor := true
-var _fall_speed := 0.0
+var _half_g := false
 var _crouching := false
 var _shape: CapsuleShape3D
 var _eye := EYE
-var _slide_left := 0.0
+var _eye_now := EYE
+var _slide_t := 0.0
 var _slide_cd := 0.0
 var _wall_normal := Vector3.ZERO
 var _wall_node: Object = null
-var _wall_left := 0.0
+var _wall_t := 0.0
+var _wall_lost := 0.0
+var _wall_idle := 0.0
+var _wall_coyote := 0.0
+var _last_wall_normal := Vector3.ZERO
+var _last_wall_node: Object = null
 var _wall_ban: Object = null
-var _wall_ban_left := 0.0
+var _wall_ban_t := 0.0
 var _kicks := WALL_KICKS
 var _climb_left := 0.0
 var _climbed := false
 var _mantle_from := Vector3.ZERO
 var _mantle_to := Vector3.ZERO
 var _mantle_t := 0.0
+var _mantle_speed := 0.0
 var _dash_left := 0.0
 var _dash_charge := 1.0
 var _dash_dir := Vector3.ZERO
 var _aim := 0.0
-var _roll := 0.0
-var _bob := 0.0
-var _land_dip := 0.0
 var _slow := 0.0
 var _burn := 0.0
 var _last_attacker: Dictionary = {}
@@ -215,20 +197,42 @@ func max_kicks() -> int:
 		return 1
 	if mobility < 0.92:
 		return 2
-	return WALL_KICKS
+	return tune.wall_kicks
 
 
 func spawn_at(xform: Transform3D) -> void:
 	_spawn = xform
 	global_transform = Transform3D(Basis(Vector3.UP, xform.basis.get_euler().y), xform.origin)
 	velocity = Vector3.ZERO
+	# Fresh floor contact at the new spot (not the old one's).
+	move_and_slide()
+	apply_floor_snap()
 	_pitch = 0.0
 	health = MAX_HEALTH
 	alive = true
-	move = Move.GROUND
+	_set_move(Move.GROUND, "重生")
 	_set_crouch(false)
 	_slow = 0.0
 	_burn = 0.0
+	# Every movement timer back to its start, so a respawn behaves the same every time.
+	_buffer = 0.0
+	_crouch_buf = 0.0
+	_coyote = 0.0
+	_slide_cd = 0.0
+	_slide_t = 0.0
+	_dash_charge = 1.0
+	_kicks = max_kicks()
+	_climbed = false
+	_wall_coyote = 0.0
+	_wall_ban = null
+	_wall_ban_t = 0.0
+	_land_grace = 0.0
+	_was_on_floor = is_on_floor()
+	_half_g = false
+	_aim = 0.0
+	_recoil_pitch = 0.0
+	_recoil_yaw = 0.0
+	accel = 0.0
 	damage_dealt.clear()
 	damage_taken.clear()
 	weapon.set_build(weapon.build, weapon.name)
@@ -252,18 +256,25 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not alive:
 		return
+	clock += delta
 	_timers(delta)
 	var wish := _wish_dir()
+	wish_dir = wish
 	var on_floor := is_on_floor()
+	var speed_before := flat_speed()
+	limiter = ""
+	air_control = 0.0
+	rays.clear()
+	wall_info = {}
 	if on_floor:
-		_coyote = COYOTE
+		_coyote = tune.coyote
 		_kicks = max_kicks()
 		_climbed = false
 		_wall_ban = null
-		if _dash_charge < 1.0 and _dash_left <= 0.0:
-			pass
 	if _want("jump", true):
-		_buffer = BUFFER
+		_buffer = tune.jump_buffer
+	if _want("crouch", true):
+		_crouch_buf = tune.crouch_buffer
 	match move:
 		Move.MANTLE:
 			_do_mantle(delta)
@@ -277,15 +288,18 @@ func _physics_process(delta: float) -> void:
 			_do_slam(delta)
 		_:
 			_do_free(delta, wish, on_floor)
-	var flat := Vector2(velocity.x, velocity.z)
-	if flat.length() > MAX_FLAT:
-		flat = flat.normalized() * MAX_FLAT
-		velocity.x = flat.x
-		velocity.z = flat.y
+	_safety_cap()
 	var fall := -velocity.y
 	if move != Move.MANTLE:
 		move_and_slide()
+	if _half_g:
+		# Gravity in two halves around the move: jump arcs come out the same at any tick rate.
+		_half_g = false
+		if not is_on_floor():
+			_gravity_half()
+			_half_g = false
 	_after_move(fall)
+	accel = lerpf(accel, (flat_speed() - speed_before) / delta, 1.0 - exp(-12.0 * delta))
 	_weapon_frame(delta)
 	_camera_frame(delta)
 
@@ -293,11 +307,14 @@ func _physics_process(delta: float) -> void:
 func _timers(delta: float) -> void:
 	_coyote -= delta
 	_buffer -= delta
+	_crouch_buf -= delta
 	_slide_cd -= delta
-	_wall_ban_left -= delta
-	if _wall_ban_left <= 0.0:
+	_land_grace -= delta
+	_wall_coyote -= delta
+	_wall_ban_t -= delta
+	if _wall_ban_t <= 0.0:
 		_wall_ban = null
-	_dash_charge = minf(_dash_charge + delta / (DASH_RECHARGE / mobility), 1.0)
+	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), 1.0)
 	_slow = maxf(_slow - delta, 0.0)
 	if _burn > 0.0:
 		_burn -= delta
@@ -323,254 +340,521 @@ func _speed_mult() -> float:
 	return mobility * (0.6 if _slow > 0.0 else 1.0)
 
 
-# --- Free movement: ground, air, slide -------------------------------------------------
+func _flat() -> Vector3:
+	return Vector3(velocity.x, 0, velocity.z)
+
+
+func _set_flat(h: Vector3) -> void:
+	velocity.x = h.x
+	velocity.z = h.z
+
+
+func _look_flat() -> Vector3:
+	var look := -global_basis.z
+	look.y = 0
+	return look.normalized()
+
+
+## Every state change goes through here, with the reason, for the debug panel. `event`
+## logs it even without a change of state (a jump from the air is still air).
+func _set_move(to: Move, why: String, event := false) -> void:
+	if to == move and not event:
+		return
+	transitions.push_front({"t": clock, "from": move, "to": to, "why": why})
+	if transitions.size() > 8:
+		transitions.resize(8)
+	move = to
+
+
+## A move the player tried that didn't happen, and why (for the debug panel).
+func _fail(why: String) -> void:
+	if not failures.is_empty() and failures[0].why == why and clock - float(failures[0].t) < 1.0:
+		failures[0].t = clock
+		return
+	failures.push_front({"t": clock, "why": why})
+	if failures.size() > 6:
+		failures.resize(6)
+
+
+## Half a tick of gravity (the other half comes after the move).
+func _gravity_half() -> void:
+	velocity.y = maxf(velocity.y - tune.gravity * get_physics_process_delta_time() * 0.5, -tune.terminal_fall)
+	_half_g = true
+
+
+## Set the vertical speed for a launch (jumps, kicks) on this tick.
+func _launch(vy: float) -> void:
+	velocity.y = vy
+	_gravity_half()
+
+
+func _safety_cap() -> void:
+	var h := _flat()
+	if h.length() > tune.hard_cap:
+		_set_flat(h.normalized() * tune.hard_cap)
+		_fail("速度超過安全上限 %.0f m/s（這是 bug）" % tune.hard_cap)
+
+
+# --- Velocity helpers ------------------------------------------------------------------
+
+## Quake friction on the horizontal velocity.
+func _friction(h: Vector3, amount: float, delta: float) -> Vector3:
+	var speed := h.length()
+	if speed < 0.01:
+		return Vector3.ZERO
+	var drop := maxf(speed, tune.stop_speed) * amount * delta
+	return h * (maxf(speed - drop, 0.0) / speed)
+
+
+## Push `h` along `wish` until its speed in that direction reaches `wishspeed`, at most
+## `rate` m/s² (never pulls it down: going faster than wishspeed costs nothing here).
+func _accelerate(h: Vector3, wish: Vector3, wishspeed: float, rate: float, delta: float) -> Vector3:
+	if wish == Vector3.ZERO:
+		return h
+	var add := wishspeed - h.dot(wish)
+	if add <= 0.0:
+		return h
+	return h + wish * minf(rate * delta, add)
+
+
+## Rotate `h` toward `wish` by at most `deg_per_s`, keeping its length.
+func _turn_toward(h: Vector3, wish: Vector3, deg_per_s: float, delta: float) -> Vector3:
+	var speed := h.length()
+	if speed < 0.01 or wish == Vector3.ZERO:
+		return h
+	var angle := (h / speed).angle_to(wish)
+	var step := minf(angle, deg_to_rad(deg_per_s) * delta)
+	if step < 0.00001:
+		return h
+	var turn_sign := signf((h / speed).cross(wish).y)
+	if turn_sign == 0.0:
+		turn_sign = 1.0
+	return h.rotated(Vector3.UP, step * turn_sign)
+
+
+# --- Free movement: ground, slide, air ----------------------------------------------------
 
 func _do_free(delta: float, wish: Vector3, on_floor: bool) -> void:
 	var crouch_held := _want("crouch")
 	# Dash and slam come first: they override everything.
-	if _want("dash", true) and _dash_charge >= 1.0:
-		_start_dash(wish)
-		return
-	if not on_floor and _want("crouch", true) and _height_above_ground() >= SLAM_MIN_HEIGHT:
-		move = Move.SLAM
-		velocity = Vector3(velocity.x * 0.25, -SLAM_SPEED, velocity.z * 0.25)
-		return
+	if _want("dash", true):
+		if _dash_charge >= 1.0:
+			_start_dash(wish)
+			return
+		_fail("衝刺還在充能（%d%%）" % roundi(_dash_charge * 100.0))
+	if not on_floor and _want("crouch", true) and _pitch <= deg_to_rad(tune.slam_pitch):
+		if _height_above_ground() >= tune.slam_min_height:
+			_set_move(Move.SLAM, "空中低頭按蹲")
+			velocity = Vector3(velocity.x * 0.25, -SLAM_SPEED, velocity.z * 0.25)
+			return
+		_fail("離地太低，不能重踩")
 	if on_floor:
-		var flat_speed := Vector2(velocity.x, velocity.z).length()
-		if move == Move.SLIDE:
-			_slide_left -= delta
-			_slide_ground(delta)
-			var slope := get_floor_normal().y < 0.97
-			if not crouch_held or (flat_speed < 3.6 and not slope) or (_slide_left <= 0.0 and not slope):
-				move = Move.GROUND
-		elif crouch_held and flat_speed >= SLIDE_MIN * mobility * 0.95 and _slide_cd <= 0.0 \
-				and Input.is_action_just_pressed("crouch"):
-			_start_slide()
-		else:
-			move = Move.GROUND
-			_set_crouch(crouch_held or not _can_stand())
-			var target := RUN_SPEED
-			if _crouching:
-				target = CROUCH_SPEED
-			elif _want("sprint") and _aim < 0.5:
-				target = SPRINT_SPEED
-			if _buffer > 0.0:
-				# Bunny hop: skip friction on the frame you jump out of a landing.
-				pass
-			else:
-				_friction(delta, FRICTION)
-			_accelerate(wish, target * _speed_mult(), GROUND_ACCEL, delta)
-		if _buffer > 0.0 and (_can_stand() or move == Move.SLIDE):
-			_jump()
+		_ground_frame(delta, wish, crouch_held)
 	else:
-		if move == Move.SLIDE or move == Move.GROUND:
-			move = Move.AIR
-		if _coyote > 0.0 and _buffer > 0.0 and velocity.y <= 0.5:
+		_air_frame(delta, wish, crouch_held)
+
+
+func _ground_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
+	if move == Move.SLIDE:
+		_slide_frame(delta, wish, crouch_held)
+		if _buffer > 0.0:
+			_jump()
+		return
+	if move != Move.GROUND:
+		_set_move(Move.GROUND, "在地面上")
+	var speed := flat_speed()
+	# A slide starts when crouch is pressed (or was, just before) while fast enough.
+	if crouch_held and _crouch_buf > 0.0:
+		if speed >= tune.slide_min * mobility:
+			_start_slide(false)
+			_slide_frame(delta, wish, crouch_held)
+			if _buffer > 0.0:
+				_jump()
+			return
+		if _want("crouch", true) and speed > tune.run_speed * mobility * 0.6:
+			_fail("速度不足，不能滑鏟（%.1f < %.1f）" % [speed, tune.slide_min * mobility])
+	_set_crouch(crouch_held or not _can_stand())
+	var target := tune.run_speed
+	if _crouching:
+		target = tune.crouch_speed
+	elif _want("sprint") and _aim < 0.5:
+		target = tune.sprint_speed
+	target *= _speed_mult()
+	# Jump before friction: a jump on the tick you land keeps all your speed (bunny hop).
+	if _buffer > 0.0:
+		if _can_stand():
 			_jump()
 			return
-		velocity.y -= GRAVITY * delta
-		_accelerate(wish, AIR_CAP * _speed_mult(), AIR_ACCEL, delta, RUN_SPEED * 1.0)
-		_set_crouch(crouch_held and _height_above_ground() < SLAM_MIN_HEIGHT)
-		# Ledge, wall run, wall climb, wall kick: in that order.
-		if (_want("move_forward") or _want("jump")) and _try_mantle(false):
-			return
-		var wall := _find_wall(wish)
-		if not wall.is_empty():
-			if _buffer > 0.0 and _kicks > 0:
-				_wall_kick(wall.normal)
-				return
-			if _can_wallrun(wall, wish):
-				_start_wallrun(wall)
-				return
-			if _can_climb(wall) and _want("jump"):
-				_start_climb(wall)
-				return
+		_fail("頭頂空間不足，不能跳")
+	_set_flat(_ground_move(_flat(), wish, target, delta))
 
 
-func _friction(delta: float, amount: float) -> void:
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	var speed := flat.length()
-	if speed < 0.01:
-		return
-	var drop := maxf(speed, STOP_SPEED) * amount * delta
-	var scale := maxf(speed - drop, 0.0) / speed
-	velocity.x *= scale
-	velocity.z *= scale
+func _ground_move(h: Vector3, wish: Vector3, target: float, delta: float) -> Vector3:
+	var speed := h.length()
+	if _land_grace > 0.0 and speed > target:
+		limiter = "落地寬限（不減速）"
+		return _turn_toward(h, wish, tune.ground_turn, delta)
+	if speed > target + 0.05 and wish != Vector3.ZERO and h.dot(wish) > 0.5 * speed:
+		# Faster than you can run, still going that way: bleed off evenly, don't brake.
+		limiter = "超速衰減"
+		h = _turn_toward(h, wish, tune.ground_turn, delta)
+		return h.normalized() * maxf(speed - tune.overspeed_drag * delta, target)
+	limiter = "地面摩擦"
+	h = _friction(h, tune.friction, delta)
+	return _accelerate(h, wish, target, tune.ground_accel * maxf(target, 1.0), delta)
 
 
-## Quake-style acceleration. In the air `wishspeed` is tiny (AIR_CAP), so pressing the
-## direction you're already going adds nothing, but turning into a side key adds speed:
-## that is air strafing. `cap` limits the gain a little so it stays a skill, not a cheat.
-func _accelerate(wish: Vector3, wishspeed: float, accel: float, delta: float, _cap := 0.0) -> void:
-	if wish == Vector3.ZERO:
-		return
-	var current := Vector3(velocity.x, 0, velocity.z).dot(wish)
-	var add := wishspeed - current
-	if add <= 0.0:
-		return
-	var gain := minf(accel * maxf(wishspeed, 1.0) * delta, add)
-	velocity += wish * gain
-
-
-func _jump() -> void:
-	_buffer = 0.0
-	_coyote = 0.0
-	velocity.y = JUMP * sqrt(mobility) * (0.75 if _slow > 0.0 else 1.0)
-	if move == Move.SLIDE:
-		# Slide jump: keep the slide's speed and leave a little lower.
-		velocity.y *= 0.92
-	move = Move.AIR
-	_set_crouch(false)
-	Sfx.play(self, "jump")
-
-
-func _start_slide() -> void:
-	move = Move.SLIDE
-	_slide_left = SLIDE_TIME
-	_slide_cd = SLIDE_COOLDOWN
+func _start_slide(from_landing: bool) -> void:
+	var why := "落地接滑鏟" if from_landing else "跑動中按蹲"
+	_slide_t = 0.0
+	_crouch_buf = 0.0
 	_set_crouch(true)
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	velocity += flat.normalized() * SLIDE_BOOST * mobility
+	var h := _flat()
+	var speed := h.length()
+	if _slide_cd <= 0.0 and speed > 0.1:
+		var fade := clampf((tune.slide_boost_fade - speed) / (tune.slide_boost_fade - tune.sprint_speed), 0.0, 1.0)
+		var boost := tune.slide_boost * mobility * fade
+		_set_flat(h / speed * (speed + boost))
+		_slide_cd = tune.slide_cooldown
+		why += "（加速 +%.1f）" % boost
+	else:
+		why += "（加速冷卻中，保留速度）"
+	_set_move(Move.SLIDE, why)
 	Sfx.play(self, "slide")
 
 
-func _slide_ground(delta: float) -> void:
-	_friction(delta, SLIDE_FRICTION)
-	# Downhill pulls you faster: gravity along the slope.
+func _slide_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
+	_slide_t += delta
+	var h := _flat()
+	var speed := h.length()
 	var n := get_floor_normal()
-	var along := Vector3.DOWN - n * n.dot(Vector3.DOWN)
-	velocity += along * GRAVITY * delta * 0.9
+	var downhill := Vector3.DOWN - n * n.dot(Vector3.DOWN)
+	var slope := Vector3(downhill.x, 0, downhill.z) * tune.gravity * tune.slide_slope
+	var going_down := speed > 0.1 and slope.dot(h / speed) > 0.5
+	var decel := tune.slide_decel + speed * tune.slide_friction
+	if going_down:
+		# Downhill is where slides make speed: little drag, and the slide stays fresh so
+		# it carries on across the flat at the bottom.
+		decel = tune.slide_decel * 0.3 + speed * tune.slide_downhill_friction
+		_slide_t = minf(_slide_t, 0.3)
+		limiter = "下坡加速"
+	else:
+		decel += tune.slide_settle_decel * clampf((_slide_t - tune.slide_settle) / 0.5, 0.0, 1.0)
+		limiter = "滑鏟阻力"
+	if speed > 0.0:
+		h = h / speed * maxf(speed - decel * delta, 0.0)
+	h += slope * delta
+	h = _turn_toward(h, wish, tune.slide_turn, delta) if wish != Vector3.ZERO and h.length() > 0.1 and h.angle_to(wish) < deg_to_rad(100.0) else h
+	speed = h.length()
+	if speed > tune.slide_soft_cap:
+		h *= (speed - (speed - tune.slide_soft_cap) * 1.5 * delta) / speed
+		limiter = "滑鏟上限"
+	_set_flat(h)
+	if not crouch_held:
+		_set_move(Move.GROUND, "放開蹲")
+	elif speed < tune.slide_exit and not going_down:
+		_set_move(Move.GROUND, "滑鏟速度用完")
+
+
+func _jump() -> void:
+	var from_slide := move == Move.SLIDE
+	_buffer = 0.0
+	_coyote = 0.0
+	var up := tune.jump_speed * sqrt(mobility) * (0.75 if _slow > 0.0 else 1.0)
+	if from_slide:
+		up *= tune.slide_jump_mult
+	# A ramp's lip adds a little of the speed you had going up it.
+	_launch(up + maxf(velocity.y, 0.0) * 0.3)
+	_set_move(Move.AIR, "滑鏟跳" if from_slide else "跳躍", true)
+	_set_crouch(false)
+	_cam.jump()
+	view.jolt(Vector3(0, -0.012, 0.01))
+	Sfx.play(self, "jump")
+
+
+func _air_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
+	if move == Move.SLIDE or move == Move.GROUND:
+		_set_move(Move.AIR, "離開地面")
+	# Jumps first: off the ground you just left, then off the wall you just left.
+	if _buffer > 0.0:
+		if _coyote > 0.0 and velocity.y <= 0.5:
+			_jump()
+			return
+		if _wall_coyote > 0.0:
+			_wall_jump(wish, _last_wall_normal, _last_wall_node, "離牆後蹬牆跳（寬限）")
+			return
+	_gravity_half()
+	_set_flat(_air_move(_flat(), wish, delta))
+	_set_crouch(crouch_held)
+	# Ledge, then walls: kick, run, climb.
+	if (_want("move_forward") or _want("jump")) and _try_mantle(false):
+		return
+	var wall := _find_wall()
+	if wall.is_empty():
+		return
+	if _buffer > 0.0:
+		if _kicks > 0:
+			_wall_kick(wall)
+			return
+		_fail("踢牆次數用完（落地回復）")
+	var why := _wallrun_block(wall, wish)
+	if why == "":
+		_start_wallrun(wall)
+		return
+	if _can_climb(wall) and _want("jump"):
+		_start_climb(wall)
+		return
+	if wall.runnable or _want("move_forward"):
+		_fail(why)
+
+
+func _air_move(h: Vector3, wish: Vector3, delta: float) -> Vector3:
+	var speed := h.length()
+	limiter = "空中（無阻力）"
+	if wish != Vector3.ZERO:
+		var braking := false
+		if speed > 0.5:
+			var angle := (h / speed).angle_to(wish)
+			air_control = tune.air_turn * clampf(tune.air_turn_ref / speed, tune.air_turn_min, 1.0)
+			if angle <= deg_to_rad(tune.air_turn_max_angle):
+				h = _turn_toward(h, wish, air_control, delta)
+				var cap := tune.air_strafe_cap * mobility
+				if angle > deg_to_rad(12.0) and speed < cap:
+					h = h.normalized() * minf(speed + tune.air_strafe_gain * delta, cap)
+					limiter = "空中轉向（加速）"
+				else:
+					limiter = "空中轉向"
+			else:
+				braking = true
+				h = h / speed * maxf(speed - tune.air_brake * delta, 0.0)
+				limiter = "空中煞車"
+		if not braking or h.length() < tune.air_speed * mobility:
+			h = _accelerate(h, wish, tune.air_speed * mobility, tune.air_accel, delta)
+	speed = h.length()
+	if speed > tune.air_soft_cap:
+		h *= (speed - (speed - tune.air_soft_cap) * tune.air_soft_drag * delta) / speed
+		limiter = "空中軟上限"
+	return h
 
 
 # --- Walls -------------------------------------------------------------------------------
 
-## The closest wall around the chest, preferring the sides of the way you're moving.
-## Returns {normal, collider, point, side} or {} (side: 1 = right of you, -1 = left, 0 = ahead).
-func _find_wall(wish: Vector3) -> Dictionary:
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	var fwd := flat.normalized() if flat.length() > 1.0 else -global_basis.z
+## The closest wall around the body, probed at waist and chest height to the sides of the
+## way you're moving and ahead. Returns {normal, collider, point, side, distance, runnable}
+## or {} (side: 1 = right of you, -1 = left, 0 = ahead).
+func _find_wall() -> Dictionary:
+	var h := _flat()
+	var fwd := h.normalized() if h.length() > 1.0 else _look_flat()
 	var right := fwd.cross(Vector3.UP).normalized()
-	var space := get_world_3d().direct_space_state
-	var from := global_position + Vector3(0, 1.0, 0)
 	var best := {}
 	var best_d := INF
-	for pair in [[right, 1], [-right, -1], [fwd, 0], [-global_basis.z, 0]]:
-		var dir: Vector3 = pair[0]
-		var q := PhysicsRayQueryParameters3D.create(from, from + dir * (RADIUS + WALL_REACH), Geo.WORLD, [get_rid()])
-		var hit := space.intersect_ray(q)
-		if hit.is_empty() or absf(hit.normal.y) > 0.25:
-			continue
-		var d := from.distance_to(hit.position)
-		if d < best_d:
-			best_d = d
-			best = {"normal": hit.normal, "collider": hit.collider, "point": hit.position, "side": pair[1]}
+	for pair in [[right, 1], [-right, -1], [fwd, 0], [_look_flat(), 0]]:
+		for y in [0.55, 1.25]:
+			var hit := _probe(Vector3(0, y, 0), pair[0], RADIUS + tune.wall_reach)
+			if hit.is_empty():
+				continue
+			var d := (global_position + Vector3(0, y, 0)).distance_to(hit.position)
+			if d < best_d:
+				best_d = d
+				var n: Vector3 = hit.normal
+				n.y = 0
+				best = {"normal": n.normalized(), "collider": hit.collider, "point": hit.position, "side": pair[1],
+					"distance": d - RADIUS, "runnable": _is_runnable(hit.collider)}
+	wall_info = best
 	return best
+
+
+## One ray from the body (offset from the feet) along `dir`; only walls count.
+func _probe(offset: Vector3, dir: Vector3, length: float) -> Dictionary:
+	var from := global_position + offset
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * length, Geo.WORLD, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var wall := not hit.is_empty() and absf(hit.normal.y) <= 0.25
+	rays.append([from, hit.position if wall else from + dir * length, wall, wall and _is_runnable(hit.collider)])
+	return hit if wall else {}
 
 
 func _is_runnable(collider: Object) -> bool:
 	return collider is CollisionObject3D and (collider.collision_layer & Geo.RUNNABLE) != 0
 
 
-func _can_wallrun(wall: Dictionary, wish: Vector3) -> bool:
-	if wall.side == 0 or not _is_runnable(wall.collider) or wall.collider == _wall_ban:
-		return false
-	if not _want("move_forward") or _height_above_ground() < 0.7:
-		return false
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	if flat.length() < WALLRUN_MIN:
-		return false
-	# Moving along the wall, not straight into it or away from it.
-	return absf(flat.normalized().dot(wall.normal)) < 0.75
+## The direction along a wall (normal `n`) that `h` is going.
+func _along(n: Vector3, h: Vector3) -> Vector3:
+	var a := n.cross(Vector3.UP).normalized()
+	return -a if h.dot(a) < 0.0 else a
+
+
+## Why a wall run can't start on this wall now ("" = it can).
+func _wallrun_block(wall: Dictionary, wish: Vector3) -> String:
+	if wall.side == 0:
+		return "正面撞牆：牆跑要沿著牆跑"
+	if not wall.runnable:
+		return "這面牆不能牆跑（沒有橘色線）"
+	if wall.collider == _wall_ban:
+		return "剛離開這面牆（落地或換一面牆後重置）"
+	var h := _flat()
+	var along := _along(wall.normal, h)
+	var speed := h.dot(along)
+	if speed < tune.wallrun_min:
+		return "沿牆速度不足（%.1f < %.1f）" % [speed, tune.wallrun_min]
+	if absf(h.normalized().dot(wall.normal)) > tune.wallrun_angle:
+		return "切入角度太正"
+	if wish == Vector3.ZERO or wish.dot(along) < 0.2:
+		return "方向鍵沒有朝著沿牆的方向"
+	if _height_above_ground() < tune.wallrun_min_height:
+		return "離地太低"
+	return ""
 
 
 func _start_wallrun(wall: Dictionary) -> void:
-	move = Move.WALLRUN
-	_wall_normal = wall.normal
+	var n: Vector3 = wall.normal
+	_wall_normal = n
 	_wall_node = wall.collider
-	_wall_left = WALLRUN_TIME * mobility
-	velocity.y = maxf(velocity.y, 1.6)
+	_wall_t = 0.0
+	_wall_lost = 0.0
+	_wall_idle = 0.0
+	var h := _flat()
+	var along := _along(n, h)
+	# Keep the speed along the wall, and turn a little of the speed into it.
+	var speed := h.dot(along) + absf(h.dot(n)) * 0.3
+	velocity = along * speed - n * 0.5 + Vector3(0, clampf(velocity.y * 0.4 + 1.2, -1.0, 4.0), 0)
+	if _wall_ban != _wall_node:
+		_wall_ban = null
+	_set_move(Move.WALLRUN, "貼上可牆跑的牆（%s側）" % ("右" if wall.side > 0 else "左"))
 	Sfx.play(self, "wallrun")
 
 
+## The wall we're running on, if it's still there: rays straight at it (with a longer reach
+## than catching it, so the edge of the reach doesn't flicker in and out). A collinear
+## neighbouring runnable piece counts as the same wall.
+func _wall_contact() -> Dictionary:
+	var best := {}
+	for y in [0.55, 1.25]:
+		var hit := _probe(Vector3(0, y, 0), -_wall_normal, RADIUS + tune.wall_reach_hold)
+		if hit.is_empty() or not _is_runnable(hit.collider):
+			continue
+		var n: Vector3 = hit.normal
+		n.y = 0
+		n = n.normalized()
+		if n.dot(_wall_normal) > 0.9:
+			best = {"normal": n, "collider": hit.collider, "point": hit.position, "side": 1 if global_basis.x.dot(-n) > 0.0 else -1,
+				"distance": (global_position + Vector3(0, y, 0)).distance_to(hit.position) - RADIUS, "runnable": true}
+	wall_info = best
+	return best
+
+
 func _do_wallrun(delta: float, wish: Vector3) -> void:
-	_wall_left -= delta
-	var wall := _find_wall(wish)
-	var stays: bool = not wall.is_empty() and wall.collider == _wall_node and wall.side != 0
-	if stays:
-		_wall_normal = wall.normal
+	_wall_t += delta
+	var contact := _wall_contact()
+	if contact.is_empty():
+		_wall_lost += delta
+	else:
+		_wall_lost = 0.0
+		_wall_normal = contact.normal
+		_wall_node = contact.collider
 	if _buffer > 0.0:
-		_wall_jump()
+		_wall_jump(wish, _wall_normal, _wall_node, "蹬牆跳")
 		return
-	if not stays or _wall_left <= 0.0 or is_on_floor() or not _want("move_forward"):
-		_leave_wall()
+	if _want("crouch", true):
+		_leave_wall("按蹲離牆")
 		return
-	var along := _wall_normal.cross(Vector3.UP).normalized()
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	if flat.dot(along) < 0.0:
-		along = -along
-	var speed := maxf(flat.length(), WALLRUN_SPEED * _speed_mult())
-	# Looking off the wall steers a little; the run line is the wall.
-	var steer := (-global_basis.z).dot(along)
-	speed *= lerpf(0.85, 1.0, clampf(steer, 0.0, 1.0))
-	var stick := -_wall_normal * 2.0
-	var vy := velocity.y - WALLRUN_GRAVITY * delta * (1.0 + 2.0 * (1.0 - _wall_left / (WALLRUN_TIME * mobility)))
-	velocity = along * speed + stick + Vector3(0, vy, 0)
+	if is_on_floor():
+		_leave_wall("碰到地面")
+		return
+	var limit := tune.wallrun_time * mobility
+	if _wall_t >= limit:
+		_leave_wall("牆跑時間到")
+		return
+	if _wall_lost > tune.wall_grace:
+		_leave_wall("牆面結束")
+		return
+	var along := _along(_wall_normal, _flat())
+	_wall_idle = _wall_idle + delta if wish == Vector3.ZERO or wish.dot(along) < -0.1 else 0.0
+	if _wall_idle > tune.wall_release:
+		_leave_wall("放開方向鍵")
+		return
+	var speed := _flat().dot(along)
+	var target := tune.wallrun_speed * _speed_mult()
+	if speed < target:
+		speed = minf(speed + tune.wallrun_accel * delta, target)
+		limiter = "牆跑加速"
+	elif speed > tune.wallrun_max:
+		speed -= (speed - tune.wallrun_max) * delta
+		limiter = "牆跑上限"
+	else:
+		limiter = "牆跑保持速度"
+	var late := smoothstep(0.55, 1.0, _wall_t / limit)
+	var g := lerpf(tune.wallrun_gravity, tune.wallrun_gravity_late, late)
+	var vy := maxf(velocity.y - g * delta, -5.0)
+	velocity = along * speed - _wall_normal * 1.0 + Vector3(0, vy, 0)
 
 
-func _wall_jump() -> void:
-	_buffer = 0.0
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	var look := -global_basis.z
-	look.y = 0
-	# Off the wall, toward where you look (but never back into the wall).
-	var away := (_wall_normal * 0.8 + look.normalized() * 0.6).normalized()
-	if away.dot(_wall_normal) < 0.2:
-		away = _wall_normal
-	velocity = flat * 0.75 + away * WALL_KICK_OUT * mobility
-	velocity.y = WALL_KICK_UP * sqrt(mobility)
+## Off the wall, keeping the speed along it. For a moment after, jump still wall-jumps.
+func _leave_wall(why: String) -> void:
+	var along := _along(_wall_normal, _flat())
+	var vy := velocity.y
+	velocity = along * _flat().dot(along) + _wall_normal * 0.6 + Vector3(0, vy, 0)
+	_wall_coyote = tune.wall_coyote
+	_last_wall_normal = _wall_normal
+	_last_wall_node = _wall_node
 	_ban_wall(_wall_node)
-	move = Move.AIR
+	_set_move(Move.AIR, why)
+
+
+## Jump off a wall with normal `n`: out along the normal (more if your input points away),
+## keeping the speed along the wall, steered a little by the input along it.
+func _wall_jump(wish: Vector3, n: Vector3, node: Object, why: String) -> void:
+	_buffer = 0.0
+	_wall_coyote = 0.0
+	var h := _flat()
+	var keep := (h - n * h.dot(n)) * tune.wall_jump_keep
+	var out := tune.wall_jump_out * mobility
+	var away := wish.dot(n)
+	if away > 0.0:
+		out += away * tune.wall_jump_input
+	keep += (wish - n * away) * 0.8
+	velocity = keep + n * out
+	_launch(tune.wall_jump_up * sqrt(mobility))
+	_ban_wall(node)
+	_cam.wall_kick(signf(global_basis.x.dot(-n)))
+	view.jolt(global_basis.inverse() * n * 0.015)
+	_set_move(Move.AIR, why, true)
 	Sfx.play(self, "kick")
 
 
-func _wall_kick(normal: Vector3) -> void:
+func _wall_kick(wall: Dictionary) -> void:
 	_buffer = 0.0
 	_kicks -= 1
-	var flat := Vector3(velocity.x, 0, velocity.z)
+	var n: Vector3 = wall.normal
+	var h := _flat()
 	# Cancel the part of the speed going into the wall, then push off it.
-	var into := minf(flat.dot(normal), 0.0)
-	flat -= normal * into
-	velocity = flat * 0.85 + normal * WALL_KICK_OUT * mobility
-	velocity.y = WALL_KICK_UP * sqrt(mobility)
-	move = Move.AIR
+	h -= n * minf(h.dot(n), 0.0)
+	velocity = h * tune.wall_kick_keep + n * tune.wall_kick_out * mobility
+	_launch(tune.wall_kick_up * sqrt(mobility))
+	_cam.wall_kick(signf(global_basis.x.dot(-n)))
+	view.jolt(global_basis.inverse() * n * 0.015)
+	_set_move(Move.AIR, "踢牆（剩 %d 次）" % _kicks, true)
 	Sfx.play(self, "kick")
-
-
-func _leave_wall() -> void:
-	_ban_wall(_wall_node)
-	move = Move.AIR
 
 
 func _ban_wall(node: Object) -> void:
 	_wall_ban = node
-	_wall_ban_left = 0.45
+	_wall_ban_t = tune.wall_rearm
 
 
 func _can_climb(wall: Dictionary) -> bool:
 	if _climbed or wall.side != 0:
 		return false
-	var look := -global_basis.z
-	look.y = 0
-	return look.normalized().dot(-wall.normal) > 0.75 and velocity.y > -6.0
+	return _look_flat().dot(-wall.normal) > 0.75 and velocity.y > -6.0
 
 
 func _start_climb(wall: Dictionary) -> void:
-	move = Move.CLIMB
 	_climbed = true
 	_wall_normal = wall.normal
 	_wall_node = wall.collider
-	var marked := wall.collider is Node and (wall.collider as Node).is_in_group("climbable")
-	_climb_left = (CLIMB_TIME_MARKED if marked else CLIMB_TIME) * mobility
+	var marked: bool = wall.collider is Node and (wall.collider as Node).is_in_group("climbable")
+	_climb_left = (tune.climb_time_marked if marked else tune.climb_time) * mobility
+	_set_move(Move.CLIMB, "面對牆按住跳")
 	Sfx.play(self, "climb")
 
 
@@ -578,25 +862,30 @@ func _do_climb(delta: float, wish: Vector3) -> void:
 	_climb_left -= delta
 	if _try_mantle(true):
 		return
-	var wall := _find_wall(wish)
 	if _buffer > 0.0 and _kicks > 0:
-		_wall_kick(_wall_normal)
+		_wall_kick({"normal": _wall_normal})
 		return
-	if wall.is_empty() or _climb_left <= 0.0 or not _want("jump"):
-		move = Move.AIR
+	var contact := _probe(Vector3(0, 1.0, 0), -_wall_normal, RADIUS + tune.wall_reach_hold)
+	var why := ""
+	if contact.is_empty():
+		why = "牆面結束"
+	elif _climb_left <= 0.0:
+		why = "攀牆時間到"
+	elif not _want("jump"):
+		why = "放開跳"
+	if why != "":
 		velocity.y = minf(velocity.y, 2.0)
+		_set_move(Move.AIR, why)
 		return
-	velocity = -_wall_normal * 1.0 + Vector3(0, CLIMB_SPEED * sqrt(mobility), 0)
+	velocity = -_wall_normal * 1.0 + Vector3(0, tune.climb_speed * sqrt(mobility), 0)
 
 
-## Looks for a ledge in front: a floor between knee height and MANTLE_MAX above the feet,
+## Looks for a ledge in front: a floor between knee height and mantle_max above the feet,
 ## with room to stand on it. Starts the pull-up when found.
 func _try_mantle(climbing: bool) -> bool:
 	if velocity.y > 4.0 and not climbing:
 		return false
-	var look := -global_basis.z
-	look.y = 0
-	look = look.normalized()
+	var look := _look_flat()
 	var space := get_world_3d().direct_space_state
 	var chest := global_position + Vector3(0, 0.9, 0)
 	var q := PhysicsRayQueryParameters3D.create(chest, chest + look * (RADIUS + 0.6), Geo.WORLD, [get_rid()])
@@ -607,13 +896,13 @@ func _try_mantle(climbing: bool) -> bool:
 		front = space.intersect_ray(q)
 		if front.is_empty():
 			return false
-	var probe := global_position + look * (RADIUS + 0.75) + Vector3(0, MANTLE_MAX + 0.4, 0)
-	q = PhysicsRayQueryParameters3D.create(probe, probe + Vector3(0, -(MANTLE_MAX + 0.4), 0), Geo.WORLD, [get_rid()])
+	var probe := global_position + look * (RADIUS + 0.75) + Vector3(0, tune.mantle_max + 0.4, 0)
+	q = PhysicsRayQueryParameters3D.create(probe, probe + Vector3(0, -(tune.mantle_max + 0.4), 0), Geo.WORLD, [get_rid()])
 	var top := space.intersect_ray(q)
 	if top.is_empty() or top.normal.y < 0.7:
 		return false
 	var rise: float = top.position.y - global_position.y
-	if rise < 0.45 or rise > MANTLE_MAX:
+	if rise < 0.45 or rise > tune.mantle_max:
 		return false
 	# Room to stand?
 	var params := PhysicsShapeQueryParameters3D.new()
@@ -624,18 +913,20 @@ func _try_mantle(climbing: bool) -> bool:
 	params.collision_mask = Geo.WORLD
 	params.transform = Transform3D(Basis.IDENTITY, top.position + Vector3(0, CROUCH_HEIGHT / 2.0 + 0.05, 0))
 	if not space.intersect_shape(params, 1).is_empty():
+		_fail("邊緣上方空間不足，不能翻越")
 		return false
-	move = Move.MANTLE
 	_mantle_from = global_position
 	_mantle_to = top.position + Vector3(0, 0.02, 0)
 	_mantle_t = 0.0
+	_mantle_speed = flat_speed()
 	_set_crouch(true)
+	_set_move(Move.MANTLE, "手碰到邊緣（高 %.1f m）" % rise)
 	Sfx.play(self, "mantle")
 	return true
 
 
 func _do_mantle(delta: float) -> void:
-	_mantle_t += delta / (MANTLE_TIME * (1.15 - 0.15 * mobility))
+	_mantle_t += delta / (tune.mantle_time * (1.15 - 0.15 * mobility))
 	var t := clampf(_mantle_t, 0.0, 1.0)
 	# Up first, then over the lip.
 	var up := minf(t * 1.6, 1.0)
@@ -644,24 +935,25 @@ func _do_mantle(delta: float) -> void:
 	p.y = lerpf(_mantle_from.y, _mantle_to.y, up)
 	p.x = lerpf(_mantle_from.x, _mantle_to.x, over)
 	p.z = lerpf(_mantle_from.z, _mantle_to.z, over)
+	# The pull-up moves you directly; velocity mirrors it (for the HUD and the graph).
+	velocity = (p - global_position) / delta
 	global_position = p
-	velocity = Vector3.ZERO
 	if t >= 1.0:
-		move = Move.GROUND
-		var look := -global_basis.z
-		look.y = 0
-		velocity = look.normalized() * 4.0 * mobility
+		# Out of the pull-up with most of the speed you came in with. A jump pressed during
+		# the pull-up still happens (coyote).
+		velocity = _look_flat() * maxf(tune.mantle_exit * mobility, _mantle_speed * tune.mantle_keep)
+		_coyote = tune.coyote
+		_set_move(Move.GROUND, "翻越完成")
 
 
 func _start_dash(wish: Vector3) -> void:
 	_dash_charge = 0.0
-	var dir := wish if wish != Vector3.ZERO else Vector3(-global_basis.z.x, 0, -global_basis.z.z).normalized()
+	var dir := wish if wish != Vector3.ZERO else _look_flat()
 	_dash_dir = dir
-	_dash_left = DASH_TIME
-	move = Move.DASH
-	var flat := Vector3(velocity.x, 0, velocity.z)
-	var keep := maxf(flat.dot(dir), 0.0)
-	velocity = dir * maxf(keep, DASH_SPEED * mobility)
+	_dash_left = tune.dash_time
+	var keep := maxf(_flat().dot(dir), 0.0)
+	velocity = dir * maxf(keep, tune.dash_speed * mobility)
+	_set_move(Move.DASH, "按 Q")
 	Sfx.play(self, "dash")
 
 
@@ -669,26 +961,22 @@ func _do_dash(delta: float) -> void:
 	_dash_left -= delta
 	velocity.y = 0.0
 	if _dash_left <= 0.0:
-		move = Move.AIR if not is_on_floor() else Move.GROUND
-		var flat := Vector3(velocity.x, 0, velocity.z)
-		var cap := maxf(RUN_SPEED * 1.4 * mobility, 0.0)
-		if flat.length() > cap and flat.length() <= DASH_SPEED * mobility + 0.1:
+		var flat := _flat()
+		var cap := tune.run_speed * 1.4 * mobility
+		if flat.length() > cap and flat.length() <= tune.dash_speed * mobility + 0.1:
 			# Bleed most of the burst so dashing is a dodge, not a free speed source.
-			flat = flat.normalized() * lerpf(cap, flat.length(), 0.35)
-			velocity.x = flat.x
-			velocity.z = flat.z
+			_set_flat(flat.normalized() * lerpf(cap, flat.length(), 0.35))
+		_set_move(Move.GROUND if is_on_floor() else Move.AIR, "衝刺結束")
 
 
 func _do_slam(_delta: float) -> void:
 	velocity.y = -SLAM_SPEED
-	if is_on_floor():
-		_land_slam()
 
 
 func _land_slam() -> void:
-	move = Move.GROUND
+	_set_move(Move.GROUND, "重踩落地")
 	PrintFx.landing(get_tree().current_scene, global_position, 1.0, true)
-	_land_dip = 0.35
+	_cam.slam()
 	view.kick(4.0, 0.0)
 	for t in get_tree().get_nodes_in_group("hittable"):
 		if t == self or not (t is Node3D):
@@ -714,18 +1002,39 @@ func _height_above_ground() -> float:
 func _after_move(fall_before: float) -> void:
 	var on_floor := is_on_floor()
 	if on_floor and not _was_on_floor:
-		if move == Move.SLAM:
-			_land_slam()
-		elif fall_before > 7.0:
-			_land_dip = clampf(fall_before / 40.0, 0.04, 0.2)
-			PrintFx.landing(get_tree().current_scene, global_position, clampf(fall_before / 20.0, 0.2, 1.0))
-			Sfx.play(self, "land")
-		if move == Move.AIR or move == Move.DASH:
-			move = Move.GROUND
-		# Land into a slide if crouch is held and you're fast: keep the momentum.
-		if _want("crouch") and Vector2(velocity.x, velocity.z).length() >= SLIDE_MIN * mobility * 0.9 and move == Move.GROUND:
-			_start_slide()
+		_on_land(fall_before)
 	_was_on_floor = on_floor
+
+
+## Three kinds of landing: into a slide (crouch held and fast: the speed carries on), fast
+## (no friction for a moment, time to jump or slide) and normal.
+func _on_land(fall: float) -> void:
+	if move == Move.SLAM:
+		landing = "重踩"
+		_land_slam()
+		return
+	if move == Move.WALLRUN:
+		_leave_wall("碰到地面")
+	var speed := flat_speed()
+	var strength := clampf((fall - 4.0) / 18.0, 0.0, 1.0)
+	_cam.land(strength)
+	view.land(strength)
+	if fall > 7.0:
+		PrintFx.landing(get_tree().current_scene, global_position, clampf(fall / 20.0, 0.2, 1.0))
+		Sfx.play(self, "land")
+	if _want("crouch") and speed >= tune.slide_land_min * mobility and move != Move.SLIDE and move != Move.DASH:
+		landing = "滑鏟落地"
+		_start_slide(true)
+		return
+	if move != Move.GROUND and move != Move.SLIDE:
+		_set_move(Move.GROUND, "落地")
+	if speed > tune.sprint_speed * mobility * 1.05:
+		_land_grace = tune.land_grace
+		landing = "高速落地（%.1f m/s）" % speed
+	elif fall > 14.0:
+		landing = "重落地"
+	else:
+		landing = "一般落地"
 
 
 func _set_crouch(on: bool) -> void:
@@ -777,7 +1086,13 @@ func kicks_left() -> int:
 
 
 func wall_time_left() -> float:
-	return clampf(_wall_left / (WALLRUN_TIME * mobility), 0.0, 1.0) if move == Move.WALLRUN else 0.0
+	return clampf(1.0 - _wall_t / (tune.wallrun_time * mobility), 0.0, 1.0) if move == Move.WALLRUN else 0.0
+
+
+## Input windows still open, for the debug panel: {jump, coyote, crouch, wall_coyote, grace}.
+func windows() -> Dictionary:
+	return {"jump": maxf(_buffer, 0.0), "coyote": maxf(_coyote, 0.0), "crouch": maxf(_crouch_buf, 0.0),
+		"wall_coyote": maxf(_wall_coyote, 0.0), "grace": maxf(_land_grace, 0.0)}
 
 
 # --- Shooting ------------------------------------------------------------------------------
@@ -857,24 +1172,25 @@ func _camera_frame(delta: float) -> void:
 		var rec := 7.0 * float(weapon.stats.recovery)
 		_recoil_pitch = move_toward(_recoil_pitch, 0.0, deg_to_rad(rec) * delta * (1.0 + rad_to_deg(_recoil_pitch) * 0.6))
 		_recoil_yaw = move_toward(_recoil_yaw, 0.0, deg_to_rad(rec) * delta)
-	head.rotation = Vector3(_pitch + _recoil_pitch, _recoil_yaw, 0)
-	# Roll away from the wall on a wall run; a small dip on hard landings.
+	# Feel effects (CameraFx): roll away from the wall on a wall run, a little on slides,
+	# a few degrees of FOV at high speed, springs for landings, jumps and kicks.
 	var roll_target := 0.0
 	if move == Move.WALLRUN:
-		var right := global_basis.x
-		roll_target = deg_to_rad(11.0) * -signf(right.dot(_wall_normal))
+		roll_target = deg_to_rad(8.0) * -signf(global_basis.x.dot(_wall_normal))
 	elif move == Move.SLIDE:
 		roll_target = deg_to_rad(-3.0)
-	_roll = lerpf(_roll, roll_target, 1.0 - exp(-10.0 * delta))
-	camera.rotation.z = _roll
-	_land_dip = move_toward(_land_dip, 0.0, delta * 0.9)
-	head.position.y = lerpf(head.position.y, _eye - _land_dip, 1.0 - exp(-14.0 * delta))
-	var speed_fov := clampf((flat_speed() - RUN_SPEED) / 10.0, 0.0, 1.0) * 7.0
+	var fov_target := clampf((flat_speed() - tune.run_speed) / 10.0, 0.0, 1.0) * 7.0
+	_cam.update(delta, roll_target, fov_target, _aim)
+	head.rotation = Vector3(_pitch + _recoil_pitch + _cam.pitch + _cam.shake.y, _recoil_yaw + _cam.shake.x, 0)
+	camera.rotation.z = _cam.roll
+	_eye_now = lerpf(_eye_now, _eye, 1.0 - exp(-14.0 * delta))
+	head.position.y = _eye_now + _cam.height
 	var zoom := float(weapon.stats.zoom)
-	var fov := (base_fov + speed_fov) / lerpf(1.0, maxf(zoom, 1.0), _aim)
+	var fov := (base_fov + _cam.fov) / lerpf(1.0, maxf(zoom, 1.0), _aim)
 	camera.fov = lerpf(camera.fov, fov, 1.0 - exp(-14.0 * delta))
 	view.update_pose(delta, {"aim": _aim, "speed": flat_speed(), "move": move, "floor": is_on_floor(),
-		"roll": _roll, "reloading": weapon.is_reloading(), "sprint": _want("sprint") and move == Move.GROUND and flat_speed() > RUN_SPEED})
+		"roll": _cam.roll, "vy": velocity.y, "reloading": weapon.is_reloading(),
+		"sprint": _want("sprint") and move == Move.GROUND and flat_speed() > tune.run_speed * mobility})
 
 
 # --- Damage --------------------------------------------------------------------------------
@@ -897,6 +1213,8 @@ func take_hit(info: Dictionary) -> bool:
 		_last_attacker = info
 		var who: String = info.get("attacker_name", "?")
 		damage_taken[who] = damage_taken.get(who, 0.0) + float(info.damage)
+		var from: Vector3 = -(info.get("dir", Vector3.FORWARD) as Vector3)
+		_cam.hurt(signf(global_basis.x.dot(from)))
 	damaged.emit(info)
 	return _apply_damage(float(info.damage), info, true)
 
@@ -914,7 +1232,7 @@ func _apply_damage(amount: float, info: Dictionary, _direct: bool) -> bool:
 
 func _die(info: Dictionary) -> void:
 	alive = false
-	move = Move.GROUND
+	_set_move(Move.GROUND, "死亡")
 	velocity = Vector3.ZERO
 	PrintFx.takedown(get_tree().current_scene, global_position, Faultprint.INFO_ALLY)
 	for a in _hitboxes:
