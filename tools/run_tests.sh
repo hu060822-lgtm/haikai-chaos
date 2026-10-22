@@ -10,6 +10,7 @@ run() {
 	[ "${PIPESTATUS[0]}" -eq 0 ] || status=1
 }
 run --path . --script res://tests/movement_test.gd
+run --path . --script res://tests/gun_test.gd
 for hz in 60 120 240; do
 	run --fixed-fps $hz --path . --script res://tests/movement_feel_test.gd -- $hz
 	run --fixed-fps $hz --path . --script res://tests/route_test.gd -- $hz

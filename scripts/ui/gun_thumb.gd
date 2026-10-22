@@ -1,6 +1,6 @@
 class_name GunThumb
 ## Pictures of guns for the kill feed, death screen and bench: a build rendered side-on in
-## its own little world (FAULTPRINT shading, transparent background). Cached by build, so
+## its own little world (studio light in Counterform, transparent background). Cached by build, so
 ## a gun is rendered once however often it shows up.
 ##
 ##   var tex := GunThumb.texture(build, Vector2i(220, 80))   # ViewportTexture
@@ -51,9 +51,25 @@ static func _make(build: Dictionary, size: Vector2i, spin: bool) -> SubViewport:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	vp.add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-40, 30, 0)
-	vp.add_child(sun)
+	if Settings.look == Faultprint.COUNTERFORM:
+		# A product-shot studio: soft ambient, a warm key from the camera side, a cool fill
+		# and a rim from behind, so metal, polymer and glass read apart at kill-feed size.
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color("#B9BEC2")
+		env.ambient_light_energy = 0.55
+		env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		env.tonemap_exposure = 0.95
+		for spec in [[Vector3(-35, 40, 0), Color("#FFF0DA"), 1.6], [Vector3(-10, -130, 0), Color("#B8C4CC"), 0.45],
+				[Vector3(-20, 180, 0), Color("#FFFFFF"), 0.6]]:
+			var l := DirectionalLight3D.new()
+			l.rotation_degrees = spec[0]
+			l.light_color = spec[1]
+			l.light_energy = spec[2]
+			vp.add_child(l)
+	else:
+		var sun := DirectionalLight3D.new()
+		sun.rotation_degrees = Vector3(-40, 30, 0)
+		vp.add_child(sun)
 	var pivot := Turner.new()
 	pivot.spin = spin
 	vp.add_child(pivot)

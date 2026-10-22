@@ -52,9 +52,11 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 | `scripts/style/faultprint.gd` | 美術風格的唯一入口：色盤、材質、描邊、環境光。換風格只動這裡和 `shaders/` |
 | `shaders/faultprint.gdshader` | 三階色塊光影 + 半色調網點（隨距離換層級）+ 套色偏移的第二版 + 墨色缺損 |
 | `shaders/fp_misreg.gdshader` | 物件輪廓外的套色偏移（只用在場景，不用在角色） |
-| `scripts/weapons/arsenal.gd` | 從 HAIKAI 搬來的改槍系統（28 種槍身、156 個零件，器官已移除） |
-| `scripts/weapons/gun_models.gd` | 從 HAIKAI 搬來的槍模型組裝，改用 FAULTPRINT 材質 |
-| `scripts/weapons/weapon.gd` | 一把槍的使用狀態與射擊判定（玩家、機器人共用）；PvP 傷害表 `STK` |
+| `scripts/weapons/arsenal.gd` | 改槍系統（38 種槍身、193 個零件），CHAOS 新增的槍與零件在檔案後段 |
+| `scripts/weapons/gun_kit.gd` | 精密槍件的兩種基本形：側面輪廓擠出（`slab`）與車床件（`turned`） |
+| `scripts/weapons/gun_frames.gd` | 每種槍身的機匣外型與零件安裝點 |
+| `scripts/weapons/gun_models.gd` | 依改裝組出整把槍：槍管、槍口、瞄具、握把、扳機、槍機、彈匣、槍托、吊飾 |
+| `scripts/weapons/weapon.gd` | 一把槍的使用狀態與射擊判定（玩家、機器人共用）；PvP 傷害表 `STK`；特殊效果（後座推人、飛鉤、跳彈、吸血、賭命、獵頭、空戰、疾風…）說明在檔案開頭 |
 | `scripts/weapons/gun_names.gd` | 自動槍名、隨機組槍 |
 | `scripts/weapons/blueprints.gd` | 藍圖存檔（`user://blueprints.json`） |
 | `scripts/player/player.gd` | 玩家：動量移動與所有身法、輸入緩衝、狀態轉換紀錄、開槍、受傷 |
@@ -74,13 +76,15 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 ## 測試與截圖
 
 ```
-tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、手感 20 項、三條路線，各在 60/120/240 Hz
+tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、槍與零件、手感 20 項、三條路線，各在 60/120/240 Hz
 godot --headless --path . --script res://tests/movement_test.gd      # 身法、開槍、TTK 自動測試
 godot --headless --fixed-fps 120 --path . --script res://tests/movement_feel_test.gd -- 120
 godot --headless --fixed-fps 120 --path . --script res://tests/route_test.gd -- 120
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/lab_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c11_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/cf_shots.gd -- <資料夾>      # Counterform 截圖（MAP=folded 換對戰圖）
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/gun_gallery.gd -- <資料夾>   # 槍械型錄（FRAMES=、MODS=1、PARTS=、CLOSE=）
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/character_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/look_shots.gd -- <資料夾>   # 三種畫面風格對照
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/game_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/map_shots.gd -- <資料夾>

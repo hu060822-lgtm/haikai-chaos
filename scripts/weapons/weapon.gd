@@ -21,6 +21,8 @@ const STK := {
 	"lmg": 5, "anti_materiel": 1, "shotgun": 1, "double_barrel": 1, "auto_shotgun": 2, "sawed_off": 1,
 	"nail_gun": 6, "crossbow": 2, "flamethrower": 14, "tesla": 4, "harpoon": 1, "railgun": 1,
 	"duck_launcher": 1, "saw_launcher": 2, "bubble_gun": 18,
+	"jump_shotgun": 2, "gyrojet": 4, "minigun": 9, "quad_barrel": 1, "punt_gun": 1, "pneumatic_lance": 1,
+	"ricochet_smg": 7, "glass_revolver": 2, "tuning_fork": 5, "anchor_gun": 2,
 }
 ## Rays a cone weapon (flamethrower) sends per shot.
 const CONE_RAYS := 7
@@ -32,6 +34,24 @@ const WALLBANG_PEN := 40.0
 const WALLBANG_MULT := 0.55
 const WALL_MAX := 0.6
 const CHARGE_TIME := 0.8
+## Speed (m/s) at which "speed_bonus" pays out in full, and where it starts.
+const SPEED_BONUS_FROM := 7.0
+const SPEED_BONUS_FULL := 20.0
+
+## Shooter-side effects (CHAOS parts, shared by players and bots; values from Arsenal):
+##   recoil_push  m/s added to the shooter, straight back from the aim (shotgun jumps)
+##   grapple      m/s pulling the shooter toward whatever the shot hit (world or body)
+##   kill_refill  a kill fills the magazine;  kill_dash: a kill recharges the dash
+##   leech        fraction of damage dealt that comes back as health
+##   ghost        every Nth shot costs no round
+##   ricochet     how many times a shot bounces off walls
+##   air_bonus    damage multiplier while the shooter is off the ground
+##   speed_bonus  extra damage fraction at full speed (scales from SPEED_BONUS_FROM)
+##   long_bonus   damage multiplier at full range (grows with distance instead of falling)
+##   headhunter   heads take 3x, everything else 0.75x
+##   last_round   the magazine's last round deals this many times the damage
+##   gamble       each shot deals 0.4x to 2.2x, at random
+var shots_fired := 0
 
 var build: Dictionary
 var stats: Dictionary
@@ -175,7 +195,16 @@ func interval() -> float:
 ##   [{"from", "to", "normal", "hit_body", "target", "kill"}...]
 func fire(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, context: Dictionary) -> Array:
 	var rounds := 2 if mode() == "double" and ammo >= 2 else 1
+	var fx: Dictionary = stats.effects
+	context.last_round = ammo <= rounds
 	ammo -= rounds
+	shots_fired += 1
+	if fx.has("ghost") and shots_fired % maxi(int(fx.ghost), 2) == 0:
+		ammo += rounds
+	if shooter is CharacterBody3D:
+		var body := shooter as CharacterBody3D
+		context.air = not body.is_on_floor()
+		context.speed = Vector2(body.velocity.x, body.velocity.z).length()
 	cooldown = interval()
 	if mode() == "burst":
 		burst_left = maxi(burst_left - 1, 0)
@@ -200,7 +229,34 @@ func fire(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, conte
 			for i in pellets:
 				var spread := spread_deg if pellets == 1 else maxf(spread_deg, float(stats.spread))
 				results.append(_ray(shooter, origin, _spread_dir(aim, spread), float(stats.range) * 1.4, power, context))
+	_after_shot(shooter, aim, results)
 	return results
+
+
+## What the shot does to the one who fired it (see the shooter-side effects above).
+func _after_shot(shooter: Node3D, aim: Basis, results: Array) -> void:
+	var fx: Dictionary = stats.effects
+	var body := shooter as CharacterBody3D
+	if body and fx.has("recoil_push"):
+		body.velocity += aim.z * float(fx.recoil_push)
+	if body and fx.has("grapple"):
+		for r in results:
+			var to: Vector3 = r.to
+			if r.get("hit_body", false) or to.distance_to(r.from) < float(stats.range) * 1.39:
+				body.velocity += (to - body.global_position).normalized() * float(fx.grapple) + Vector3(0, 1.5, 0)
+				break
+	var killed := false
+	var dealt := 0.0
+	for r in results:
+		killed = killed or r.get("kill", false)
+		if r.get("target") != shooter:
+			dealt += float(r.get("damage", 0.0))
+	if killed and fx.get("kill_refill", false):
+		ammo = maxi(ammo, int(stats.mag))
+	if killed and fx.get("kill_dash", false) and shooter.has_method("refill_dash"):
+		shooter.refill_dash()
+	if fx.has("leech") and dealt > 0.0 and "health" in shooter and shooter.get("alive"):
+		shooter.health = minf(float(shooter.health) + dealt * float(fx.leech), 100.0)
 
 
 static func _spread_dir(aim: Basis, deg: float) -> Vector3:
@@ -226,10 +282,11 @@ func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: f
 	var result := {"from": origin, "to": origin + dir * reach, "normal": -dir, "hit_body": false}
 	var from := origin
 	var through_wall := false
-	var bounced := false
+	var bounces := 1 if stats.kind == "bounce" else 0
+	bounces += int(stats.effects.get("ricochet", 0))
 	var hit_targets := []
 	var travelled := 0.0
-	for step in 6:
+	for step in 8:
 		var hit := _query(shooter, from, from + dir * maxf(reach - travelled, 0.1), exclude)
 		if hit.is_empty():
 			return result
@@ -267,8 +324,8 @@ func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: f
 		if stats.effects.has("explode"):
 			_explode(shooter, hit.position, float(stats.effects.explode), context)
 			return result
-		if stats.kind == "bounce" and not bounced:
-			bounced = true
+		if bounces > 0:
+			bounces -= 1
 			dir = dir.bounce(hit.normal).normalized()
 			from = hit.position + hit.normal * 0.02
 			continue
@@ -292,11 +349,29 @@ func _hit_info(origin: Vector3, point: Vector3, dir: Vector3, zone: String, powe
 	var dmg := pvp_damage(stats) * power
 	var falloff := float(stats.falloff)
 	var reach := float(stats.range)
-	if dist > falloff:
+	if dist > falloff and not stats.effects.has("long_bonus"):
 		dmg *= lerpf(1.0, FALLOFF_MIN, clampf((dist - falloff) / maxf(reach - falloff, 1.0), 0.0, 1.0))
+	var fx: Dictionary = stats.effects
+	if fx.has("long_bonus"):
+		dmg *= lerpf(1.0, float(fx.long_bonus), clampf(dist / maxf(reach, 1.0), 0.0, 1.0))
+	if fx.has("air_bonus") and context.get("air", false):
+		dmg *= float(fx.air_bonus)
+	if fx.has("speed_bonus"):
+		var t := clampf((float(context.get("speed", 0.0)) - SPEED_BONUS_FROM) / (SPEED_BONUS_FULL - SPEED_BONUS_FROM), 0.0, 1.0)
+		dmg *= 1.0 + float(fx.speed_bonus) * t
+	if fx.has("last_round") and context.get("last_round", false):
+		dmg *= float(fx.last_round)
+	if fx.get("gamble", false):
+		dmg *= randf_range(0.4, 2.2)
+	var head := HEAD_MULT
+	if fx.get("headhunter", false):
+		head = 3.0
+		dmg *= 0.75
+		if zone == "head":
+			dmg /= 0.75
 	match zone:
 		"head":
-			dmg *= HEAD_MULT
+			dmg *= head
 		"legs":
 			dmg *= LEG_MULT
 	return {

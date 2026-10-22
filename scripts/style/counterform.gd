@@ -10,7 +10,9 @@ class_name Counterform
 ##   Counterform.gun(color, kind)    # held guns: tighter, more metallic, object-space
 ##   Counterform.environment(parent) # sky, sun, fill light, fog, tone mapping
 ##   Counterform.vista(parent, ...)  # the surreal backdrop: floating mass, endless frames
-## Material classes: concrete, concrete_dark, paint, oxide, bare, polymer, rubber, glass.
+##   Counterform.glazing(parent, w, h, pos, yaw)  # a framed window (dark interior, clear panes)
+## Material classes: concrete, concrete_dark, paint, oxide, anodized, phosphate, bare, polymer,
+## rubber, lens, glass.
 
 # --- Palette (art direction §4; starting values, maps may shift them) --------------------
 const BONE_CONCRETE := Color("#D0C7B8")   # 骨灰混凝土: the main surface
@@ -76,6 +78,23 @@ static func material(kind: String, color: Color, world_space := true, glow := Co
 			m.roughness = 0.86
 			m.metallic = 0.35
 			m.uv1_scale = Vector3.ONE / 2.0 if world_space else Vector3.ONE * 3.0
+		"anodized":
+			# Black anodised aluminium / blued steel on guns: dark, a soft sheen on edges.
+			m.normal_enabled = true
+			m.normal_texture = _fine_normal()
+			m.normal_scale = 0.12
+			m.roughness = 0.4
+			m.metallic = 0.55
+			m.metallic_specular = 0.5
+			m.uv1_scale = Vector3.ONE * 3.0
+		"phosphate":
+			# Parkerised steel: grey, dry, a little metallic.
+			m.normal_enabled = true
+			m.normal_texture = _fine_normal()
+			m.normal_scale = 0.14
+			m.roughness = 0.58
+			m.metallic = 0.5
+			m.uv1_scale = Vector3.ONE * 4.0
 		"bare":
 			m.albedo_texture = _brushed()
 			m.metallic = 0.9
@@ -86,7 +105,7 @@ static func material(kind: String, color: Color, world_space := true, glow := Co
 			m.albedo_texture = _grime() if world_space else null
 			m.normal_enabled = true
 			m.normal_texture = _fine_normal()
-			m.normal_scale = 0.35
+			m.normal_scale = 0.35 if world_space else 0.16
 			m.roughness = 0.74
 			m.metallic = 0.0
 			m.uv1_scale = Vector3.ONE * 6.0
@@ -97,6 +116,11 @@ static func material(kind: String, color: Color, world_space := true, glow := Co
 			m.roughness = 0.93
 			m.metallic = 0.0
 			m.uv1_scale = Vector3.ONE * 10.0
+		"lens":
+			# Coated optics seen from outside: a dark mirror with a coloured sheen.
+			m.roughness = 0.04
+			m.metallic = 0.85
+			m.metallic_specular = 0.9
 		"glass":
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			m.albedo_color = Color(color, 0.28)
@@ -141,8 +165,8 @@ static func _world_map(c: Color) -> Array:
 ## finish (parkerised steel, black anodising, polymer, cerakote, brass, bare steel).
 static func gun(color: Color, kind := "panel", glow := Color.BLACK) -> StandardMaterial3D:
 	var pair := _gun_map(color, kind)
-	var m := material(pair[0], pair[1], false, glow)
-	return m
+	# Glow on a gun is a small cue (a tracer tip, a hot coil), never a light source.
+	return material(pair[0], pair[1], false, glow * 0.5)
 
 
 static func _gun_map(c: Color, kind: String) -> Array:
@@ -168,10 +192,59 @@ static func _gun_map(c: Color, kind: String) -> Array:
 		"e7e0d2": return ["paint", DUST_WHITE]
 		"d6b64a": return ["paint", SULFUR]
 		"6e6c66": return ["paint", Color("#4A4E50")]
-	return ["paint", c]
+	# Anything else (HAIKAI's one-off reds, blues, pinks, tints over 1.0): the nearest
+	# finish in the gun palette, so no part comes out a colour the art direction lacks.
+	var clamped := Color(minf(c.r, 1.0), minf(c.g, 1.0), minf(c.b, 1.0))
+	var best: Array = GUN_PALETTE[0]
+	var best_d := INF
+	for entry: Array in GUN_PALETTE:
+		var e: Color = entry[1]
+		var d := Vector3(clamped.r - e.r, clamped.g - e.g, clamped.b - e.b) * Vector3(1.0, 1.3, 0.8)
+		if d.length_squared() < best_d:
+			best_d = d.length_squared()
+			best = entry
+	return best
+
+
+## Finishes a held gun can be in, for colours with no finish of their own.
+const GUN_PALETTE := [
+	["polymer", Color("#1E2022")], ["paint", Color("#2C2F31")], ["paint", Color("#4A4E50")],
+	["bare", Color("#A3A5A3")], ["polymer", Color("#7E6A52")], ["paint", Color("#B9AC92")],
+	["paint", Color("#E9E4D9")], ["paint", Color("#A65339")], ["oxide", Color("#6E3A28")],
+	["polymer", Color("#8E3A2C")], ["paint", Color("#777D77")], ["polymer", Color("#5C635D")],
+	["paint", Color("#D9C75B")], ["bare", Color("#A88B55")], ["paint", Color("#5E6A70")],
+]
 
 
 # --- Procedural textures (made once, shared) ----------------------------------------------
+
+## Generated textures are kept in user:// after the first run, so later loads skip the
+## 1-2 s of noise work. Bump TEX_VERSION whenever a generator changes.
+const TEX_VERSION := 1
+
+
+static func _disk_path(key: String) -> String:
+	return "user://texcache/cf_%s_v%d.png" % [key, TEX_VERSION]
+
+
+static func _from_disk(key: String) -> ImageTexture:
+	var path := _disk_path(key)
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(path)
+	if img == null or img.is_empty():
+		return null
+	img.generate_mipmaps()
+	var t := ImageTexture.create_from_image(img)
+	_tex[key] = t
+	return t
+
+
+static func _to_disk(key: String, img: Image) -> void:
+	DirAccess.make_dir_recursive_absolute("user://texcache")
+	var copy := img.duplicate() as Image
+	copy.clear_mipmaps()
+	copy.save_png(_disk_path(key))
 
 static func _noise(seed_v: int, freq: float, octaves := 4, kind := FastNoiseLite.TYPE_SIMPLEX_SMOOTH) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
@@ -214,6 +287,9 @@ static func _concrete_height() -> Image:
 static func _concrete_albedo() -> ImageTexture:
 	if _tex.has("ca"):
 		return _tex["ca"]
+	var disk := _from_disk("ca")
+	if disk != null:
+		return disk
 	var size := 512
 	var h := _concrete_height()
 	var stain := _noise(13, 0.01, 4).get_seamless_image(size, size)
@@ -228,6 +304,7 @@ static func _concrete_albedo() -> ImageTexture:
 			var c := Color(v, v * 0.985, v * 0.96).lerp(Color(v * 0.86, v * 0.81, v * 0.74), s * 0.3)
 			img.set_pixel(x, y, c)
 	img.generate_mipmaps()
+	_to_disk("ca", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["ca"] = t
 	return t
@@ -236,10 +313,14 @@ static func _concrete_albedo() -> ImageTexture:
 static func _concrete_normal() -> ImageTexture:
 	if _tex.has("cn"):
 		return _tex["cn"]
+	var disk := _from_disk("cn")
+	if disk != null:
+		return disk
 	var img := _concrete_height().duplicate() as Image
 	img.convert(Image.FORMAT_RGBA8)
 	img.bump_map_to_normal_map(6.0)
 	img.generate_mipmaps()
+	_to_disk("cn", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["cn"] = t
 	return t
@@ -248,6 +329,9 @@ static func _concrete_normal() -> ImageTexture:
 static func _grain() -> ImageTexture:
 	if _tex.has("gr"):
 		return _tex["gr"]
+	var disk := _from_disk("gr")
+	if disk != null:
+		return disk
 	var img := _noise(21, 0.05, 3).get_seamless_image(256, 256)
 	img.convert(Image.FORMAT_RGB8)
 	img.adjust_bcs(1.0, 0.4, 1.0)
@@ -257,6 +341,7 @@ static func _grain() -> ImageTexture:
 			var g := 0.85 + img.get_pixel(x, y).r * 0.15
 			img.set_pixel(x, y, Color(g, g, g))
 	img.generate_mipmaps()
+	_to_disk("gr", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["gr"] = t
 	return t
@@ -266,6 +351,9 @@ static func _grain() -> ImageTexture:
 static func _grime() -> ImageTexture:
 	if _tex.has("gm"):
 		return _tex["gm"]
+	var disk := _from_disk("gm")
+	if disk != null:
+		return disk
 	var size := 256
 	var n := _noise(31, 0.02, 4).get_seamless_image(size, size)
 	var img := Image.create(size, size, true, Image.FORMAT_RGB8)
@@ -274,6 +362,7 @@ static func _grime() -> ImageTexture:
 			var v := 1.0 - smoothstep(0.5, 0.85, n.get_pixel(x, y).r) * 0.22
 			img.set_pixel(x, y, Color(v, v * 0.99, v * 0.97))
 	img.generate_mipmaps()
+	_to_disk("gm", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["gm"] = t
 	return t
@@ -282,10 +371,14 @@ static func _grime() -> ImageTexture:
 static func _fine_normal() -> ImageTexture:
 	if _tex.has("fn"):
 		return _tex["fn"]
+	var disk := _from_disk("fn")
+	if disk != null:
+		return disk
 	var img := _noise(41, 0.12, 2).get_seamless_image(256, 256)
 	img.convert(Image.FORMAT_RGBA8)
 	img.bump_map_to_normal_map(2.0)
 	img.generate_mipmaps()
+	_to_disk("fn", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["fn"] = t
 	return t
@@ -295,6 +388,9 @@ static func _fine_normal() -> ImageTexture:
 static func _rust() -> ImageTexture:
 	if _tex.has("rs"):
 		return _tex["rs"]
+	var disk := _from_disk("rs")
+	if disk != null:
+		return disk
 	var size := 256
 	var a := _noise(51, 0.03, 5).get_seamless_image(size, size)
 	var b := _noise(52, 0.15, 2).get_seamless_image(size, size)
@@ -307,6 +403,7 @@ static func _rust() -> ImageTexture:
 			c = c.lerp(Color(0.72, 0.68, 0.66), smoothstep(0.75, 0.95, q) * 0.4)
 			img.set_pixel(x, y, c.clamp())
 	img.generate_mipmaps()
+	_to_disk("rs", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["rs"] = t
 	return t
@@ -316,6 +413,9 @@ static func _rust() -> ImageTexture:
 static func _brushed() -> ImageTexture:
 	if _tex.has("br"):
 		return _tex["br"]
+	var disk := _from_disk("br")
+	if disk != null:
+		return disk
 	var size := 256
 	var n := _noise(61, 0.5, 2).get_seamless_image(size, 4)
 	var img := Image.create(size, size, true, Image.FORMAT_RGB8)
@@ -324,6 +424,7 @@ static func _brushed() -> ImageTexture:
 			var v := 0.88 + n.get_pixel(x, y % 4).r * 0.12
 			img.set_pixel(x, y, Color(v, v, v))
 	img.generate_mipmaps()
+	_to_disk("br", img)
 	var t := ImageTexture.create_from_image(img)
 	_tex["br"] = t
 	return t
@@ -371,7 +472,7 @@ static func environment(parent: Node, sun_angle := Vector3(-48.0, -36.0, 0.0), t
 	sun.name = "Sun"
 	sun.rotation_degrees = sun_angle
 	sun.light_color = Color("#FFF0DA")
-	sun.light_energy = 1.3
+	sun.light_energy = 1.18
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.5
@@ -407,6 +508,7 @@ static func vista(parent: Node3D, centre: Vector3, radius := 150.0) -> Node3D:
 	var conc_dark := material("concrete_dark", CONCRETE_DARK)
 	var steel := material("paint", GRAPHITE)
 	var oxide := material("paint", OXIDE_ORANGE)
+	var glass_dark := material("lens", Color("#2A3236"))
 	# 1. Floating monoliths: building-sized concrete slabs, some tilted, hanging in a ring.
 	for i in 9:
 		var a := TAU * i / 9.0 + rng.randf_range(-0.2, 0.2)
@@ -419,12 +521,14 @@ static func vista(parent: Node3D, centre: Vector3, radius := 150.0) -> Node3D:
 		for k in 4:
 			var slot_y := pos.y - size.y * 0.35 + k * size.y * 0.22
 			_box(root, Vector3(size.x * 0.7, 1.2, 0.6), Vector3(pos.x, slot_y, pos.z) - Vector3(cos(a), 0, sin(a)) * (size.z * 0.5),
-				rot, steel)
+				rot, steel if k % 2 else glass_dark)
 	# 2. An inverted tower hanging from above the course: floors stacked downward.
 	var top := centre + Vector3(-radius * 0.55, 120.0, -radius * 0.7)
 	for f in 10:
 		var w := 22.0 - f * 0.8
 		_box(root, Vector3(w, 3.6, w), top - Vector3(0, f * 4.4, 0), Vector3(0, f * 3.0, 0), conc)
+		# A storey of glass between the concrete floors, set back a little.
+		_box(root, Vector3(w - 1.2, 1.0, w - 1.2), top - Vector3(0, f * 4.4 + 2.6, 0), Vector3(0, f * 3.0, 0), glass_dark)
 		_box(root, Vector3(w + 0.6, 0.5, w + 0.6), top - Vector3(0, f * 4.4 + 2.0, 0), Vector3(0, f * 3.0, 0), steel)
 	# 3. A stair that rises into the air, reaches a landing, and carries on upside down.
 	var s0 := centre + Vector3(radius * 0.7, 2.0, radius * 0.1)
@@ -446,6 +550,26 @@ static func vista(parent: Node3D, centre: Vector3, radius := 150.0) -> Node3D:
 	var c0 := centre + Vector3(radius * 0.15, 0.0, -radius * 1.1)
 	_box(root, Vector3(60.0, 60.0, 8.0), c0 + Vector3(0, 30.0, 0), Vector3(0, 10, 45), conc)
 	_box(root, Vector3(1.2, 1.2, 40.0), c0 + Vector3(0, 30.0, 0), Vector3(0, 10, 0), oxide)
+	return root
+
+
+## A glazed opening `width` × `height` centred at `pos`, facing along the yaw's +Z: a dark
+## reflective interior, clear panes over it, a graphite frame with mullions every ~1.6 m
+## and a transom. No collision (it sits on or in a wall). Glass is a material, not a glow.
+static func glazing(parent: Node3D, width: float, height: float, pos: Vector3, yaw_deg: float) -> Node3D:
+	var root := Node3D.new()
+	root.position = pos
+	root.rotation_degrees = Vector3(0, yaw_deg, 0)
+	parent.add_child(root)
+	var frame := material("paint", GRAPHITE)
+	_box(root, Vector3(width, height, 0.08), Vector3(0, 0, -0.02), Vector3.ZERO, material("lens", Color("#2A3236")))
+	_box(root, Vector3(width - 0.1, height - 0.1, 0.02), Vector3(0, 0, 0.06), Vector3.ZERO, material("glass", Color("#9FB8BE")))
+	var bars := maxi(int(width / 1.6), 1)
+	for i in bars + 1:
+		var x := -width / 2.0 + i * width / bars
+		_box(root, Vector3(0.1, height, 0.16), Vector3(x, 0, 0.04), Vector3.ZERO, frame)
+	for y in [-height / 2.0, height / 2.0, height * 0.18]:
+		_box(root, Vector3(width + 0.1, 0.1, 0.16), Vector3(0, y, 0.04), Vector3.ZERO, frame)
 	return root
 
 
