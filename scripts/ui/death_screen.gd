@@ -4,6 +4,8 @@ extends Control
 ## middle (its real model), with its name, frame, every part on it and the numbers that
 ## matter. The damage exchange says how close it was. "抄下這把槍" (F) saves the gun as
 ## one of your blueprints and equips it on respawn, so losing is how you learn builds.
+## C4: first the kill replay plays in that panel (KillCam: over the killer's shoulder,
+## the last moment slowed), then the gun; R switches between them.
 
 signal respawn_requested()
 signal copy_requested(build: Dictionary, gun_name: String)
@@ -22,6 +24,9 @@ var _exchange: Label
 var _copy: Button
 var _again: Button
 var _copied := false
+var _clip := {}
+var _replay: SubViewport
+var _view_note: Label
 
 
 func _init() -> void:
@@ -75,6 +80,9 @@ func _ready() -> void:
 	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	vbox.add_child(_view)
+	_view_note = FpUi.label("", 15, Faultprint.SLATE, FpUi.bold())
+	_view_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(_view_note)
 	# The exchange and the numbers come first; the parts list of a heavily modded gun is
 	# long, so it scrolls in what is left of the column instead of growing it. The buttons
 	# below always stay on screen at any window size.
@@ -113,8 +121,9 @@ func _ready() -> void:
 	buttons.add_child(again)
 
 
-func show_death(info: Dictionary, dealt: float, taken: float) -> void:
+func show_death(info: Dictionary, dealt: float, taken: float, clip := {}) -> void:
 	_info = info
+	_clip = clip
 	_copied = false
 	visible = true
 	var killer: String = info.get("attacker_name", "?")
@@ -132,16 +141,15 @@ func show_death(info: Dictionary, dealt: float, taken: float) -> void:
 	if _vp != null:
 		_vp.queue_free()
 		_vp = null
+	_show_gun()
+	if not _clip.is_empty() and KillCam.current != null:
+		_show_replay()
 	if not build.is_empty():
-		_vp = GunThumb.live(build, Vector2i(900, 480))
-		add_child(_vp)
-		_view.texture = _vp.get_texture()
 		_parts.text = _parts_text(build)
 		_parts.add_theme_font_size_override("font_size", 16 if _parts.text.count("\n") < 9 else 14)
 		_stats.text = _stats_text(Arsenal.stats(build))
 		_copy.disabled = false
 	else:
-		_view.texture = null
 		_parts.text = "—"
 		_stats.text = "—"
 		_copy.disabled = true
@@ -167,9 +175,42 @@ func set_wait(seconds: float, auto := 0.0) -> void:
 
 func hide_death() -> void:
 	visible = false
+	_stop_replay()
 	if _vp != null:
 		_vp.queue_free()
 		_vp = null
+
+
+## The killer's gun turning in the panel.
+func _show_gun() -> void:
+	_stop_replay()
+	if _vp == null:
+		var build: Dictionary = _info.get("build", {})
+		if build.is_empty():
+			_view.texture = null
+			_view_note.text = ""
+			return
+		_vp = GunThumb.live(build, Vector2i(900, 480))
+		add_child(_vp)
+	_view.texture = _vp.get_texture()
+	_view_note.text = "R 再看一次擊殺回放" if not _clip.is_empty() else "拖曳轉動"
+
+
+func _show_replay() -> void:
+	_stop_replay()
+	_replay = KillCam.current.play(_clip, Vector2i(960, 520))
+	add_child(_replay)
+	_view.texture = _replay.get_texture()
+	_view_note.text = "擊殺回放（從他的肩膀後面看）　R 看他的槍"
+	_replay.get_child(1).finished.connect(func() -> void:
+		if _replay != null:
+			_show_gun())
+
+
+func _stop_replay() -> void:
+	if _replay != null:
+		_replay.queue_free()
+		_replay = null
 
 
 static func _parts_text(build: Dictionary) -> String:
@@ -201,6 +242,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("copy_gun"):
 		_on_copy()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).physical_keycode == KEY_R \
+			and not _clip.is_empty():
+		if _replay != null:
+			_show_gun()
+		else:
+			_show_replay()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("jump") or event.is_action_pressed("respawn"):
 		respawn_requested.emit()

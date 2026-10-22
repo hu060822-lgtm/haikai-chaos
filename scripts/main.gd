@@ -31,6 +31,7 @@ var lobby: Lobby
 var results: Control
 var front_end: FrontEnd
 var scoreboard: Scoreboard
+var killcam: KillCam
 var _menu_cam: Camera3D
 var _menu_t := 0.0
 var _tab_down := -1.0
@@ -71,6 +72,9 @@ func _ready() -> void:
 		t.global_transform = xf
 	player = Player.new()
 	add_child(player)
+	player.camera.cull_mask &= ~KillCam.GHOST_LAYER
+	killcam = KillCam.new()
+	add_child(killcam)
 	var start := Blueprints.load_all()
 	if not start.is_empty():
 		player.equip(start[0].build, start[0].name)
@@ -434,10 +438,11 @@ func _on_player_died(info: Dictionary) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var dealt: float = player.damage_dealt.get(killer, 0.0)
 	var taken: float = player.damage_taken.get(killer, 0.0)
+	var clip := killcam.clip(player, info.get("attacker"), info.get("build", {}))
 	get_tree().create_timer(0.6).timeout.connect(func() -> void:
 		if player.alive:
 			return
-		death.show_death(info, dealt, taken)
+		death.show_death(info, dealt, taken, clip)
 		if team_match != null and team_match.rules != null:
 			death.set_note("這回合只有一條命：等下一回合"))
 

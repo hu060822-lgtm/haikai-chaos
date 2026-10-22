@@ -88,6 +88,8 @@ static func muzzle(parent: Node3D, pos: Vector3, klass: String, scale := 1.0) ->
 
 ## A thin tracer line from `from` to `to` in world space.
 static func tracer(world: Node, from: Vector3, to: Vector3, klass: String) -> void:
+	if KillCam.current != null:
+		KillCam.current.note_tracer(from, to, klass)
 	var length := from.distance_to(to)
 	if length < 0.5:
 		return
