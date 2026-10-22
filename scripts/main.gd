@@ -14,6 +14,7 @@ static var skip_title := false
 var map: Node3D
 var lab: MovementLab
 var move_debug: MoveDebug
+var settings_menu: SettingsMenu
 var player: Player
 var hud: Hud
 var bench: Bench
@@ -28,8 +29,8 @@ var _seed := 1
 
 
 func _ready() -> void:
+	Settings.load_all()
 	InputSetup.register()
-	CameraFx.load_settings()
 	if map_id == "lab":
 		lab = MovementLab.new()
 		map = lab
@@ -75,8 +76,11 @@ func _ready() -> void:
 		_pending_build = b
 		_pending_name = n)
 	_ui.add_child(death)
+	settings_menu = SettingsMenu.new()
+	settings_menu.closed.connect(_on_settings_closed)
 	_title = _make_title()
 	_ui.add_child(_title)
+	_ui.add_child(settings_menu)
 	player.input_enabled = false
 	hud.visible = false
 	if skip_title:
@@ -123,6 +127,9 @@ func _make_title() -> Control:
 		var go := FpUi.button(spec[1], 24)
 		go.pressed.connect(_choose_map.bind(spec[0]))
 		row.add_child(go)
+	var options := FpUi.button("設定／按鍵", 24)
+	options.pressed.connect(func() -> void: settings_menu.open())
+	row.add_child(options)
 	return t
 
 
@@ -173,10 +180,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		player.input_enabled = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("pause"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventMouseButton and event.pressed and player.input_enabled:
+	elif event.is_action_pressed("pause") and not bench.visible and not death.visible and not settings_menu.visible:
+		player.input_enabled = false
+		settings_menu.open()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and player.input_enabled and not settings_menu.visible:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _on_settings_closed() -> void:
+	if _title.visible:
+		return
+	player.input_enabled = player.alive
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _on_bench_closed(build: Dictionary, gun_name: String) -> void:

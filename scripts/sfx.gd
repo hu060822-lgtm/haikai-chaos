@@ -66,6 +66,31 @@ static func _stream(id: String) -> AudioStreamWAV:
 	return w
 
 
+## Rushing air for speed: two seconds of soft, low-passed noise that loops.
+static func wind() -> AudioStreamWAV:
+	if _cache.has("wind"):
+		return _cache.wind
+	var n := RATE * 2
+	var s := PackedFloat32Array()
+	s.resize(n)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	var lp := 0.0
+	var lp2 := 0.0
+	for i in n:
+		lp = lerpf(lp, rng.randf_range(-1.0, 1.0), 0.08)
+		lp2 = lerpf(lp2, lp, 0.2)
+		# Fade the ends together so the loop has no click.
+		var edge := minf(minf(float(i), float(n - i)) / 2000.0, 1.0)
+		s[i] = lp2 * 2.4 * edge + lp2 * 2.4 * (1.0 - edge) * 0.5
+	var w := _wav(s)
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_begin = 0
+	w.loop_end = n
+	_cache.wind = w
+	return w
+
+
 static func play(at: Node3D, id: String, volume_db := -8.0) -> void:
 	if not at.is_inside_tree():
 		return

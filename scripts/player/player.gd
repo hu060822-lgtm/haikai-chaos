@@ -81,6 +81,12 @@ var _crouch_buf := 0.0
 var _land_grace := 0.0
 var _was_on_floor := true
 var _half_g := false
+var _slam_from := 0.0
+var _slam_height := 0.0
+var _slam_bounce := 0.0
+var _render_prev := Vector3.ZERO
+var _render_curr := Vector3.ZERO
+var _wind: AudioStreamPlayer
 var _crouching := false
 var _shape: CapsuleShape3D
 var _eye := EYE
@@ -104,6 +110,7 @@ var _mantle_from := Vector3.ZERO
 var _mantle_to := Vector3.ZERO
 var _mantle_t := 0.0
 var _mantle_speed := 0.0
+var _mantle_back := Vector3.ZERO
 var _dash_left := 0.0
 var _dash_charge := 1.0
 var _dash_dir := Vector3.ZERO
@@ -134,8 +141,10 @@ func _ready() -> void:
 	add_child(cs)
 	head = Node3D.new()
 	head.name = "Head"
-	head.position.y = EYE
 	add_child(head)
+	# The head is placed by hand every rendered frame (see _process), between the last two
+	# physics positions, so the view is smooth at any frame rate and mouse look is instant.
+	head.top_level = true
 	camera = Camera3D.new()
 	camera.fov = base_fov
 	camera.near = 0.03
@@ -143,6 +152,11 @@ func _ready() -> void:
 	head.add_child(camera)
 	view = ViewModel.new()
 	camera.add_child(view)
+	_wind = AudioStreamPlayer.new()
+	_wind.stream = Sfx.wind()
+	_wind.volume_db = -60.0
+	add_child(_wind)
+	base_fov = Settings.fov
 	_add_hitboxes()
 	if weapon == null:
 		equip({"frame": "carbine", "parts": {}, "tune": {}})
@@ -208,6 +222,8 @@ func spawn_at(xform: Transform3D) -> void:
 	move_and_slide()
 	apply_floor_snap()
 	_pitch = 0.0
+	_render_prev = global_position
+	_render_curr = global_position
 	health = MAX_HEALTH
 	alive = true
 	_set_move(Move.GROUND, "重生")
@@ -245,7 +261,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled or not alive:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var sens := MOUSE_SENS * lerpf(1.0, 1.0 / maxf(float(weapon.stats.zoom), 1.0), _aim)
+		var sens := MOUSE_SENS * Settings.sens * lerpf(1.0, 1.0 / maxf(float(weapon.stats.zoom), 1.0), _aim)
 		rotate_y(-event.relative.x * sens)
 		_pitch = clampf(_pitch - event.relative.y * sens, deg_to_rad(-88), deg_to_rad(88))
 		view.sway(event.relative)
@@ -299,7 +315,10 @@ func _physics_process(delta: float) -> void:
 			_gravity_half()
 			_half_g = false
 	_after_move(fall)
+	_render_prev = _render_curr
+	_render_curr = global_position
 	accel = lerpf(accel, (flat_speed() - speed_before) / delta, 1.0 - exp(-12.0 * delta))
+	_place_head(global_position)
 	_weapon_frame(delta)
 	_camera_frame(delta)
 
@@ -310,6 +329,7 @@ func _timers(delta: float) -> void:
 	_crouch_buf -= delta
 	_slide_cd -= delta
 	_land_grace -= delta
+	_slam_bounce -= delta
 	_wall_coyote -= delta
 	_wall_ban_t -= delta
 	if _wall_ban_t <= 0.0:
@@ -445,6 +465,7 @@ func _do_free(delta: float, wish: Vector3, on_floor: bool) -> void:
 	if not on_floor and _want("crouch", true) and _pitch <= deg_to_rad(tune.slam_pitch):
 		if _height_above_ground() >= tune.slam_min_height:
 			_set_move(Move.SLAM, "空中低頭按蹲")
+			_slam_from = global_position.y
 			velocity = Vector3(velocity.x * 0.25, -SLAM_SPEED, velocity.z * 0.25)
 			return
 		_fail("離地太低，不能重踩")
@@ -558,14 +579,20 @@ func _slide_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
 
 func _jump() -> void:
 	var from_slide := move == Move.SLIDE
+	var why := "滑鏟跳" if from_slide else ("衝刺跳（保留衝刺速度）" if move == Move.DASH else "跳躍")
 	_buffer = 0.0
 	_coyote = 0.0
 	var up := tune.jump_speed * sqrt(mobility) * (0.75 if _slow > 0.0 else 1.0)
 	if from_slide:
 		up *= tune.slide_jump_mult
+	if _slam_bounce > 0.0:
+		# Slam bounce (ULTRAKILL): jump right after a slam lands and the fall comes back as height.
+		up = maxf(up, minf(sqrt(2.0 * tune.gravity * (_slam_height * tune.slam_bounce + 1.3)), tune.slam_bounce_max))
+		why = "重踩彈跳（%.1f m）" % _slam_height
+		_slam_bounce = 0.0
 	# A ramp's lip adds a little of the speed you had going up it.
 	_launch(up + maxf(velocity.y, 0.0) * 0.3)
-	_set_move(Move.AIR, "滑鏟跳" if from_slide else "跳躍", true)
+	_set_move(Move.AIR, why, true)
 	_set_crouch(false)
 	_cam.jump()
 	view.jolt(Vector3(0, -0.012, 0.01))
@@ -717,7 +744,8 @@ func _start_wallrun(wall: Dictionary) -> void:
 	var along := _along(n, h)
 	# Keep the speed along the wall, and turn a little of the speed into it.
 	var speed := h.dot(along) + absf(h.dot(n)) * 0.3
-	velocity = along * speed - n * 0.5 + Vector3(0, clampf(velocity.y * 0.4 + 1.2, -1.0, 4.0), 0)
+	# Catching the wall stops a fall; a rising jump carries on up a little.
+	velocity = along * speed - n * 0.5 + Vector3(0, clampf(velocity.y * 0.5 + 1.0, 0.0, 3.5), 0)
 	if _wall_ban != _wall_node:
 		_wall_ban = null
 	_set_move(Move.WALLRUN, "貼上可牆跑的牆（%s側）" % ("右" if wall.side > 0 else "左"))
@@ -783,9 +811,13 @@ func _do_wallrun(delta: float, wish: Vector3) -> void:
 		limiter = "牆跑上限"
 	else:
 		limiter = "牆跑保持速度"
-	var late := smoothstep(0.55, 1.0, _wall_t / limit)
+	var late := smoothstep(tune.wallrun_late_from, 1.0, _wall_t / limit)
 	var g := lerpf(tune.wallrun_gravity, tune.wallrun_gravity_late, late)
-	var vy := maxf(velocity.y - g * delta, -5.0)
+	var vy := velocity.y - g * delta
+	if vy > 0.0:
+		# The hop onto the wall fades into a short rise instead of carrying you up the wall.
+		vy *= exp(-tune.wallrun_rise_damp * delta)
+	vy = maxf(vy, -tune.wallrun_max_fall)
 	velocity = along * speed - _wall_normal * 1.0 + Vector3(0, vy, 0)
 
 
@@ -801,19 +833,16 @@ func _leave_wall(why: String) -> void:
 	_set_move(Move.AIR, why)
 
 
-## Jump off a wall with normal `n`: out along the normal (more if your input points away),
-## keeping the speed along the wall, steered a little by the input along it.
+## Jump off a wall with normal `n` in the direction of your INPUT (the keys, not the view):
+## the direction is only bent enough to leave the wall, and you keep your speed (at least
+## wall_jump_speed). No input: off the wall, carrying on along it.
 func _wall_jump(wish: Vector3, n: Vector3, node: Object, why: String) -> void:
 	_buffer = 0.0
 	_wall_coyote = 0.0
 	var h := _flat()
-	var keep := (h - n * h.dot(n)) * tune.wall_jump_keep
-	var out := tune.wall_jump_out * mobility
-	var away := wish.dot(n)
-	if away > 0.0:
-		out += away * tune.wall_jump_input
-	keep += (wish - n * away) * 0.8
-	velocity = keep + n * out
+	var dir := _off_wall_dir(wish, n, h)
+	velocity = dir * maxf(h.length() * tune.wall_jump_keep, tune.wall_jump_speed * mobility)
+	_ensure_out(n, tune.wall_jump_out * mobility)
 	_launch(tune.wall_jump_up * sqrt(mobility))
 	_ban_wall(node)
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
@@ -822,19 +851,43 @@ func _wall_jump(wish: Vector3, n: Vector3, node: Object, why: String) -> void:
 	Sfx.play(self, "kick")
 
 
+## Kick off any wall: same rule as the wall jump (input direction, bent off the wall), a
+## little slower, a little higher.
 func _wall_kick(wall: Dictionary) -> void:
 	_buffer = 0.0
 	_kicks -= 1
 	var n: Vector3 = wall.normal
 	var h := _flat()
-	# Cancel the part of the speed going into the wall, then push off it.
-	h -= n * minf(h.dot(n), 0.0)
-	velocity = h * tune.wall_kick_keep + n * tune.wall_kick_out * mobility
+	var dir := _off_wall_dir(_wish_dir(), n, h)
+	velocity = dir * maxf(h.length() * tune.wall_kick_keep, tune.wall_kick_out * mobility)
+	_ensure_out(n, tune.wall_kick_out * mobility * 0.6)
 	_launch(tune.wall_kick_up * sqrt(mobility))
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
 	view.jolt(global_basis.inverse() * n * 0.015)
 	_set_move(Move.AIR, "踢牆（剩 %d 次）" % _kicks, true)
 	Sfx.play(self, "kick")
+
+
+## The direction to leave a wall (normal `n`): the input, bent until it leaves the wall at
+## least wall_jump_min_out; no input = along your current motion, off the wall.
+func _off_wall_dir(wish: Vector3, n: Vector3, h: Vector3) -> Vector3:
+	var dir := wish
+	if dir == Vector3.ZERO:
+		var along := h - n * h.dot(n)
+		dir = (along.normalized() if along.length() > 0.5 else Vector3.ZERO) + n * 0.8
+	dir = dir.normalized()
+	var m := tune.wall_jump_min_out
+	if dir.dot(n) < m:
+		var tangent := dir - n * dir.dot(n)
+		dir = n if tangent.length() < 0.01 else tangent.normalized() * sqrt(1.0 - m * m) + n * m
+	return dir
+
+
+## At least `speed` straight off the wall `n`.
+func _ensure_out(n: Vector3, speed: float) -> void:
+	var out := _flat().dot(n)
+	if out < speed:
+		_set_flat(_flat() + n * (speed - out))
 
 
 func _ban_wall(node: Object) -> void:
@@ -919,6 +972,8 @@ func _try_mantle(climbing: bool) -> bool:
 	_mantle_to = top.position + Vector3(0, 0.02, 0)
 	_mantle_t = 0.0
 	_mantle_speed = flat_speed()
+	# Lean back a little while rising so the head clears trims and lips that stick out.
+	_mantle_back = -look * 0.18
 	_set_crouch(true)
 	_set_move(Move.MANTLE, "手碰到邊緣（高 %.1f m）" % rise)
 	Sfx.play(self, "mantle")
@@ -928,13 +983,15 @@ func _try_mantle(climbing: bool) -> bool:
 func _do_mantle(delta: float) -> void:
 	_mantle_t += delta / (tune.mantle_time * (1.15 - 0.15 * mobility))
 	var t := clampf(_mantle_t, 0.0, 1.0)
-	# Up first, then over the lip.
-	var up := minf(t * 1.6, 1.0)
-	var over := clampf((t - 0.35) / 0.65, 0.0, 1.0)
+	# Up first, then over the lip once the feet are clear of it (moving over earlier drags
+	# the capsule through the ledge at high entry speeds).
+	var up := minf(t * 2.0, 1.0)
+	var over := clampf((t - 0.45) / 0.55, 0.0, 1.0)
 	var p := _mantle_from
 	p.y = lerpf(_mantle_from.y, _mantle_to.y, up)
 	p.x = lerpf(_mantle_from.x, _mantle_to.x, over)
 	p.z = lerpf(_mantle_from.z, _mantle_to.z, over)
+	p += _mantle_back * minf(t * 6.0, 1.0) * (1.0 - over)
 	# The pull-up moves you directly; velocity mirrors it (for the HUD and the graph).
 	velocity = (p - global_position) / delta
 	global_position = p
@@ -960,6 +1017,10 @@ func _start_dash(wish: Vector3) -> void:
 func _do_dash(delta: float) -> void:
 	_dash_left -= delta
 	velocity.y = 0.0
+	# Dash jump (ULTRAKILL): jump during a dash on the ground and keep the whole burst.
+	if _buffer > 0.0 and (is_on_floor() or _coyote > 0.0):
+		_jump()
+		return
 	if _dash_left <= 0.0:
 		var flat := _flat()
 		var cap := tune.run_speed * 1.4 * mobility
@@ -975,6 +1036,8 @@ func _do_slam(_delta: float) -> void:
 
 func _land_slam() -> void:
 	_set_move(Move.GROUND, "重踩落地")
+	_slam_height = maxf(_slam_from - global_position.y, 0.0)
+	_slam_bounce = tune.slam_bounce_window
 	PrintFx.landing(get_tree().current_scene, global_position, 1.0, true)
 	_cam.slam()
 	view.kick(4.0, 0.0)
@@ -1166,6 +1229,18 @@ func _shoot() -> void:
 	fired.emit()
 
 
+func _process(_delta: float) -> void:
+	if alive:
+		_place_head(_render_prev.lerp(_render_curr, Engine.get_physics_interpolation_fraction()))
+
+
+## The view: body yaw (turned straight from the mouse), pitch, recoil and feel effects,
+## at the eye above `origin`.
+func _place_head(origin: Vector3) -> void:
+	var look := Basis.from_euler(Vector3(_pitch + _recoil_pitch + _cam.pitch + _cam.shake.y, _recoil_yaw + _cam.shake.x, 0))
+	head.global_transform = Transform3D(Basis(Vector3.UP, rotation.y) * look, origin + Vector3(0, _eye_now + _cam.height, 0))
+
+
 func _camera_frame(delta: float) -> void:
 	_recoil_hold -= delta
 	if _recoil_hold <= 0.0:
@@ -1179,12 +1254,17 @@ func _camera_frame(delta: float) -> void:
 		roll_target = deg_to_rad(8.0) * -signf(global_basis.x.dot(_wall_normal))
 	elif move == Move.SLIDE:
 		roll_target = deg_to_rad(-3.0)
-	var fov_target := clampf((flat_speed() - tune.run_speed) / 10.0, 0.0, 1.0) * 7.0
+	var fov_target := clampf((flat_speed() - tune.run_speed) / 14.0, 0.0, 1.0) * 12.0
 	_cam.update(delta, roll_target, fov_target, _aim)
-	head.rotation = Vector3(_pitch + _recoil_pitch + _cam.pitch + _cam.shake.y, _recoil_yaw + _cam.shake.x, 0)
 	camera.rotation.z = _cam.roll
 	_eye_now = lerpf(_eye_now, _eye, 1.0 - exp(-14.0 * delta))
-	head.position.y = _eye_now + _cam.height
+	_place_head(global_position)
+	# Wind rises with speed: the ear's half of the speed feel.
+	var rush := clampf((velocity.length() - tune.sprint_speed) / 12.0, 0.0, 1.0)
+	_wind.volume_db = lerpf(-60.0, -9.0, sqrt(rush)) if rush > 0.0 else -60.0
+	_wind.pitch_scale = 0.8 + rush * 0.6
+	if rush > 0.0 and not _wind.playing:
+		_wind.play()
 	var zoom := float(weapon.stats.zoom)
 	var fov := (base_fov + _cam.fov) / lerpf(1.0, maxf(zoom, 1.0), _aim)
 	camera.fov = lerpf(camera.fov, fov, 1.0 - exp(-14.0 * delta))

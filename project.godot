@@ -14,10 +14,16 @@ window/size/viewport_width=1600
 window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/vsync/vsync_mode=0
+
+[input_devices]
+
+buffering/agile_event_flushing=true
 
 [physics]
 
 common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=12
 
 [rendering]
 

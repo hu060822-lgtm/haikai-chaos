@@ -71,6 +71,11 @@ func step() -> bool:
 			if player.get_slide_collision(i).get_normal().y < 0.7:
 				hit_something = true
 		var deliberate := player.move == Player.Move.SLAM or player.move == Player.Move.MANTLE
+		# The pull-up moves you by animation; its exit speed replaces that, so the tick it
+		# ends is not a loss either.
+		if not player.transitions.is_empty() and player.transitions[0].from == Player.Move.MANTLE \
+				and absf(player.clock - float(player.transitions[0].t)) < 0.5 / ticks:
+			deliberate = true
 		# Catching a wall absorbs the speed going into it (counted, not a fault); a pit
 		# reset stops you on purpose.
 		var caught: bool = not player.transitions.is_empty() and player.transitions[0].to == Player.Move.WALLRUN \
@@ -89,6 +94,8 @@ func step() -> bool:
 	_stats.last_pitch = player._pitch
 	if _inside_geometry():
 		_stats.inside += 1
+		if OS.get_environment("DBG") != "":
+			print("    INSIDE at %s %s v=%s" % [player.global_position, Player.MOVE_NAMES[player.move], player.velocity])
 	_stats.ticks += 1
 	if OS.get_environment("DBG") != "" and _stats.ticks % (ticks / 10) == 0:
 		print("    t=%.1f %s v=%.1f vy=%.1f p=(%.1f, %.1f, %.1f) %s" % [float(_stats.ticks) / ticks, Player.MOVE_NAMES[player.move],

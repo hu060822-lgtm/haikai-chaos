@@ -32,7 +32,7 @@ func _init() -> void:
 	# No pit resets: the tests use the floor under the lanes.
 	lab.set_physics_process(false)
 	print("physics ticks: %d Hz" % ticks)
-	for t in ["_test_ground_accel", "_test_slide", "_test_slide_jump", "_test_slide_chain", "_test_bhop", "_test_land_grace", "_test_jump_buffer", "_test_coyote", "_test_air_steer", "_test_determinism", "_test_wallrun", "_test_wall_jump", "_test_wall_coyote", "_test_slam_conflict", "_test_mantle", "_test_jump_arc"]:
+	for t in ["_test_ground_accel", "_test_slide", "_test_slide_jump", "_test_slide_chain", "_test_bhop", "_test_land_grace", "_test_jump_buffer", "_test_coyote", "_test_air_steer", "_test_determinism", "_test_wallrun", "_test_wall_jump", "_test_wall_coyote", "_test_slam_conflict", "_test_mantle", "_test_jump_arc", "_test_wallrun_sink", "_test_dash_jump", "_test_slam_bounce", "_test_rebind"]:
 		if only.is_empty() or t.trim_prefix("_test_") in only:
 			await call(t)
 	for k in metrics:
@@ -179,7 +179,9 @@ func _test_slide_chain() -> void:
 			break
 	print("    speed after each landing: ", speeds.map(func(v: float) -> String: return "%.1f" % v))
 	check(lowest > 8.0, "never drops below sprint speed (lowest %.1f)" % lowest)
-	check(highest < 15.5, "boosts don't stack into runaway speed (highest %.1f)" % highest)
+	check(highest < 18.5, "boosts don't stack into runaway speed (highest %.1f)" % highest)
+	if speeds.size() == 8:
+		check(speeds[7] - speeds[5] < 1.0, "the chain levels off (%.1f -> %.1f over the last two hops)" % [speeds[5], speeds[7]])
 	metrics["chain_lowest"] = lowest
 	metrics["chain_highest"] = highest
 	release_all()
@@ -270,8 +272,8 @@ func _test_air_steer() -> void:
 	await secs(0.5)
 	var v := Vector2(player.velocity.x, player.velocity.z)
 	var turned := rad_to_deg(Vector2(0, -1).angle_to(v))
-	check(absf(turned) > 18.0 and absf(turned) < 55.0, "0.5 s of strafe turns %.0f° at 10 m/s" % absf(turned))
-	check(v.length() < 11.0 and v.length() > 9.8, "speed kept while turning (%.2f)" % v.length())
+	check(absf(turned) > 30.0 and absf(turned) < 75.0, "0.5 s of strafe turns %.0f° at 10 m/s" % absf(turned))
+	check(v.length() < 12.0 and v.length() > 9.8, "speed kept (a little gained) while turning (%.2f)" % v.length())
 	metrics["air_turn_0.5s"] = absf(turned)
 	release_all()
 	await place(Vector3(STRIP_X, 30.0, 40), 0.0, Vector3(0, 0, -10.0))
@@ -375,14 +377,32 @@ func _start_wallrun() -> bool:
 
 
 func _test_wall_jump() -> void:
-	print("wall jump: out along the normal plus input, keeping the run's speed")
+	print("wall jump: goes where the movement keys point, not where the camera looks")
+	# W + D on a wall to your left: forward and away, at the run's speed or more.
 	check(await _start_wallrun(), "on the wall")
 	var along := -player.velocity.z
 	Input.action_press("move_right")
 	await tap("jump")
-	check(player.velocity.x > 6.0, "pushed off the wall at %.1f m/s (normal + input)" % player.velocity.x)
-	check(-player.velocity.z > along * 0.9, "kept %.1f of %.1f m/s along the wall" % [-player.velocity.z, along])
+	var v := Vector2(player.velocity.x, -player.velocity.z)
+	var angle := rad_to_deg(atan2(v.x, v.y))
+	check(angle > 30.0 and angle < 60.0, "W+D leaves at %.0f° off the run's line (input is 45°)" % angle)
+	check(v.length() >= along - 0.05, "kept the speed (%.1f of %.1f m/s)" % [v.length(), along])
 	check(player.velocity.y > 6.0, "and up (%.1f)" % player.velocity.y)
+	release_all()
+	# Same wall, camera turned 60° toward the wall, only W held: the camera's forward points
+	# into the wall, so the jump is bent off it, never into it.
+	check(await _start_wallrun(), "on the wall again")
+	player.rotation.y = deg_to_rad(60.0)
+	Input.action_release("move_right")
+	await tap("jump")
+	check(player.velocity.x > 0.39 * player.flat_speed(), "looking into the wall still pushes off it (out %.1f of %.1f)" % [player.velocity.x, player.flat_speed()])
+	release_all()
+	# Only D: straight away from the wall.
+	check(await _start_wallrun(), "on the wall a third time")
+	Input.action_release("move_forward")
+	Input.action_press("move_right")
+	await tap("jump")
+	check(player.velocity.x > 10.0 and absf(player.velocity.z) < 3.0, "D alone: straight off the wall (x %.1f, z %.1f)" % [player.velocity.x, player.velocity.z])
 	release_all()
 
 
@@ -453,3 +473,81 @@ func _test_jump_arc() -> void:
 	var expected := pow(player.tune.jump_speed, 2) / (2.0 * player.tune.gravity)
 	check(absf((top - y0) - expected) / expected < 0.03, "apex %.3f m (ideal %.3f)" % [top - y0, expected])
 	metrics["jump_apex"] = top - y0
+
+
+func _test_wallrun_sink() -> void:
+	print("wall run: a short rise, flat, then a slow sink, never a drop")
+	check(await _start_wallrun(), "on the wall")
+	var start := player.global_position.y
+	var peak := start
+	var fastest := 0.0
+	var ran := 0.0
+	while player.move == Player.Move.WALLRUN and ran < 3.0:
+		await physics_frame
+		ran += 1.0 / ticks
+		peak = maxf(peak, player.global_position.y)
+		fastest = maxf(fastest, -player.velocity.y)
+	var lost := peak - player.global_position.y
+	check(peak - start < 1.5, "rises %.2f m, not up the wall" % (peak - start))
+	check(fastest <= player.tune.wallrun_max_fall + 0.05, "sinks at most %.2f m/s" % fastest)
+	check(lost < 1.5, "loses %.2f m from the top by the end" % lost)
+	metrics["wallrun_rise"] = peak - start
+	metrics["wallrun_sink"] = lost
+	release_all()
+
+
+func _test_dash_jump() -> void:
+	print("dash jump: a jump during the dash keeps the dash's speed")
+	await place(Vector3(STRIP_X, STRIP_Y, 40), 0.0)
+	hold(["move_forward"])
+	await secs(0.3)
+	await tap("dash")
+	await tap("jump")
+	var why: String = player.transitions[0].why
+	check(why.begins_with("衝刺跳"), "it's a dash jump (%s)" % why)
+	check(player.flat_speed() > player.tune.dash_speed * 0.9, "leaves at %.1f m/s (dash %.1f)" % [player.flat_speed(), player.tune.dash_speed])
+	await secs(0.3)
+	check(player.flat_speed() > player.tune.dash_speed * 0.85, "and keeps it in the air (%.1f)" % player.flat_speed())
+	release_all()
+	await secs(1.0)
+
+
+func _test_slam_bounce() -> void:
+	print("slam bounce: jump right after a slam lands to go back up")
+	await place(Vector3(STRIP_X, STRIP_Y + 8.0, 40), 0.0, Vector3.ZERO, -70.0)
+	await secs(0.1)
+	await tap("crouch")
+	for i in n(2.0):
+		await physics_frame
+		if player.is_on_floor():
+			break
+	await tap("jump")
+	var why: String = player.transitions[0].why
+	check(why.begins_with("重踩彈跳"), "bounced (%s)" % why)
+	check(player.velocity.y > player.tune.jump_speed + 3.0, "goes up at %.1f m/s (a normal jump is %.1f)" % [player.velocity.y, player.tune.jump_speed])
+	await secs(1.5)
+	await tap("jump")
+	check(player.velocity.y < player.tune.jump_speed + 0.5, "the next jump is normal again (%.1f)" % player.velocity.y)
+	release_all()
+	await secs(1.0)
+
+
+func _test_rebind() -> void:
+	print("custom keys: rebinding takes the key off its old action, reset brings defaults back")
+	var f := InputEventKey.new()
+	f.physical_keycode = KEY_F
+	InputSetup.rebind("jump", f)
+	check(InputSetup.describe("jump") == InputSetup.event_name(f), "jump is now %s" % InputSetup.describe("jump"))
+	check(not InputMap.action_has_event("copy_gun", f), "and F is no longer copy-gun")
+	var press := InputEventKey.new()
+	press.physical_keycode = KEY_F
+	press.pressed = true
+	Input.parse_input_event(press)
+	Input.flush_buffered_events()
+	check(Input.is_action_pressed("jump"), "pressing F jumps")
+	var release := press.duplicate() as InputEventKey
+	release.pressed = false
+	Input.parse_input_event(release)
+	Input.flush_buffered_events()
+	InputSetup.reset()
+	check(InputMap.action_has_event("copy_gun", f), "reset: F is copy-gun again (jump is %s)" % InputSetup.describe("jump"))

@@ -30,6 +30,8 @@ var _help: Label
 var _cross: Crosshair
 var _hint: Label
 var _hint_left := 0.0
+var _fps: Label
+var _lines: SpeedLines
 
 
 func _init() -> void:
@@ -38,6 +40,17 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	_lines = SpeedLines.new()
+	_lines.player = player
+	add_child(_lines)
+	_fps = FpUi.label("", 13, Faultprint.CARBON, FpUi.bold())
+	_fps.anchor_left = 1.0
+	_fps.anchor_right = 1.0
+	_fps.anchor_top = 1.0
+	_fps.anchor_bottom = 1.0
+	_fps.offset_left = -330
+	_fps.offset_top = -204
+	add_child(_fps)
 	_cross = Crosshair.new()
 	_cross.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(_cross)
@@ -174,11 +187,12 @@ const HELP := """操作（F1 開關）
 WASD 移動　Shift 衝刺跑　Space 跳（落地前按也算）
 Ctrl / C 蹲；跑動中按下 = 滑鏟，下坡越滑越快
 滑鏟中跳 = 滑鏟跳（保留速度）；空中按住蹲落地 = 接滑鏟
-空中靠近橘色線牆、方向鍵沿著牆 = 牆跑；牆跑中 Space = 蹬牆跳
+空中靠近橘色線牆、方向鍵沿著牆 = 牆跑；Space 蹬牆跳，往方向鍵指的方向
 空中貼任何牆 Space = 踢牆；面對牆按住 Space = 攀牆
-Q 衝刺閃避　空中低頭看地面按蹲 = 重踩
+Q 衝刺閃避（衝刺中跳 = 衝刺跳）　空中低頭看地面按蹲 = 重踩，落地瞬間跳 = 彈跳
 左鍵 開火　右鍵 瞄準　R 換彈　B 射擊模式　Tab 改槍
 F2 敵我顏色　F3 機器人開火　F4 移動除錯　F5 鏡頭效果
+Esc 設定：靈敏度、FOV、V-Sync、自訂按鍵
 槍越重，身法越鈍（看右下角機動性）"""
 
 
@@ -208,6 +222,8 @@ func _process(delta: float) -> void:
 		return
 	_hint_left -= delta
 	_hint.visible = _hint_left > 0.0
+	_fps.visible = Settings.show_fps
+	_fps.text = "FPS %d　物理 %d Hz" % [Engine.get_frames_per_second(), Engine.physics_ticks_per_second]
 	_hp.set_text("%d" % ceili(player.health))
 	_hp.main = Faultprint.CARBON if player.health > 35 else FpUi.enemy_color()
 	_hp_bar.set_value(player.health / Player.MAX_HEALTH)
