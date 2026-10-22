@@ -6,6 +6,8 @@ extends CharacterBody3D
 ## how fast you go, so the movement tech pays off.
 
 signal died(bot: Bot, info: Dictionary)
+## A shot left the gun (for netplay: the other screens draw the tracers).
+signal shot_traced(from: Vector3, tos: PackedVector3Array)
 
 const SPEED := 5.2
 const GRAVITY := 21.0
@@ -22,9 +24,17 @@ var health := MAX_HEALTH
 var alive := true
 var weapon: Weapon
 var waypoints: Array[Vector3] = []
-var target: Player
+## Who it is fighting. In practice that's you; in a team match it picks the nearest enemy
+## it can see among the "combatants" (players, other bots, remote players).
+var target: Node3D
 var passive := false
 var marked := 0.0
+## Netplay id ("b3") and how hard it hits (sparring bots hit softer than team-match ones).
+var id := ""
+var damage_mult := DAMAGE_MULT
+## Drawn in the ally colour (a team match, on a teammate's screen).
+var tint_ally := false
+var move := 0
 
 var _model: Node3D
 var _gun: Node3D
@@ -46,6 +56,7 @@ var rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	add_to_group("hittable")
 	add_to_group("bots")
+	add_to_group("combatants")
 	collision_layer = Geo.BODIES
 	collision_mask = Geo.WORLD | Geo.BODIES
 	var cs := CollisionShape3D.new()
@@ -81,7 +92,7 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	weapon = Weapon.new(build)
 	if _model != null:
 		_model.queue_free()
-	_model = CompetitorModel.build(Faultprint.INFO_ENEMY, true, rng)
+	_model = CompetitorModel.build(FpUi.ally_color() if tint_ally else Faultprint.INFO_ENEMY, not tint_ally, rng)
 	add_child(_model)
 	_gun = GunModels.build(weapon.build)
 	_model.get_node("GunHand").add_child(_gun)
@@ -186,8 +197,38 @@ func _eye() -> Vector3:
 	return global_position + Vector3(0, 1.6, 0)
 
 
+func flat_speed() -> float:
+	return Vector2(velocity.x, velocity.z).length()
+
+
+## The nearest enemy combatant it can see, else the one it had.
+func _pick_target() -> void:
+	var eye := _eye()
+	var options := []
+	for c in get_tree().get_nodes_in_group("combatants"):
+		if c == self or not (c is Node3D) or not c.get("alive") or c.get("team") == null or int(c.team) == team:
+			continue
+		options.append([eye.distance_to((c as Node3D).global_position), c])
+	if options.is_empty():
+		return
+	options.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for i in mini(options.size(), 4):
+		var c: Node3D = options[i][1]
+		if options[i][0] > SIGHT:
+			break
+		var q := PhysicsRayQueryParameters3D.create(eye, c.global_position + Vector3(0, 1.3, 0), Geo.WORLD, exclusions())
+		if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			if c != target:
+				target = c
+				_see = false
+			return
+	if target == null or not target.get("alive"):
+		target = options[0][1]
+
+
 func _look_for_target() -> void:
-	if target == null or not target.alive:
+	_pick_target()
+	if target == null or not target.get("alive"):
 		_see = false
 		return
 	var eye := _eye()
@@ -223,21 +264,24 @@ func _try_shoot() -> void:
 	var aim_at := target.global_position + Vector3(0, rng.randf_range(0.9, 1.6), 0)
 	var aim := Basis.looking_at((aim_at - eye).normalized(), Vector3.UP)
 	# Fast targets are hard to hit: the error grows with the target's speed.
-	var error := 2.2 + target.flat_speed() * 0.55 + (2.5 if target.move == Player.Move.AIR else 0.0)
+	var error := 2.2 + float(target.flat_speed()) * 0.55 + (2.5 if target.get("move") == Player.Move.AIR else 0.0)
 	var spread := maxf(float(weapon.stats.spread), error)
 	var context := {"attacker": self, "name": display_name, "team": team, "exclude": exclusions(), "moves": []}
 	var saved: float = weapon.stats.damage
-	weapon.stats.damage = float(saved) * DAMAGE_MULT
+	weapon.stats.damage = float(saved) * damage_mult
 	var results := weapon.fire(self, eye, aim, spread, context)
 	weapon.stats.damage = saved
 	var world := get_tree().current_scene
 	var muzzle := _gun.to_global(_gun.get_meta("muzzle")) if _gun else eye
 	PrintFx.muzzle(_gun, _gun.get_meta("muzzle"), weapon.klass, 1.6)
+	var tos := PackedVector3Array()
 	for r in results:
 		PrintFx.tracer(world, muzzle, r.to, weapon.klass)
+		tos.append(r.to)
 		if not r.hit_body:
 			PrintFx.impact(world, r.to, r.normal, weapon.klass, false)
 	Sfx.shot(self, weapon.klass, weapon.stats.get("suppressed", false))
+	shot_traced.emit(muzzle, tos)
 
 
 func take_hit(info: Dictionary) -> bool:
@@ -255,9 +299,13 @@ func take_hit(info: Dictionary) -> bool:
 	if e.has("burn") or e.has("bleed"):
 		_burn = maxf(_burn, float(e.get("burn", e.get("bleed", 0.0))))
 		_burn_info = info
-	# Being shot turns it around.
-	if target != null and info.get("attacker") == target:
-		_last_seen = target.global_position
+	if e.has("mark"):
+		marked = maxf(marked, float(e.mark))
+	# Being shot turns it around (toward whoever did it).
+	var by = info.get("attacker")
+	if by is Node3D and is_instance_valid(by) and by != self and by.get("alive") and by.get("team") != null and int(by.team) != team:
+		target = by
+		_last_seen = (by as Node3D).global_position
 	return _damage(float(info.damage), info)
 
 

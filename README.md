@@ -3,7 +3,18 @@
 HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架），核心是自由、不講道理的改槍和高上限身法。
 美術風格：**Counterform Industrial**（正式風格，規範見 [`docs/COUNTERFORM.md`](docs/COUNTERFORM.md)）；舊的 FAULTPRINT 印刷風保留為設定裡的選項。引擎：Godot 4.3（GL Compatibility）。
 
-目前是 **C1.1 原型（移動手感第二輪）**：單機、兩張地圖（灰盒對戰圖 FOLDED WORKS、移動測試場 MOVEMENT LAB）、三個陪練機器人、靶場、改槍工作台、擊殺列表、死亡畫面、移動除錯面板。還沒有連線（C2 才做）。
+目前是 **C2 原型（連線團隊死鬥）**：兩張地圖（灰盒對戰圖 FOLDED WORKS、移動測試場 MOVEMENT LAB）、單機練習（陪練機器人、靶場）、**區網連線的團隊模式「改版死鬥 PATCH WAR」**（最多 10 人，空位補機器人）、改槍工作台（223 個零件）、換彈手部動作、擊殺列表、死亡畫面、移動除錯面板。
+
+## 改版死鬥 PATCH WAR（C2）
+
+標題畫面 →「連線對戰」。一人開房（UDP 埠 24680，區網或 Radmin / ZeroTier 這類虛擬區網），其他人輸入房主 IP 加入。房主可設定每隊人數（1–5）、目標分數、時間上限、空位補機器人。規則全部繞著「改槍」這個核心：
+
+- **版本新鮮度**：每一種確切的改裝組合都是一個「版本」。同一個版本你的前兩殺各 3 分、接著兩殺各 2 分、之後每殺 1 分（版本疲乏）。換任何一個零件、調任何一格微調，就是新版本，重新值 3 分。改槍是得分手段，不只是準備。
+- **身法加分**：帶身法標籤的擊殺（牆跑、滑鏟、空中、重踩…）+1。
+- **版本答案**：某個版本在整場累積 4 殺，就被公告為「版本答案」。拿著它的人全場透視可見（黃色菱形），擊殺他 +3。強勢配裝會被全場追殺，逼你換版本。
+- **重生區＝改槍區**：每隊重生點有安全圈，圈內不能傷人也不會被傷；敵人踏進來每秒 25 傷害。圈內隨時能開工作台。
+- **脫離戰鬥才能改槍**：圈外要 4 秒沒有受傷或造成傷害（開槍後 1.5 秒）才能開工作台；在外面改槍時被打中，工作台立刻關上（已改好的部分會裝上）。
+- 死亡 4 秒後可重生，9 秒自動重生；死亡畫面可以抄下殺你的槍。
 
 ## 怎麼玩
 
@@ -21,7 +32,7 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 | 空中低頭看地面按蹲 | 重踩：砸向地面，震傷附近的人；落地瞬間按跳 = 重踩彈跳，摔多高彈多高（平視時按蹲只是準備落地滑鏟） |
 | 左鍵 / 右鍵 / R / B | 開火 / 瞄準 / 換彈 / 射擊模式 |
 | Tab | 改槍工作台 |
-| F1 / F2 / F3 | 操作說明 / 敵我顏色（色盲模式）/ 機器人開火開關 |
+| F1 / F2 / F3 | 操作說明 / 敵我顏色（色盲模式）/ 機器人開火開關（只在練習） |
 | F4 / F5 / F7 | 移動除錯面板 / 鏡頭效果（完整、減少、關閉）/ 物理頻率 60·120·240 Hz |
 | T | 移動測試場：回到目前路線起點 |
 | Esc | 設定：滑鼠靈敏度、FOV、V-Sync、FPS 顯示、畫面風格（原版／柔和／暗色印刷，預設暗色）、描邊、像素化（2×–4×）、鏡頭效果、**所有按鍵都能改** |
@@ -52,7 +63,7 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 | `scripts/style/faultprint.gd` | 美術風格的唯一入口：色盤、材質、描邊、環境光。換風格只動這裡和 `shaders/` |
 | `shaders/faultprint.gdshader` | 三階色塊光影 + 半色調網點（隨距離換層級）+ 套色偏移的第二版 + 墨色缺損 |
 | `shaders/fp_misreg.gdshader` | 物件輪廓外的套色偏移（只用在場景，不用在角色） |
-| `scripts/weapons/arsenal.gd` | 改槍系統（38 種槍身、193 個零件），CHAOS 新增的槍與零件在檔案後段 |
+| `scripts/weapons/arsenal.gd` | 改槍系統（38 種槍身、223 個零件），CHAOS 新增的槍與零件在檔案後段 |
 | `scripts/weapons/gun_kit.gd` | 精密槍件的兩種基本形：側面輪廓擠出（`slab`）與車床件（`turned`） |
 | `scripts/weapons/gun_frames.gd` | 每種槍身的機匣外型與零件安裝點 |
 | `scripts/weapons/gun_models.gd` | 依改裝組出整把槍：槍管、槍口、瞄具、握把、扳機、槍機、彈匣、槍托、吊飾 |
@@ -66,6 +77,11 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 | `scripts/ui/speed_lines.gd` | 高速時的速度線 |
 | `scripts/ui/move_debug.gd` | F4 移動除錯面板與場景內的射線、速度向量、碰撞體 |
 | `scripts/maps/movement_lab.gd` | 移動測試場、計時路線 |
+| `scripts/net/net_session.gd` | 連線：開房／加入（ENet）、大廳名單與隊伍、房間設定、開始與回大廳 |
+| `scripts/net/avatar.gd` | 別台電腦上的玩家（或房主的機器人）：狀態插值、判定框、命中轉給擁有者 |
+| `scripts/match/team_match.gd` | 改版死鬥：重生、狀態同步、命中與死亡、版本新鮮度計分、版本答案 |
+| `scripts/match/safe_zone.gd` | 重生安全圈與「脫離戰鬥」規則 |
+| `scripts/ui/lobby.gd` | 連線大廳介面 |
 | `scripts/player/view_model.gd` | 第一人稱槍（手套、晃動、後座、換彈、瞄準對準準心） |
 | `scripts/actors/` | 陪練機器人、角色模型、靶 |
 | `scripts/maps/geo.gd`, `folded_works.gd` | 關卡積木（可牆跑的牆、楔形、坡道、樓梯）與測試地圖 |
@@ -76,7 +92,10 @@ C1.1 調整（參考泰坦殞落 2 和 ULTRAKILL）：跑速 7.4、衝刺 10.2�
 ## 測試與截圖
 
 ```
-tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、槍與零件、手感 20 項、三條路線，各在 60/120/240 Hz
+tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、槍與零件、C2 零件與計分、手感 20 項、三條路線（60/120/240 Hz）、連線
+tools/net_test.sh <godot 路徑>     # 連線測試：同一台電腦開房主＋用戶端兩個程序，各自檢查自己那邊
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c2_shots.gd -- <資料夾>      # C2 截圖（大廳、對戰、結算）
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/reload_shots.gd -- <資料夾>  # 換彈動作分格、死亡畫面三種解析度
 godot --headless --path . --script res://tests/movement_test.gd      # 身法、開槍、TTK 自動測試
 godot --headless --fixed-fps 120 --path . --script res://tests/movement_feel_test.gd -- 120
 godot --headless --fixed-fps 120 --path . --script res://tests/route_test.gd -- 120

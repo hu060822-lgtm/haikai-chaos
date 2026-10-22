@@ -26,6 +26,8 @@ signal hit_confirmed(info: Dictionary, killed: bool)
 signal damaged(info: Dictionary)
 signal fired()
 signal weapon_changed()
+## A shot left the gun (netplay draws its tracers on the other screens).
+signal shot_traced(from: Vector3, tos: PackedVector3Array)
 
 const RADIUS := 0.38
 const HEIGHT := 1.8
@@ -139,6 +141,7 @@ var _hitboxes: Array[Area3D] = []
 func _ready() -> void:
 	add_to_group("hittable")
 	add_to_group("player")
+	add_to_group("combatants")
 	collision_layer = Geo.BODIES
 	collision_mask = Geo.WORLD
 	floor_snap_length = 0.35
@@ -1251,7 +1254,9 @@ func _shoot() -> void:
 	view.kick(float(weapon.stats.recoil), 1.0)
 	PrintFx.muzzle(view.gun_node(), view.muzzle_local(), weapon.klass, 1.0)
 	var world := get_tree().current_scene
+	var tos := PackedVector3Array()
 	for r in results:
+		tos.append(r.to)
 		PrintFx.tracer(world, muzzle, r.to, weapon.klass)
 		if r.has("target"):
 			PrintFx.impact(world, r.to, r.normal, weapon.klass, true)
@@ -1273,6 +1278,7 @@ func _shoot() -> void:
 	_recoil_hold = 0.08
 	Sfx.shot(self, weapon.klass, weapon.stats.get("suppressed", false))
 	combat_left = maxf(combat_left, COMBAT_FIRE)
+	shot_traced.emit(muzzle, tos)
 	fired.emit()
 
 
@@ -1346,6 +1352,8 @@ func take_hit(info: Dictionary) -> bool:
 		_slow = maxf(_slow, float(effects.stun))
 	if effects.has("burn") or effects.has("bleed"):
 		_burn = maxf(_burn, float(effects.get("burn", effects.get("bleed", 0.0))))
+	if effects.has("mark") and info.get("attacker") != self:
+		marked = maxf(marked, float(effects.mark))
 	if info.get("attacker") != self:
 		combat_left = COMBAT_LOCK
 		_last_attacker = info

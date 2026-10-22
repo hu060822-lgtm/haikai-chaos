@@ -270,6 +270,11 @@ static func zone_light(parent: Node, pos: Vector3, color: Color, reach := 16.0, 
 	l.shadow_enabled = false
 	l.visible = Settings.look == 2
 	parent.add_child(l)
-	_zone_lights = _zone_lights.filter(func(z: OmniLight3D) -> bool: return is_instance_valid(z))
-	_zone_lights.append(l)
+	# Lights of a map that was reloaded away are freed: drop them (untyped, they're dead).
+	var alive: Array[OmniLight3D] = []
+	for z in _zone_lights.duplicate() as Array:
+		if is_instance_valid(z):
+			alive.append(z)
+	alive.append(l)
+	_zone_lights = alive
 	return l

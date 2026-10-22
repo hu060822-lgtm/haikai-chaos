@@ -94,6 +94,8 @@ var mode_i := 0
 var charge := 0.0
 var charging := false
 var klass := "rapid"
+## A short id of this exact build (team matches score kills by how fresh a version is).
+var version := 0
 
 
 func _init(new_build: Dictionary, gun_name := "") -> void:
@@ -115,6 +117,12 @@ func set_build(new_build: Dictionary, gun_name := "") -> void:
 	charge = 0.0
 	charging = false
 	klass = PrintFx.weapon_class(stats)
+	version = version_of(build)
+
+
+static func version_of(b: Dictionary) -> int:
+	var c := Arsenal.clean(b)
+	return absi(hash(var_to_str([c.frame, c.parts, c.tune])))
 
 
 ## Multiplier from HAIKAI's damage to PvP damage for a frame (from STK and the bare frame).
@@ -389,7 +397,8 @@ func _query(shooter: Node3D, from: Vector3, to: Vector3, exclude: Array) -> Dict
 
 
 func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: float, context: Dictionary) -> Dictionary:
-	var exclude: Array = context.get("exclude", [])
+	# A copy: what one ray passes through must not hide the target from the next pellet (or the echo).
+	var exclude: Array = (context.get("exclude", []) as Array).duplicate()
 	var result := {"from": origin, "to": origin + dir * reach, "normal": -dir, "hit_body": false}
 	var from := origin
 	var through_wall := false
@@ -507,7 +516,7 @@ func _hit_info(origin: Vector3, point: Vector3, dir: Vector3, zone: String, powe
 		"team": context.get("team", -1), "gun_name": "？？？" if anonymous else name,
 		"build": {} if anonymous else build.duplicate(true),
 		"effects": stats.effects, "moves": context.get("moves", []), "through_wall": false,
-		"from_safe": context.get("from_safe", false),
+		"from_safe": context.get("from_safe", false), "version": version,
 	}
 
 

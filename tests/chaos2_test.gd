@@ -25,6 +25,7 @@ func _init() -> void:
 	_test_damage_parts()
 	await _test_feed_parts()
 	await _test_hit_parts()
+	_test_scoring()
 	print("CHAOS2 TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)
 
@@ -271,14 +272,17 @@ func _test_hit_parts() -> void:
 	b.queue_free()
 	# Echo: a second hit arrives a moment later without costing a round.
 	await _spawn()
-	var e := await _bot(Vector3(0, 0.1, 12))
+	var e := await _bot(Vector3(0, 0.1, 14))
+	e.set_physics_process(false)  # standing still: bots now pick a fight with you and strafe
 	player.equip({"frame": "carbine", "parts": {"bolt": "echo_chamber"}, "tune": {}})
 	_aim_at(e)
 	player.weapon.cooldown = 0.0
+	player._aim = 1.0  # aimed down sights: the echo's cone is tight enough to land
 	var ammo := player.weapon.ammo
 	player._shoot()
 	var after_one := e.health
 	await frames(40)
+	player._aim = 0.0
 	check(e.health < after_one and player.weapon.ammo == ammo - 1, "echo chamber: the shot rings again for free (%.0f -> %.0f)" % [after_one, e.health])
 	e.queue_free()
 	# Smart rounds bend a shot aimed beside the target.
@@ -293,3 +297,23 @@ func _test_hit_parts() -> void:
 	check(h.health < 100.0, "smart rounds: a shot 3.5° off still finds the target")
 	player._aim = 0.0
 	h.queue_free()
+
+
+func _test_scoring() -> void:
+	print("PATCH WAR scoring")
+	var tm := TeamMatch.new()
+	tm.entities = {"p1": {"team": 0}, "p2": {"team": 1}, "b0": {"team": 1}}
+	var pts := []
+	for i in 6:
+		pts.append(int(tm.score_kill("p1", 0, "p2", 111, [])[0]))
+	check(pts == [3, 3, 2, 2, 1, 1], "one version's kills fade 3, 3, 2, 2, 1, 1 (%s)" % str(pts))
+	check(int(tm.score_kill("p1", 0, "p2", 222, [])[0]) == 3, "a new version is fresh again: 3")
+	check(int(tm.score_kill("p1", 0, "b0", 333, ["滑鏟"])[0]) == 4, "a kill with a move tag is +1")
+	tm.meta_version = 999
+	tm.versions = {"p2": 999}
+	var meta: Array = tm.score_kill("p1", 0, "p2", 444, [])
+	check(int(meta[0]) == 3 + TeamMatch.META_BONUS and "版本答案" in str(meta[1]), "killing the meta's carrier is +%d (%s)" % [TeamMatch.META_BONUS, meta[1]])
+	check(int(tm.score_kill("b0", 1, "p2", 555, [])[0]) == 0, "killing a teammate scores nothing")
+	check(int(tm.score_kill("p1", 0, "p1", 555, [])[0]) == 0, "killing yourself scores nothing")
+	check(tm.scores[1] == 0 and tm.scores[0] == 12 + 3 + 4 + 6, "the team score adds up (%s)" % str(tm.scores))
+	tm.free()

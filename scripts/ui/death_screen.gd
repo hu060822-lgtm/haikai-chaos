@@ -8,6 +8,8 @@ extends Control
 signal respawn_requested()
 signal copy_requested(build: Dictionary, gun_name: String)
 
+const AGAIN := "重生  [Space / Enter]"
+
 var _info := {}
 var _vp: SubViewport
 var _view: TextureRect
@@ -18,6 +20,7 @@ var _parts: Label
 var _stats: Label
 var _exchange: Label
 var _copy: Button
+var _again: Button
 var _copied := false
 
 
@@ -103,7 +106,8 @@ func _ready() -> void:
 	# Room to spare: scaled windows measure the text a little narrower than they draw it.
 	_copy.custom_minimum_size = Vector2(300, 48)
 	buttons.add_child(_copy)
-	var again := FpUi.button("重生  [Space / Enter]", 22)
+	_again = FpUi.button(AGAIN, 22)
+	var again := _again
 	again.pressed.connect(func() -> void: respawn_requested.emit())
 	again.custom_minimum_size = Vector2(300, 48)
 	buttons.add_child(again)
@@ -143,6 +147,15 @@ func show_death(info: Dictionary, dealt: float, taken: float) -> void:
 		_copy.disabled = true
 	_exchange.text = "你對他　%d 傷害\n他對你　%d 傷害" % [roundi(dealt), roundi(taken)]
 	_copy.text = "抄下這把槍  [F]"
+	_again.text = AGAIN
+
+
+## A team match makes you wait: the respawn button says so (and it happens by itself).
+func set_wait(seconds: float, auto := 0.0) -> void:
+	if seconds > 0.0:
+		_again.text = "%.0f 秒後可重生" % ceilf(seconds)
+	else:
+		_again.text = "重生 [Space]（%.0f 秒後自動）" % ceilf(maxf(auto, 0.0))
 
 
 func hide_death() -> void:

@@ -11,6 +11,8 @@ extends Control
 var player: Player
 var kills := 0
 var deaths := 0
+## The team match, when there is one (its score goes in the score line).
+var team_match: Node
 var feed: KillFeed
 
 var _hp: FpUi.PrintText
@@ -154,8 +156,8 @@ func _ready() -> void:
 	_score.align = HORIZONTAL_ALIGNMENT_CENTER
 	_score.anchor_left = 0.5
 	_score.anchor_right = 0.5
-	_score.offset_left = -200
-	_score.offset_right = 200
+	_score.offset_left = -480
+	_score.offset_right = 480
 	_score.offset_top = 14
 	_score.offset_bottom = 50
 	add_child(_score)
@@ -251,7 +253,10 @@ func _process(delta: float) -> void:
 		mode_text = "蓄力 %d%%" % roundi(w.charge * 100)
 	_mode.text = "%s　%s" % [mode_text, Arsenal.caliber_name(w.stats.cal)]
 	_weight.text = "重量 %.1f kg　機動性 %d%%" % [w.stats.weight, roundi(player.mobility * 100)]
-	_score.set_text("擊殺 %d　/　陣亡 %d" % [kills, deaths])
+	if team_match != null:
+		_score.set_text("%s　擊殺 %d / 陣亡 %d" % [team_match.score_text(), kills, deaths])
+	else:
+		_score.set_text("擊殺 %d　/　陣亡 %d" % [kills, deaths])
 	_cross.spread = player.current_spread()
 	_cross.fov = player.camera.fov
 	_cross.off = player.weapon.stats.zoom >= 2.0 and player._aim > 0.9
