@@ -407,10 +407,10 @@ class ScoreBar:
 		var s: Array = tm.scores
 		left = int(s[my_team])
 		right = int(s[1 - my_team])
-		limit = int(NetSession.config.get("score", 50))
+		limit = int(tm.score_limit())
 		var t := int(ceil(float(tm.time_left)))
 		clock = "%d:%02d" % [t / 60, t % 60]
-		meta = str(tm.meta_gun) if int(tm.meta_version) != 0 else ""
+		meta = str(tm.bar_note())
 		queue_redraw()
 
 	func _draw() -> void:
@@ -431,7 +431,7 @@ class ScoreBar:
 			else:
 				draw_rect(Rect2(Vector2(x0, 37), Vector2(130 * frac, 4)), col)
 		if meta != "":
-			draw_string(_font, Vector2(0, 58), "版本答案：" + meta, HORIZONTAL_ALIGNMENT_CENTER, size.x, 13, Counterform.SULFUR)
+			draw_string(_font, Vector2(0, 58), meta, HORIZONTAL_ALIGNMENT_CENTER, size.x, 13, Counterform.SULFUR)
 
 
 ## Whole-screen feedback: a red edge when you're hit (stronger for bigger hits), a slow

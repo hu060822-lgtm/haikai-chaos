@@ -21,6 +21,9 @@ extends Node
 ## the host simulates the bots. Others are Avatars. A hit is decided by the shooter and
 ## sent to the victim's owner (send_hit), who applies it and announces a death to all.
 ## The host keeps the score. Node path /root/Main/Match on every machine.
+##
+## config.mode "rounds" plays 預算戰 instead: rounds with one life and a part-buying
+## economy, run by a RoundRules child (`rules`); the scoring above is off.
 
 signal score_changed()
 
@@ -66,6 +69,8 @@ var _dead_for := 0.0
 var _respawn_queued := false
 var _bot_seed := 17
 var _dmg_log := {}        # victim id -> {attacker id: damage}, on the victim's owner, cleared on death
+## 預算戰 (config.mode "rounds"), else null.
+var rules: RoundRules
 
 
 func _init() -> void:
@@ -80,6 +85,10 @@ func _ready() -> void:
 	player.team = net.my_team()
 	player.display_name = str(NetSession.roster.get(net.my_id(), {}).get("name", NetSession.my_name))
 	time_left = float(NetSession.config.get("minutes", 8)) * 60.0
+	if str(NetSession.config.get("mode", "patch")) == "rounds":
+		rules = RoundRules.new()
+		rules.tm = self
+		add_child(rules)
 	SafeZone.clear()
 	SafeZone.repel = true
 	for t in 2:
@@ -175,7 +184,7 @@ func _process(delta: float) -> void:
 			for b in bots():
 				list.append([b.id, b.team, b.display_name, b.weapon.build, b.weapon.name, b.global_position])
 			_go.rpc(list, time_left)
-	if not player.alive and running:
+	if not player.alive and running and rules == null:
 		_dead_for += delta
 		if _dead_for >= RESPAWN and (_respawn_queued or _dead_for >= AUTO_RESPAWN):
 			main._respawn()
@@ -199,6 +208,9 @@ func _go(bot_list: Array, seconds: float) -> void:
 	player.input_enabled = not main.bench.visible and not main.settings_menu.visible
 	if player.input_enabled:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if rules != null:
+		rules.start()
+		return
 	main.hud.show_hint("改版死鬥開始：%s。同一把槍越殺越不值錢，換零件就是新版本" % NetSession.TEAM_NAMES[player.team], 5.0)
 	_announce_spawn()
 
@@ -213,7 +225,8 @@ func _announce_spawn() -> void:
 func _physics_process(delta: float) -> void:
 	if not running:
 		return
-	time_left = maxf(time_left - delta, 0.0)
+	if rules == null:
+		time_left = maxf(time_left - delta, 0.0)
 	# The meta's carriers are seen by everyone (renewed while they hold it).
 	if meta_version != 0:
 		if player.alive and player.weapon.version == meta_version:
@@ -234,7 +247,7 @@ func _physics_process(delta: float) -> void:
 					list.append([b.id, b.global_position, b.rotation.y, int(b.move), b.velocity, b.health, b.marked])
 			if not list.is_empty():
 				_bot_states.rpc(list)
-	if net.is_host() and not over and time_left <= 0.0:
+	if net.is_host() and not over and time_left <= 0.0 and rules == null:
 		var winner := -1 if scores[0] == scores[1] else (0 if scores[0] > scores[1] else 1)
 		_end.rpc(winner, scores)
 
@@ -319,6 +332,8 @@ func _apply_hit(victim_id: String, wire: Dictionary) -> void:
 	var v = entities.get(victim_id)
 	if v == null or v is Avatar or not v.alive:
 		return
+	if rules != null and not rules.fighting():
+		return
 	var attacker_id := str(wire.get("attacker_id", ""))
 	if attacker_id != "" and attacker_id != victim_id:
 		var dealt: Dictionary = _dmg_log.get(victim_id, {})
@@ -355,6 +370,8 @@ func _on_local_died(info: Dictionary) -> void:
 
 func _on_bot_died(bot: Bot, info: Dictionary) -> void:
 	_died.rpc(bot.id, _with_assists(bot.id, to_wire(info)))
+	if rules != null:
+		return
 	get_tree().create_timer(RESPAWN).timeout.connect(func() -> void:
 		if over or not is_instance_valid(bot):
 			return
@@ -407,13 +424,18 @@ func _died(victim_id: String, wire: Dictionary) -> void:
 	_stat(victim_id, "deaths", 1)
 	if killer_id != "" and killer_id != victim_id and team_of(killer_id) != victim_team:
 		_stat(killer_id, "kills", 1)
+		if rules != null:
+			_stat(killer_id, "points", 2)
 		for helper in wire.get("assist_ids", []):
 			_stat(str(helper), "assists", 1)
 			_stat(str(helper), "points", 1)
 			if str(helper) == my_id:
 				main.hud.callout("助攻", "%s　+1" % _name_of(victim_id), Counterform.DUST_WHITE)
 	if net.is_host():
-		_score_kill(victim_id, wire)
+		if rules != null:
+			rules.on_death(victim_id, wire)
+		else:
+			_score_kill(victim_id, wire)
 
 
 func _stat(id: String, key: String, amount: int) -> void:
@@ -561,6 +583,18 @@ func mvp() -> Dictionary:
 			best = {"key": key, "id": id, "name": _name_of(id), "points": int(s.points), "kills": int(s.kills),
 				"deaths": int(s.deaths), "assists": int(s.get("assists", 0))}
 	return best
+
+
+## What a team plays to: round wins in 預算戰, points otherwise.
+func score_limit() -> int:
+	return rules.target() if rules != null else int(NetSession.config.get("score", 50))
+
+
+## The small line under the HUD's score: the meta gun, or the round, phase and money.
+func bar_note() -> String:
+	if rules != null:
+		return rules.bar_note()
+	return "版本答案：" + meta_gun if meta_version != 0 else ""
 
 
 ## The score line for the HUD: "藍隊 23 ： 31 紅隊　7:12".

@@ -148,6 +148,13 @@ func show_death(info: Dictionary, dealt: float, taken: float) -> void:
 	_exchange.text = "你對他　%d 傷害\n他對你　%d 傷害" % [roundi(dealt), roundi(taken)]
 	_copy.text = "抄下這把槍  [F]"
 	_again.text = AGAIN
+	_again.disabled = false
+
+
+## 預算戰: no respawn until the next round; the button just says so.
+func set_note(text: String) -> void:
+	_again.text = text
+	_again.disabled = true
 
 
 ## A team match makes you wait: the respawn button says so (and it happens by itself).

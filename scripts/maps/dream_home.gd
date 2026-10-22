@@ -46,6 +46,8 @@ var waypoints: Array[Vector3] = []
 var range_targets: Array[Transform3D] = []
 ## Team match: each team's spawn zone centre and spawn points (blue south, red north).
 var team_zones: Array[Vector3] = [Vector3(0, 0, 21.5), Vector3(0, 0, -21.5)]
+## 預算戰's overclock zone: the bottom of the empty pool.
+var mid_zone := Vector3(0, -POOL_DEPTH, 0)
 var team_spawns: Array = [
 	[Vector3(0, 0.1, 21.5), Vector3(-3, 0.1, 21.5), Vector3(3, 0.1, 21.5), Vector3(-1.5, 0.1, 23.5), Vector3(1.5, 0.1, 23.5)],
 	[Vector3(0, 0.1, -21.5), Vector3(-3, 0.1, -21.5), Vector3(3, 0.1, -21.5), Vector3(-1.5, 0.1, -23.5), Vector3(1.5, 0.1, -23.5)],

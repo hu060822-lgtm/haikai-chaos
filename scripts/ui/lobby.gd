@@ -14,6 +14,9 @@ var _status: Label
 var _teams: Array[VBoxContainer] = []
 var _team_heads: Array[Label] = []
 var _map_buttons := {}
+var _mode_buttons := {}
+var _rounds_label: Label
+var _rules: Label
 var _size_label: Label
 var _score_label: Label
 var _time_label: Label
@@ -23,6 +26,14 @@ var _ready_btn: Button
 var _swap: Button
 var _host_box: VBoxContainer
 var _flash_left := 0.0
+
+
+const RULES_PATCH := ("・同一把槍越殺越不值錢（3、3、2、2、1 分）；改任何零件就是新版本，重新值 3 分。\n"
+	+ "・身法擊殺 +1。某個版本殺滿 4 人成為「版本答案」：帶著它的人全場可見，擊殺他 +3。\n"
+	+ "・重生區內打不到人也不會被打，隨時能改槍；外面要 4 秒沒交火才能改。")
+const RULES_ROUNDS := ("・每回合一條命。開頭 15 秒備戰：工作台就是商店，加零件付全價、拆下來退一半。\n"
+	+ "・活下來槍就留著；陣亡就沒了，下回合從左輪重來。擊殺 +$100，外加對方槍價的 25%（拆件）。\n"
+	+ "・贏 $1500，輸 $1000 起（連輸會多）。全滅對方、時間到血多，或最後 40 秒單獨佔住中央超頻區 6 秒就贏。")
 
 
 func _init() -> void:
@@ -123,6 +134,19 @@ func _ready() -> void:
 			_refresh())
 		maps.add_child(b)
 		_map_buttons[id] = b
+	rc.add_child(FpUi.label("模式", 22, Counterform.DUST_WHITE, FpUi.display()))
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 8)
+	rc.add_child(modes)
+	for id in NetSession.MODES:
+		var b := FrontEnd.action(NetSession.MODES[id], false, 16)
+		b.toggle_mode = true
+		var mode_id: String = id
+		b.pressed.connect(func() -> void:
+			net.set_config("mode", mode_id)
+			_refresh())
+		modes.add_child(b)
+		_mode_buttons[id] = b
 	_host_box = VBoxContainer.new()
 	_host_box.add_theme_constant_override("separation", 8)
 	rc.add_child(_host_box)
@@ -130,6 +154,7 @@ func _ready() -> void:
 	_size_label = _stepper("team_size", 1, 5, 1)
 	_score_label = _stepper("score", 20, 120, 10)
 	_time_label = _stepper("minutes", 3, 15, 1)
+	_rounds_label = _stepper("rounds", 2, 9, 1)
 	_bots = CheckButton.new()
 	_bots.text = "空位補機器人"
 	_bots.add_theme_font_override("font", FpUi.bold())
@@ -139,12 +164,10 @@ func _ready() -> void:
 	_bots.focus_mode = Control.FOCUS_NONE
 	_bots.toggled.connect(func(on: bool) -> void: net.set_config("bots", on))
 	_host_box.add_child(_bots)
-	var rules := FpUi.label("・同一把槍越殺越不值錢（3、3、2、2、1 分）；改任何零件就是新版本，重新值 3 分。\n"
-		+ "・身法擊殺 +1。某個版本殺滿 %d 人成為「版本答案」：帶著它的人全場可見，擊殺他 +%d。\n" % [TeamMatch.META_KILLS, TeamMatch.META_BONUS]
-		+ "・重生區內打不到人也不會被打，隨時能改槍；外面要 4 秒沒交火才能改。", 15, Color(Counterform.DUST_WHITE, 0.75), FpUi.body())
-	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	rules.size_flags_vertical = SIZE_EXPAND_FILL
-	rc.add_child(rules)
+	_rules = FpUi.label("", 15, Color(Counterform.DUST_WHITE, 0.75), FpUi.body())
+	_rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rules.size_flags_vertical = SIZE_EXPAND_FILL
+	rc.add_child(_rules)
 
 	# Footer: status | leave, swap, ready, start.
 	var foot := HBoxContainer.new()
@@ -245,6 +268,16 @@ func _refresh() -> void:
 		var b: Button = _map_buttons[id]
 		b.set_pressed_no_signal(str(cfg.get("map", "folded")) == id)
 		b.disabled = not host
+	var rounds := str(cfg.get("mode", "patch")) == "rounds"
+	for id in _mode_buttons:
+		var b: Button = _mode_buttons[id]
+		b.set_pressed_no_signal(str(cfg.get("mode", "patch")) == id)
+		b.disabled = not host
+	_score_label.get_parent().visible = not rounds
+	_time_label.get_parent().visible = not rounds
+	_rounds_label.get_parent().visible = rounds
+	_rounds_label.text = "先贏　%d 回合" % int(cfg.get("rounds", 5))
+	_rules.text = RULES_ROUNDS if rounds else RULES_PATCH
 	_host_box.modulate.a = 1.0 if host else 0.55
 	_bots.disabled = not host
 	_size_label.text = "每隊人數　%d" % int(cfg.get("team_size", 4))

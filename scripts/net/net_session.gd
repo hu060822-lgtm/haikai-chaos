@@ -25,7 +25,9 @@ const TEAM_NAMES := ["藍隊", "紅隊"]
 static var active := false
 ## peer id -> {"name": String, "team": int}
 static var roster := {}
-static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded"}
+static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded", "mode": "patch", "rounds": 5}
+## Modes (id -> name): 改版死鬥 (C2) and 預算戰, rounds with a part economy (C4, RoundRules).
+const MODES := {"patch": "改版死鬥", "rounds": "預算戰"}
 ## Maps a team match can be played on (id -> name); "random" picks one at the start.
 const MAPS := {"folded": "折疊工廠", "dream": "夢核之家", "random": "隨機"}
 ## The room's code (relay code, or the LAN address) and, once UPnP worked, its internet code.

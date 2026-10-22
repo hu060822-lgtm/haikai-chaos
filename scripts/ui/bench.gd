@@ -39,6 +39,10 @@ var _frame_mode := false
 var _status: Label
 ## Opened out in the field (not in a safe zone): a hit closes it (see Main).
 var field := false
+## 預算戰: (owned build, this build) -> the money line shown on top; empty = no shop.
+var budget_text: Callable
+## The build the bench opened on (what you own).
+var opened_on := {}
 var _rng := RandomNumberGenerator.new()
 
 
@@ -180,6 +184,7 @@ func open(current: Dictionary, current_name: String, in_field := false) -> void:
 		else "安全區：敵人打不到你，慢慢改")
 	_status.add_theme_color_override("font_color", Counterform.SULFUR if field else Faultprint.ui_ink)
 	build = Arsenal.clean(current)
+	opened_on = build.duplicate(true)
 	gun_name = current_name
 	_named = Blueprints.is_custom_name(build, current_name)
 	_name_edit.text = current_name if _named else ""
@@ -206,6 +211,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _refresh(preview: Dictionary = {}) -> void:
+	if budget_text.is_valid():
+		_status.text = budget_text.call(opened_on, build)
+		_status.add_theme_color_override("font_color", Counterform.SULFUR)
 	_rebuild_view()
 	_fill_slots()
 	_fill_parts()
@@ -273,7 +281,7 @@ func _fill_parts() -> void:
 		_part_title.text = "槍身（換槍身會清掉不合的零件）"
 		for id in Arsenal.FRAMES:
 			var f := Arsenal.frame(id)
-			var b := _part_button(id, "%s　%.1f kg" % [f.name, float(f.weight)], id == build.frame)
+			var b := _part_button(id, "%s　%.1f kg%s" % [f.name, float(f.weight), _price(id)], id == build.frame)
 			b.pressed.connect(_on_frame.bind(id))
 			b.mouse_entered.connect(func() -> void:
 				_desc.text = f.get("desc", "")
@@ -291,7 +299,7 @@ func _fill_parts() -> void:
 	_part_list.add_child(none)
 	for id in Arsenal.parts_for(build, _slot):
 		var p := Arsenal.part(id)
-		var label := "%s　%+.2f kg" % [p.name, float(p.get("weight", 0.0))]
+		var label := "%s　%+.2f kg%s" % [p.name, float(p.get("weight", 0.0)), _price(id)]
 		var b := _part_button(id, label, id == current)
 		b.pressed.connect(_on_part.bind(id))
 		b.mouse_entered.connect(func() -> void:
@@ -299,6 +307,11 @@ func _fill_parts() -> void:
 			_fill_stats(_with(_slot, id)))
 		b.mouse_exited.connect(func() -> void: _fill_stats())
 		_part_list.add_child(b)
+
+
+## "　$180" next to a part while shopping.
+func _price(id: String) -> String:
+	return "　$%d" % Arsenal.price_of(id) if budget_text.is_valid() else ""
 
 
 func _part_button(_id: String, text: String, current: bool) -> Button:

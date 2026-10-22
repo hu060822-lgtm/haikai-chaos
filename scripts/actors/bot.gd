@@ -28,6 +28,8 @@ var waypoints: Array[Vector3] = []
 ## it can see among the "combatants" (players, other bots, remote players).
 var target: Node3D
 var passive := false
+## Holds still and doesn't shoot (預算戰's build phase).
+var frozen := false
 var marked := 0.0
 ## Netplay id ("b3") and how hard it hits (sparring bots hit softer than team-match ones).
 var id := ""
@@ -109,6 +111,15 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	_pick_goal()
 
 
+## Hands it a given gun (預算戰: what it bought) in place of the random one spawn() gave it.
+func arm(build: Dictionary) -> void:
+	weapon = Weapon.new(build)
+	if _gun != null:
+		_gun.queue_free()
+	_gun = GunModels.build(weapon.build)
+	_model.get_node("GunHand").add_child(_gun)
+
+
 func exclusions() -> Array:
 	var out := [get_rid()]
 	for a in _hitboxes:
@@ -125,6 +136,10 @@ func _pick_goal() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not alive:
+		return
+	if frozen:
+		velocity = Vector3(0, velocity.y - GRAVITY * delta, 0)
+		move_and_slide()
 		return
 	weapon.tick(delta)
 	_slow = maxf(_slow - delta, 0.0)
