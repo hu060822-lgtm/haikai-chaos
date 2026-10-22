@@ -21,14 +21,26 @@ const TEAM_NAMES := ["藍隊", "紅隊"]
 static var active := false
 ## peer id -> {"name": String, "team": int}
 static var roster := {}
-static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true}
+static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded"}
+## Maps a team match can be played on (id -> name); "random" picks one at the start.
+const MAPS := {"folded": "折疊工廠", "dream": "夢核之家", "random": "隨機"}
+## The room's code (LAN address) and, once UPnP worked, its internet code.
+static var room_code := ""
+static var internet_code := ""
 static var my_name := ""
 static var in_match := false
 static var last_status := ""
 
 
+var matchmaker: Matchmaker
+
+
 func _ready() -> void:
 	name = "Net"
+	matchmaker = Matchmaker.new()
+	add_child(matchmaker)
+	if is_host():
+		matchmaker.announce(_room_info)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -59,8 +71,11 @@ func host(port := PORT) -> Error:
 	multiplayer.multiplayer_peer = peer
 	active = true
 	in_match = false
-	roster = {1: {"name": my_name, "team": 0}}
-	_status("已開房：埠 %d，等別人加入" % port)
+	roster = {1: {"name": my_name, "team": 0, "ready": true}}
+	room_code = Matchmaker.encode(Matchmaker.lan_ip(), port)
+	internet_code = ""
+	matchmaker.announce(_room_info)
+	_status("已開房：房間碼 %s，等別人加入" % room_code)
 	roster_changed.emit()
 	return OK
 
@@ -79,7 +94,27 @@ func join(address: String, port := PORT) -> Error:
 	return OK
 
 
+## What the LAN beacon says about this room.
+func _room_info() -> Dictionary:
+	var port := PORT
+	var p := multiplayer.multiplayer_peer
+	if p is ENetMultiplayerPeer and p.host != null:
+		port = p.host.get_local_port()
+	return {"name": my_name, "port": port, "players": roster.size(), "max": MAX_CLIENTS + 1, "in_match": in_match,
+		"code": room_code, "map": str(config.get("map", "folded"))}
+
+
+## Joins by room code (see Matchmaker.encode).
+func join_code(code: String) -> Error:
+	var at := Matchmaker.decode(code)
+	if at.is_empty():
+		_status("房間碼不對：應該是 10 個字母或數字")
+		return ERR_INVALID_PARAMETER
+	return join(str(at.ip), int(at.port))
+
+
 func leave() -> void:
+	matchmaker.stop_announcing()
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
@@ -145,7 +180,7 @@ func _hello(player_name: String) -> void:
 	var counts := [0, 0]
 	for p in roster:
 		counts[int(roster[p].team)] += 1
-	roster[peer] = {"name": player_name.left(16), "team": 0 if counts[0] <= counts[1] else 1}
+	roster[peer] = {"name": player_name.left(16), "team": 0 if counts[0] <= counts[1] else 1, "ready": false}
 	_push_roster()
 	if in_match:
 		# Late joiners wait in the lobby; the next match takes them.
@@ -182,6 +217,31 @@ func _want_switch() -> void:
 		switch_team(multiplayer.get_remote_sender_id())
 
 
+## Ready up (or not) in the lobby.
+func set_ready(on: bool) -> void:
+	if is_host():
+		if roster.has(1):
+			roster[1].ready = on
+			_push_roster()
+	else:
+		_want_ready.rpc_id(1, on)
+
+
+@rpc("any_peer", "reliable")
+func _want_ready(on: bool) -> void:
+	var peer := multiplayer.get_remote_sender_id()
+	if is_host() and roster.has(peer):
+		roster[peer].ready = on
+		_push_roster()
+
+
+func all_ready() -> bool:
+	for p in roster:
+		if not bool(roster[p].get("ready", false)):
+			return false
+	return true
+
+
 func set_config(key: String, value: Variant) -> void:
 	if not is_host():
 		return
@@ -192,15 +252,23 @@ func set_config(key: String, value: Variant) -> void:
 func start_match() -> void:
 	if not is_host():
 		return
-	_begin.rpc(roster, config)
+	var cfg := config.duplicate()
+	if str(cfg.get("map", "folded")) == "random":
+		var ids := MAPS.keys().filter(func(k: String) -> bool: return k != "random")
+		cfg.map = ids[randi() % ids.size()]
+	_begin.rpc(roster, cfg)
 
 
 @rpc("authority", "call_local", "reliable")
 func _begin(new_roster: Dictionary, new_config: Dictionary) -> void:
 	roster = new_roster
-	config = new_config
 	in_match = true
-	Main.map_id = "tdm"
+	# The lobby keeps its own choice ("random" stays random for the next match).
+	var choice: String = str(config.get("map", "folded"))
+	config = new_config.duplicate()
+	Main.map_id = str(new_config.get("map", "folded"))
+	config.map = choice if is_host() else Main.map_id
+	Main.team_mode = true
 	Main.skip_title = true
 	get_tree().reload_current_scene.call_deferred()
 
@@ -214,7 +282,10 @@ func end_match() -> void:
 @rpc("authority", "call_local", "reliable")
 func _to_lobby() -> void:
 	in_match = false
+	for p in roster:
+		roster[p].ready = p == 1
 	Main.map_id = "folded"
+	Main.team_mode = false
 	Main.skip_title = false
 	Main.open_lobby = true
 	get_tree().reload_current_scene.call_deferred()

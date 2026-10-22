@@ -153,7 +153,7 @@ func _test_slide_jump() -> void:
 
 
 func _test_slide_chain() -> void:
-	print("slide -> jump -> land into a slide, eight times: speed carries, boosts don't stack")
+	print("slide -> jump -> land into a slide, seven times: speed carries, boosts don't stack")
 	await place(Vector3(STRIP_X, STRIP_Y, 40), 0.0)
 	hold(["move_forward", "sprint"])
 	await secs(0.7)
@@ -161,7 +161,8 @@ func _test_slide_chain() -> void:
 	var speeds := []
 	var lowest := INF
 	var highest := 0.0
-	for i in 8:
+	# Seven hops: at the faster C3 speeds an eighth runs off the end of the lab strip.
+	for i in 7:
 		await secs(0.2)
 		await tap("jump")
 		var landed := false
@@ -179,9 +180,9 @@ func _test_slide_chain() -> void:
 			break
 	print("    speed after each landing: ", speeds.map(func(v: float) -> String: return "%.1f" % v))
 	check(lowest > 8.0, "never drops below sprint speed (lowest %.1f)" % lowest)
-	check(highest < 18.5, "boosts don't stack into runaway speed (highest %.1f)" % highest)
-	if speeds.size() == 8:
-		check(speeds[7] - speeds[5] < 1.0, "the chain levels off (%.1f -> %.1f over the last two hops)" % [speeds[5], speeds[7]])
+	check(highest < 19.5, "boosts don't stack into runaway speed (highest %.1f)" % highest)
+	if speeds.size() == 7:
+		check(speeds[6] - speeds[4] < 1.0, "the chain levels off (%.1f -> %.1f over the last two hops)" % [speeds[4], speeds[6]])
 	metrics["chain_lowest"] = lowest
 	metrics["chain_highest"] = highest
 	release_all()
@@ -273,7 +274,7 @@ func _test_air_steer() -> void:
 	var v := Vector2(player.velocity.x, player.velocity.z)
 	var turned := rad_to_deg(Vector2(0, -1).angle_to(v))
 	check(absf(turned) > 30.0 and absf(turned) < 75.0, "0.5 s of strafe turns %.0f° at 10 m/s" % absf(turned))
-	check(v.length() < 12.0 and v.length() > 9.8, "speed kept (a little gained) while turning (%.2f)" % v.length())
+	check(v.length() < 13.0 and v.length() > 9.8, "speed kept (some gained) while turning (%.2f)" % v.length())
 	metrics["air_turn_0.5s"] = absf(turned)
 	release_all()
 	await place(Vector3(STRIP_X, 30.0, 40), 0.0, Vector3(0, 0, -10.0))

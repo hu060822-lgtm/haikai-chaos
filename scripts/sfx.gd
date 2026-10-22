@@ -61,6 +61,7 @@ static func _stream(id: String) -> AudioStreamWAV:
 		"hit": w = _make(0.06, 0.1, 1800.0, 1600.0, 60.0)
 		"head": w = _make(0.1, 0.05, 2600.0, 2400.0, 34.0)
 		"kill": w = _make(0.25, 0.1, 900.0, 1500.0, 12.0)
+		"tick": w = _make(0.03, 0.3, 1800.0, 1400.0, 120.0)
 		_: w = _make(0.1, 0.5, 300.0, 200.0, 30.0)
 	_cache[id] = w
 	return w
@@ -98,6 +99,7 @@ static func play(at: Node3D, id: String, volume_db := -8.0) -> void:
 	p.stream = _stream(id)
 	p.volume_db = volume_db
 	p.max_distance = 80.0
+	p.bus = "SFX"
 	at.get_tree().current_scene.add_child(p)
 	p.global_position = at.global_position
 	p.play()
@@ -113,6 +115,7 @@ static func ui(tree: SceneTree, id: String, volume_db := -6.0) -> void:
 	var p := AudioStreamPlayer.new()
 	p.stream = _stream(id)
 	p.volume_db = volume_db
+	p.bus = "SFX"
 	tree.current_scene.add_child(p)
 	p.play()
 	p.finished.connect(p.queue_free)

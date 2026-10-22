@@ -1,25 +1,28 @@
 class_name Lobby
 extends Control
-## The netplay lobby (title -> 連線對戰): your name, host a room or join one by IP, the two
-## team lists, and (for the host) the match settings and the start button. Everything
-## here goes through NetSession; this only draws it.
+## The room screen (C2.1): the room code to share (and a button to open the room to the
+## internet through the router), the map, both teams with who's ready, the host's settings,
+## and the rules in one breath. Everything goes through NetSession; this only draws it.
 
 signal closed()
 
 var net: NetSession
-var _name: LineEdit
-var _ip: LineEdit
+var _code: Label
+var _code_note: Label
+var _net_btn: Button
 var _status: Label
 var _teams: Array[VBoxContainer] = []
-var _connect_row: HBoxContainer
-var _room_row: HBoxContainer
-var _settings: VBoxContainer
+var _team_heads: Array[Label] = []
+var _map_buttons := {}
 var _size_label: Label
 var _score_label: Label
 var _time_label: Label
 var _bots: CheckButton
 var _start: Button
-var _rules: Label
+var _ready_btn: Button
+var _swap: Button
+var _host_box: VBoxContainer
+var _flash_left := 0.0
 
 
 func _init() -> void:
@@ -30,134 +33,163 @@ func _init() -> void:
 
 func _ready() -> void:
 	var shade := ColorRect.new()
-	shade.color = Color(Faultprint.CARBON, 0.6)
+	shade.color = Color(Counterform.GRAPHITE_DEEP, 0.72)
 	shade.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(shade)
-	var panel := PanelContainer.new()
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -620
-	panel.offset_right = 620
-	panel.offset_top = -400
-	panel.offset_bottom = 400
-	add_child(panel)
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 12)
-	panel.add_child(root)
+	root.set_anchors_preset(PRESET_FULL_RECT)
+	root.offset_left = 70
+	root.offset_right = -70
+	root.offset_top = 46
+	root.offset_bottom = -40
+	root.add_theme_constant_override("separation", 16)
+	add_child(root)
 
-	var title_row := HBoxContainer.new()
-	root.add_child(title_row)
-	var title := FpUi.PrintText.new("改版死鬥 PATCH WAR", 40)
-	title.custom_minimum_size = Vector2(560, 48)
-	title_row.add_child(title)
+	# Header: the mode, the room code, internet.
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 22)
+	root.add_child(head)
+	var title_col := VBoxContainer.new()
+	title_col.add_theme_constant_override("separation", -6)
+	head.add_child(title_col)
+	title_col.add_child(FrontEnd.heading("改版死鬥", 56))
+	title_col.add_child(FpUi.label("PATCH WAR　團隊死鬥", 16, Color(Counterform.DUST_WHITE, 0.6), FpUi.bold()))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
-	title_row.add_child(spacer)
-	var back := FpUi.button("返回", 18)
-	back.pressed.connect(close)
-	title_row.add_child(back)
+	head.add_child(spacer)
+	var code_card := FrontEnd.card()
+	head.add_child(code_card)
+	var code_row := HBoxContainer.new()
+	code_row.add_theme_constant_override("separation", 14)
+	code_card.add_child(code_row)
+	var code_col := VBoxContainer.new()
+	code_col.add_theme_constant_override("separation", -2)
+	code_row.add_child(code_col)
+	code_col.add_child(FpUi.label("房間碼", 13, Color(Counterform.DUST_WHITE, 0.55), FpUi.bold()))
+	_code = FpUi.label("—", 38, Counterform.SULFUR, FpUi.numerals())
+	code_col.add_child(_code)
+	_code_note = FpUi.label("", 12, Color(Counterform.DUST_WHITE, 0.55), FpUi.body())
+	code_col.add_child(_code_note)
+	var copy := FrontEnd.action("複製", false, 15)
+	copy.size_flags_vertical = SIZE_SHRINK_CENTER
+	copy.pressed.connect(func() -> void:
+		DisplayServer.clipboard_set(_code.text)
+		flash("房間碼已複製：%s" % _code.text))
+	code_row.add_child(copy)
+	_net_btn = FrontEnd.action("開放網路連線", false, 15)
+	_net_btn.size_flags_vertical = SIZE_SHRINK_CENTER
+	_net_btn.tooltip_text = "請路由器（UPnP）把遊戲埠轉給這台電腦，房間碼換成外部位址：不在同一個網路的朋友也能加入"
+	_net_btn.pressed.connect(func() -> void:
+		_net_btn.disabled = true
+		flash("正在詢問路由器…", 6.0)
+		net.matchmaker.open_internet(NetSession.PORT))
+	code_row.add_child(_net_btn)
 
-	_rules = FpUi.label("同一把槍越殺越不值錢（3→2→1 分），改任何零件就是新版本、重新值 3 分；身法擊殺 +1。"
-		+ "\n某個版本殺滿 %d 人就成為「版本答案」：帶著它的人全場透視可見，擊殺他 +%d。重生區內無法傷害與被傷害，並能隨時改槍。"
-		% [TeamMatch.META_KILLS, TeamMatch.META_BONUS], 16, Faultprint.ui_ink, FpUi.bold())
-	_rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	root.add_child(_rules)
-
-	var name_row := HBoxContainer.new()
-	name_row.add_theme_constant_override("separation", 10)
-	root.add_child(name_row)
-	name_row.add_child(FpUi.label("你的名字", 18, Faultprint.ui_ink, FpUi.bold()))
-	_name = _field(NetSession.my_name, 220)
-	_name.max_length = 16
-	_name.text_changed.connect(func(t: String) -> void: NetSession.my_name = t.strip_edges() if t.strip_edges() != "" else "玩家")
-	name_row.add_child(_name)
-
-	_connect_row = HBoxContainer.new()
-	_connect_row.add_theme_constant_override("separation", 10)
-	root.add_child(_connect_row)
-	var host := FpUi.button("開房（埠 %d）" % NetSession.PORT, 18)
-	host.pressed.connect(func() -> void: net.host())
-	_connect_row.add_child(host)
-	_connect_row.add_child(FpUi.label("或加入 IP", 18, Faultprint.ui_ink, FpUi.bold()))
-	_ip = _field("127.0.0.1", 220)
-	_connect_row.add_child(_ip)
-	var join := FpUi.button("加入", 18)
-	join.pressed.connect(func() -> void: net.join(_ip.text.strip_edges()))
-	_connect_row.add_child(join)
-
-	_room_row = HBoxContainer.new()
-	_room_row.add_theme_constant_override("separation", 10)
-	root.add_child(_room_row)
-	var swap := FpUi.button("換隊", 18)
-	swap.pressed.connect(func() -> void: net.switch_team())
-	_room_row.add_child(swap)
-	var leave := FpUi.button("離開房間", 18)
-	leave.pressed.connect(func() -> void: net.leave())
-	_room_row.add_child(leave)
-
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 24)
-	cols.size_flags_vertical = SIZE_EXPAND_FILL
-	root.add_child(cols)
+	# Body: two teams | settings.
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 18)
+	root.add_child(body)
 	for t in 2:
-		var box := VBoxContainer.new()
-		box.custom_minimum_size = Vector2(330, 0)
-		box.add_theme_constant_override("separation", 6)
-		cols.add_child(box)
-		_teams.append(box)
-	_settings = VBoxContainer.new()
-	_settings.add_theme_constant_override("separation", 8)
-	_settings.size_flags_horizontal = SIZE_EXPAND_FILL
-	cols.add_child(_settings)
-	_settings.add_child(FpUi.label("房間設定（房主）", 20, Faultprint.ui_accent, FpUi.bold()))
+		var card := FrontEnd.card()
+		card.custom_minimum_size = Vector2(330, 0)
+		body.add_child(card)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 8)
+		card.add_child(col)
+		var th := FpUi.label(NetSession.TEAM_NAMES[t], 28, FpUi.ally_color() if t == 0 else FpUi.enemy_color(), FpUi.display())
+		col.add_child(th)
+		_team_heads.append(th)
+		var list := VBoxContainer.new()
+		list.add_theme_constant_override("separation", 6)
+		col.add_child(list)
+		_teams.append(list)
+	var right := FrontEnd.card()
+	right.size_flags_horizontal = SIZE_EXPAND_FILL
+	body.add_child(right)
+	var rc := VBoxContainer.new()
+	rc.add_theme_constant_override("separation", 10)
+	right.add_child(rc)
+	rc.add_child(FpUi.label("地圖", 22, Counterform.DUST_WHITE, FpUi.display()))
+	var maps := HBoxContainer.new()
+	maps.add_theme_constant_override("separation", 8)
+	rc.add_child(maps)
+	for id in NetSession.MAPS:
+		var b := FrontEnd.action(NetSession.MAPS[id], false, 16)
+		b.toggle_mode = true
+		var map_id: String = id
+		b.pressed.connect(func() -> void:
+			net.set_config("map", map_id)
+			_refresh())
+		maps.add_child(b)
+		_map_buttons[id] = b
+	_host_box = VBoxContainer.new()
+	_host_box.add_theme_constant_override("separation", 8)
+	rc.add_child(_host_box)
+	_host_box.add_child(FpUi.label("規則（房主設定）", 22, Counterform.DUST_WHITE, FpUi.display()))
 	_size_label = _stepper("team_size", 1, 5, 1)
 	_score_label = _stepper("score", 20, 120, 10)
 	_time_label = _stepper("minutes", 3, 15, 1)
 	_bots = CheckButton.new()
 	_bots.text = "空位補機器人"
 	_bots.add_theme_font_override("font", FpUi.bold())
-	_bots.add_theme_color_override("font_color", Faultprint.ui_ink)
-	_bots.add_theme_color_override("font_hover_color", Faultprint.ui_ink)
-	_bots.add_theme_color_override("font_pressed_color", Faultprint.ui_ink)
+	_bots.add_theme_color_override("font_color", Counterform.DUST_WHITE)
+	_bots.add_theme_color_override("font_hover_color", Counterform.DUST_WHITE)
+	_bots.add_theme_color_override("font_pressed_color", Counterform.DUST_WHITE)
 	_bots.focus_mode = Control.FOCUS_NONE
 	_bots.toggled.connect(func(on: bool) -> void: net.set_config("bots", on))
-	_settings.add_child(_bots)
+	_host_box.add_child(_bots)
+	var rules := FpUi.label("・同一把槍越殺越不值錢（3、3、2、2、1 分）；改任何零件就是新版本，重新值 3 分。\n"
+		+ "・身法擊殺 +1。某個版本殺滿 %d 人成為「版本答案」：帶著它的人全場可見，擊殺他 +%d。\n" % [TeamMatch.META_KILLS, TeamMatch.META_BONUS]
+		+ "・重生區內打不到人也不會被打，隨時能改槍；外面要 4 秒沒交火才能改。", 15, Color(Counterform.DUST_WHITE, 0.75), FpUi.body())
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rules.size_flags_vertical = SIZE_EXPAND_FILL
+	rc.add_child(rules)
 
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 12)
-	root.add_child(bottom)
-	_status = FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
+	# Footer: status | leave, swap, ready, start.
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 12)
+	root.add_child(foot)
+	_status = FpUi.label("", 17, Counterform.SULFUR, FpUi.bold())
 	_status.size_flags_horizontal = SIZE_EXPAND_FILL
 	_status.clip_text = true
-	bottom.add_child(_status)
-	_start = FpUi.button("開始對戰", 22)
-	_start.custom_minimum_size = Vector2(220, 52)
+	foot.add_child(_status)
+	var leave := FrontEnd.action("離開房間", false, 18)
+	leave.pressed.connect(func() -> void:
+		net.leave()
+		close())
+	foot.add_child(leave)
+	_swap = FrontEnd.action("換隊", false, 18)
+	_swap.pressed.connect(func() -> void: net.switch_team())
+	foot.add_child(_swap)
+	_ready_btn = FrontEnd.action("準備", false, 18)
+	_ready_btn.toggle_mode = true
+	_ready_btn.toggled.connect(func(on: bool) -> void: net.set_ready(on))
+	foot.add_child(_ready_btn)
+	_start = FrontEnd.action("開始對戰", true, 22)
+	_start.custom_minimum_size = Vector2(220, 0)
 	_start.pressed.connect(func() -> void: net.start_match())
-	bottom.add_child(_start)
+	foot.add_child(_start)
+	net.matchmaker.internet_done.connect(func(ok: bool, code: String, message: String) -> void:
+		_net_btn.disabled = false
+		if ok:
+			NetSession.internet_code = code
+			_net_btn.text = "網路已開放"
+		flash(message, 8.0)
+		_refresh())
 
 
-func _field(text: String, width: float) -> LineEdit:
-	var e := LineEdit.new()
-	e.text = text
-	e.custom_minimum_size = Vector2(width, 40)
-	e.add_theme_font_override("font", FpUi.bold())
-	e.add_theme_font_size_override("font_size", 18)
-	return e
-
-
-## A "label  [−] [+]" row for an integer setting.
+## "label   [−] [+]" for an integer setting.
 func _stepper(key: String, lo: int, hi: int, step: int) -> Label:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	_settings.add_child(row)
-	var l := FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
-	l.custom_minimum_size = Vector2(200, 0)
+	_host_box.add_child(row)
+	var l := FpUi.label("", 18, Counterform.DUST_WHITE, FpUi.bold())
+	l.custom_minimum_size = Vector2(190, 0)
 	row.add_child(l)
 	for d in [-step, step]:
-		var b := FpUi.button("−" if d < 0 else "+", 18)
-		b.custom_minimum_size = Vector2(44, 36)
+		var b := FrontEnd.action("−" if d < 0 else "+", false, 18)
+		b.custom_minimum_size = Vector2(48, 0)
 		b.pressed.connect(func() -> void:
 			net.set_config(key, clampi(int(NetSession.config.get(key, lo)) + d, lo, hi)))
 		row.add_child(b)
@@ -170,6 +202,7 @@ func open() -> void:
 		net.roster_changed.connect(_refresh)
 		net.status_changed.connect(func(_t: String) -> void: _refresh())
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Music.play(get_tree(), "lobby")
 	_refresh()
 
 
@@ -178,45 +211,82 @@ func close() -> void:
 	closed.emit()
 
 
+## A message in the status line for a while (overrides the connection status).
+func flash(text: String, seconds := 5.0) -> void:
+	_status.text = text
+	_flash_left = seconds
+
+
+func _process(delta: float) -> void:
+	_flash_left -= delta
+	if visible and not NetSession.active:
+		# The room went away under us (host left, connection failed).
+		close()
+
+
 func _refresh() -> void:
-	if _status == null:
+	if _status == null or not visible:
 		return
-	var in_room := NetSession.active and not NetSession.roster.is_empty()
-	_connect_row.visible = not NetSession.active
-	_room_row.visible = NetSession.active
-	_name.editable = not NetSession.active
 	var host := net.is_host()
-	for c in _settings.get_children():
-		if c is Control and c != _settings.get_child(0):
-			(c as Control).modulate.a = 1.0 if host else 0.5
-	_bots.disabled = not host
 	var cfg := NetSession.config
+	var code := NetSession.internet_code if NetSession.internet_code != "" else NetSession.room_code
+	_code.text = code if code != "" else "—"
+	_code_note.text = "外部位址（網路）" if NetSession.internet_code != "" else "區網／虛擬區網"
+	_code.get_parent().get_parent().get_parent().visible = host and code != ""
+	_net_btn.visible = host
+	for id in _map_buttons:
+		var b: Button = _map_buttons[id]
+		b.set_pressed_no_signal(str(cfg.get("map", "folded")) == id)
+		b.disabled = not host
+	_host_box.modulate.a = 1.0 if host else 0.55
+	_bots.disabled = not host
 	_size_label.text = "每隊人數　%d" % int(cfg.get("team_size", 4))
 	_score_label.text = "目標分數　%d" % int(cfg.get("score", 50))
 	_time_label.text = "時間上限　%d 分" % int(cfg.get("minutes", 8))
 	_bots.set_pressed_no_signal(bool(cfg.get("bots", true)))
+	var in_room := NetSession.active and not NetSession.roster.is_empty()
 	for t in 2:
 		var box := _teams[t]
 		for c in box.get_children():
 			c.queue_free()
-		var head := FpUi.label(NetSession.TEAM_NAMES[t], 22, FpUi.ally_color() if t == 0 else FpUi.enemy_color(), FpUi.bold())
-		box.add_child(head)
 		var n := 0
 		for peer in NetSession.roster:
 			var info: Dictionary = NetSession.roster[peer]
 			if int(info.team) != t:
 				continue
-			var tag := "（房主）" if int(peer) == 1 else ""
-			var you := "　← 你" if int(peer) == net.my_id() else ""
-			box.add_child(FpUi.label("%s%s%s" % [info.name, tag, you], 18, Faultprint.ui_ink, FpUi.bold()))
+			box.add_child(_player_row(str(info.name), int(peer) == 1, int(peer) == net.my_id(), bool(info.get("ready", false))))
 			n += 1
 		if in_room and bool(cfg.get("bots", true)):
 			for i in maxi(int(cfg.get("team_size", 4)) - n, 0):
-				box.add_child(FpUi.label("機器人", 18, Faultprint.SLATE, FpUi.bold()))
+				box.add_child(_player_row("機器人", false, false, true, true))
+		_team_heads[t].text = "%s　%d" % [NetSession.TEAM_NAMES[t], n]
 	_start.visible = host
+	_ready_btn.visible = not host
+	_ready_btn.set_pressed_no_signal(bool(NetSession.roster.get(net.my_id(), {}).get("ready", false)))
+	_ready_btn.text = "已準備" if _ready_btn.button_pressed else "準備"
+	if _flash_left > 0.0:
+		return
 	var status := NetSession.last_status
-	if not NetSession.active:
-		status = status if status != "" else "開一個房間，或輸入房主的 IP 加入（區網或虛擬區網）"
-	elif not host and in_room:
-		status = "已在房間裡，等房主開始"
+	if host:
+		status = "所有人都準備好了" if net.all_ready() else "等其他人準備（也可以直接開始）"
+		if NetSession.roster.size() == 1:
+			status = "把房間碼傳給朋友，或直接和機器人打"
+	elif in_room:
+		status = "按「準備」，等房主開始"
 	_status.text = status
+
+
+func _player_row(name: String, is_host: bool, you: bool, ready: bool, bot := false) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var mark := FpUi.label("✓" if ready else "·", 18, Counterform.SULFUR if ready and not bot else Color(Counterform.DUST_WHITE, 0.3),
+		FpUi.bold())
+	mark.custom_minimum_size = Vector2(18, 0)
+	row.add_child(mark)
+	var l := FpUi.label(name, 20, Color(Counterform.DUST_WHITE, 0.4) if bot else Counterform.DUST_WHITE, FpUi.bold())
+	row.add_child(l)
+	if is_host:
+		row.add_child(FpUi.label("房主", 13, Color(Counterform.DUST_WHITE, 0.5), FpUi.body()))
+	if you:
+		row.add_child(FpUi.label("你", 13, Counterform.SULFUR, FpUi.bold()))
+	return row

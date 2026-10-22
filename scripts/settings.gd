@@ -11,6 +11,8 @@ static var vsync := false       # off by default: V-Sync adds frames of input de
 static var show_fps := true
 static var ink_lines := true    # outlines on every edge
 static var pixels := 0          # Faultprint.PIXEL_SIZES index: chunky low-res pixels
+static var music_vol := 0.7     # 0..1
+static var sfx_vol := 1.0
 static var look := 3            # Faultprint.LOOKS: 0-2 the print looks, 3 Counterform (official)
 static var _loaded := false
 
@@ -28,6 +30,8 @@ static func load_all() -> void:
 		ink_lines = bool(cfg.get_value("game", "ink_lines", ink_lines))
 		pixels = clampi(int(cfg.get_value("game", "pixels", pixels)), 0, 3)
 		look = clampi(int(cfg.get_value("game", "look_v2", look)), 0, 3)
+		music_vol = clampf(float(cfg.get_value("audio", "music", music_vol)), 0.0, 1.0)
+		sfx_vol = clampf(float(cfg.get_value("audio", "sfx", sfx_vol)), 0.0, 1.0)
 	CameraFx.load_settings()
 	apply_display()
 
@@ -42,6 +46,8 @@ static func save() -> void:
 	cfg.set_value("game", "look_v2", look)
 	cfg.set_value("game", "ink_lines", ink_lines)
 	cfg.set_value("game", "pixels", pixels)
+	cfg.set_value("audio", "music", music_vol)
+	cfg.set_value("audio", "sfx", sfx_vol)
 	cfg.save(FILE)
 
 

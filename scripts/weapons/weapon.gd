@@ -310,7 +310,7 @@ func _schedule_echo(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: fl
 			var r := _ray(shooter, origin, _spread_dir(aim, spread_deg), float(stats.range) * 1.4, power, echo)
 			PrintFx.tracer(world, origin + (r.to - origin).normalized() * 0.6, r.to, klass)
 			if r.has("target") and r.target != shooter and shooter.has_signal("hit_confirmed") and float(r.get("damage", 0.0)) > 0.0:
-				shooter.hit_confirmed.emit({"zone": r.get("zone", "body"), "damage": r.damage, "target": r.target}, r.get("kill", false)))
+				shooter.hit_confirmed.emit({"zone": r.get("zone", "body"), "damage": r.damage, "target": r.target, "at": r.to}, r.get("kill", false)))
 
 
 ## Bends `aim` toward the nearest enemy in sight within `degrees` of it.

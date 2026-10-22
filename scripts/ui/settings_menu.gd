@@ -75,6 +75,25 @@ func _general() -> Control:
 		if p:
 			p.base_fov = v
 		_refresh_labels()))
+	var vol_row := HBoxContainer.new()
+	vol_row.add_theme_constant_override("separation", 12)
+	box.add_child(vol_row)
+	for spec in [["音樂", Settings.music_vol, true], ["音效", Settings.sfx_vol, false]]:
+		var col := VBoxContainer.new()
+		vol_row.add_child(col)
+		var vl := FpUi.label("%s　%d%%" % [spec[0], roundi(float(spec[1]) * 100)], 16)
+		col.add_child(vl)
+		var is_music: bool = spec[2]
+		var sl := _slider(0.0, 1.0, 0.05, float(spec[1]), func(v: float) -> void:
+			if is_music:
+				Settings.music_vol = v
+			else:
+				Settings.sfx_vol = v
+			Settings.save()
+			Music.apply_volumes()
+			vl.text = "%s　%d%%" % [spec[0], roundi(v * 100)])
+		sl.custom_minimum_size = Vector2(184, 24)
+		col.add_child(sl)
 	box.add_child(_toggle("V-Sync（開啟會增加輸入延遲）", Settings.vsync, func(on: bool) -> void:
 		Settings.vsync = on
 		Settings.save()

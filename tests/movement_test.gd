@@ -163,7 +163,11 @@ func _test_dash() -> void:
 	await frames(10)
 	await tap("dash")
 	await frames(2)
-	check(player.move != Player.Move.DASH, "no second dash before it recharges")
+	check(player.move == Player.Move.DASH, "a second dash right away (two charges)")
+	await frames(20)
+	await tap("dash")
+	await frames(2)
+	check(player.move != Player.Move.DASH, "no third dash before a charge refills")
 	release_all()
 
 
