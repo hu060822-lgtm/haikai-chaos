@@ -29,6 +29,10 @@ common/max_physics_steps_per_frame=12
 
 fp_soft={
 "type": "float",
+"value": 0.0
+}
+fp_dark={
+"type": "float",
 "value": 1.0
 }
 

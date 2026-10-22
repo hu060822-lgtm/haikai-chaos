@@ -48,18 +48,18 @@ func _init() -> void:
 
 func _ready() -> void:
 	var bg := ColorRect.new()
-	bg.color = Faultprint.BONE
+	bg.color = Faultprint.ui_paper
 	bg.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(bg)
 	# Print-layout blocks in the background: the bench is a printed sheet too.
-	for spec in [[Vector2(-40, 0), Vector2(520, 70), Faultprint.CARBON], [Vector2(0, 70), Vector2(14, 2000), Faultprint.ORANGE]]:
+	for spec in [[Vector2(-40, 0), Vector2(520, 70), Faultprint.ui_ink], [Vector2(0, 70), Vector2(14, 2000), Faultprint.ORANGE]]:
 		var r := ColorRect.new()
 		r.position = spec[0]
 		r.size = spec[1]
 		r.color = spec[2]
 		r.mouse_filter = MOUSE_FILTER_IGNORE
 		add_child(r)
-	var title := FpUi.PrintText.new("改槍工作台", 40, Faultprint.BONE)
+	var title := FpUi.PrintText.new("改槍工作台", 40, Faultprint.ui_paper)
 	title.plate_b = Faultprint.ORANGE
 	title.position = Vector2(28, 12)
 	title.size = Vector2(480, 50)
@@ -121,7 +121,7 @@ func _ready() -> void:
 	name_row.add_child(done)
 	var view_panel := PanelContainer.new()
 	view_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	view_panel.add_theme_stylebox_override("panel", FpUi.panel(Faultprint.DUST, Faultprint.CARBON, 20, 3))
+	view_panel.add_theme_stylebox_override("panel", FpUi.panel(Faultprint.ui_dust, Faultprint.ui_ink, 20, 3))
 	mid.add_child(view_panel)
 	_view = TextureRect.new()
 	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -134,7 +134,7 @@ func _ready() -> void:
 	mid.add_child(_warn)
 	var tune_row := HBoxContainer.new()
 	mid.add_child(tune_row)
-	_tune_label = FpUi.label("", 14, Faultprint.CARBON, FpUi.bold())
+	_tune_label = FpUi.label("", 14, Faultprint.ui_ink, FpUi.bold())
 	_tune_label.custom_minimum_size = Vector2(220, 0)
 	tune_row.add_child(_tune_label)
 	_tune = HSlider.new()
@@ -153,7 +153,7 @@ func _ready() -> void:
 	right.custom_minimum_size = Vector2(340, 0)
 	right.add_theme_constant_override("separation", 6)
 	root.add_child(right)
-	_part_title = FpUi.label("選一個插槽", 20, Faultprint.CARBON, FpUi.display(0.6))
+	_part_title = FpUi.label("選一個插槽", 20, Faultprint.ui_ink, FpUi.display(0.6))
 	right.add_child(_part_title)
 	var parts_scroll := ScrollContainer.new()
 	parts_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -162,7 +162,7 @@ func _ready() -> void:
 	_part_list = VBoxContainer.new()
 	_part_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parts_scroll.add_child(_part_list)
-	_desc = FpUi.label("", 14, Faultprint.CARBON, FpUi.bold())
+	_desc = FpUi.label("", 14, Faultprint.ui_ink, FpUi.bold())
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_desc.custom_minimum_size = Vector2(0, 90)
 	right.add_child(_desc)
@@ -229,7 +229,7 @@ func _clear(box: Container) -> void:
 
 func _fill_slots() -> void:
 	_clear(_slot_list)
-	var head := FpUi.label("槍身：" + Arsenal.name_of(build.frame), 18, Faultprint.CARBON, FpUi.display(0.6))
+	var head := FpUi.label("槍身：" + Arsenal.name_of(build.frame), 18, Faultprint.ui_ink, FpUi.display(0.6))
 	_slot_list.add_child(head)
 	var open := Arsenal.open_slots(build)
 	for group in Arsenal.SLOT_GROUPS:
@@ -247,7 +247,7 @@ func _fill_slots() -> void:
 			var b := FpUi.button("%s：%s" % [Arsenal.slot_name(slot), Arsenal.name_of(id) if id != "" else "—"], 15)
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			if slot == _slot and not _frame_mode:
-				b.add_theme_stylebox_override("normal", FpUi.panel(Faultprint.YELLOW, Faultprint.CARBON, 8, 2))
+				b.add_theme_stylebox_override("normal", FpUi.panel(Faultprint.YELLOW, Faultprint.ui_ink, 8, 2))
 			b.pressed.connect(func() -> void:
 				_slot = slot
 				_pending = ""
@@ -295,7 +295,7 @@ func _part_button(_id: String, text: String, current: bool) -> Button:
 	var b := FpUi.button(text, 15)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if current:
-		b.add_theme_stylebox_override("normal", FpUi.panel(Faultprint.TEAL, Faultprint.CARBON, 8, 2))
+		b.add_theme_stylebox_override("normal", FpUi.panel(Faultprint.TEAL, Faultprint.ui_ink, 8, 2))
 	return b
 
 
@@ -401,7 +401,7 @@ func _fill_stats(preview: Dictionary = {}) -> void:
 		var cell := HBoxContainer.new()
 		cell.custom_minimum_size = Vector2(120, 0)
 		cell.add_child(FpUi.label(row[1], 13, Faultprint.SLATE, FpUi.bold()))
-		var val := FpUi.label(_fmt(v), 17, Faultprint.CARBON, FpUi.display(0.5))
+		var val := FpUi.label(_fmt(v), 17, Faultprint.ui_ink, FpUi.display(0.5))
 		cell.add_child(val)
 		if not then.is_empty():
 			var w := _stat(then, key)
@@ -414,7 +414,7 @@ func _fill_stats(preview: Dictionary = {}) -> void:
 				cell.add_child(FpUi.label(("+" if d > 0 else "") + _fmt(d), 14, col, FpUi.bold()))
 		_stats_grid.add_child(cell)
 	var info := FpUi.label("口徑 %s　模式 %s　%s" % [now.caliber, "/".join(now.modes.map(func(m) -> String: return Arsenal.MODE_NAMES.get(m, m))),
-		"（%s）" % now.kind if now.kind != "hitscan" else ""], 13, Faultprint.CARBON, FpUi.bold())
+		"（%s）" % now.kind if now.kind != "hitscan" else ""], 13, Faultprint.ui_ink, FpUi.bold())
 	_stats_grid.add_child(info)
 
 

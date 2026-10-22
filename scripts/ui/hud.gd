@@ -43,7 +43,7 @@ func _ready() -> void:
 	_lines = SpeedLines.new()
 	_lines.player = player
 	add_child(_lines)
-	_fps = FpUi.label("", 13, Faultprint.CARBON, FpUi.bold())
+	_fps = FpUi.label("", 13, Faultprint.ui_ink, FpUi.bold())
 	_fps.anchor_left = 1.0
 	_fps.anchor_right = 1.0
 	_fps.anchor_top = 1.0
@@ -64,16 +64,16 @@ func _ready() -> void:
 	add_child(left)
 	var hp_row := HBoxContainer.new()
 	left.add_child(hp_row)
-	_hp = FpUi.PrintText.new("100", 54, Faultprint.CARBON)
+	_hp = FpUi.PrintText.new("100", 54, Faultprint.ui_ink)
 	hp_row.add_child(_hp)
-	var hp_tag := FpUi.label("體力", 14, Faultprint.CARBON, FpUi.bold())
+	var hp_tag := FpUi.label("體力", 14, Faultprint.ui_ink, FpUi.bold())
 	hp_tag.size_flags_vertical = Control.SIZE_SHRINK_END
 	hp_row.add_child(hp_tag)
 	_hp_bar = FpUi.PrintBar.new()
 	_hp_bar.custom_minimum_size = Vector2(240, 12)
 	left.add_child(_hp_bar)
 	var move_panel := PanelContainer.new()
-	move_panel.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.BONE, 0.88), Faultprint.CARBON, 10, 2))
+	move_panel.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.ui_paper, 0.88), Faultprint.ui_ink, 10, 2))
 	left.add_child(move_panel)
 	var mv := VBoxContainer.new()
 	mv.add_theme_constant_override("separation", 3)
@@ -83,14 +83,14 @@ func _ready() -> void:
 	_state = FpUi.PrintText.new("地面", 26)
 	_state.custom_minimum_size = Vector2(120, 30)
 	top.add_child(_state)
-	_speed = FpUi.label("0.0 m/s", 15, Faultprint.CARBON, FpUi.bold())
+	_speed = FpUi.label("0.0 m/s", 15, Faultprint.ui_ink, FpUi.bold())
 	_speed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_speed.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	top.add_child(_speed)
 	for spec in [["衝刺 Q", "_dash"], ["牆跑", "_wall"]]:
 		var row := HBoxContainer.new()
 		mv.add_child(row)
-		var l := FpUi.label(spec[0], 12, Faultprint.CARBON, FpUi.bold())
+		var l := FpUi.label(spec[0], 12, Faultprint.ui_ink, FpUi.bold())
 		l.custom_minimum_size = Vector2(56, 0)
 		row.add_child(l)
 		var bar := FpUi.PrintBar.new()
@@ -100,7 +100,7 @@ func _ready() -> void:
 		row.add_child(bar)
 		set(spec[1], bar)
 	_wall.fill = Faultprint.ORANGE
-	_kicks = FpUi.label("", 13, Faultprint.CARBON, FpUi.bold())
+	_kicks = FpUi.label("", 13, Faultprint.ui_ink, FpUi.bold())
 	mv.add_child(_kicks)
 	# Bottom right: the gun.
 	var right := VBoxContainer.new()
@@ -115,7 +115,7 @@ func _ready() -> void:
 	right.alignment = BoxContainer.ALIGNMENT_END
 	# A bone block behind the gun readout so it reads over the view model.
 	var back := Panel.new()
-	back.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.BONE, 0.86), Faultprint.CARBON, 12, 2))
+	back.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.ui_paper, 0.86), Faultprint.ui_ink, 12, 2))
 	back.anchor_left = 1.0
 	back.anchor_right = 1.0
 	back.anchor_top = 1.0
@@ -133,16 +133,16 @@ func _ready() -> void:
 	_ammo = FpUi.PrintText.new("30", 64)
 	_ammo.align = HORIZONTAL_ALIGNMENT_RIGHT
 	ammo_row.add_child(_ammo)
-	_reserve = FpUi.label("/ 90", 22, Faultprint.CARBON, FpUi.bold())
+	_reserve = FpUi.label("/ 90", 22, Faultprint.ui_ink, FpUi.bold())
 	_reserve.size_flags_vertical = Control.SIZE_SHRINK_END
 	ammo_row.add_child(_reserve)
-	_gun = FpUi.label("", 18, Faultprint.CARBON, FpUi.bold())
+	_gun = FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
 	_gun.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(_gun)
-	_mode = FpUi.label("", 14, Faultprint.CARBON, FpUi.bold())
+	_mode = FpUi.label("", 14, Faultprint.ui_ink, FpUi.bold())
 	_mode.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(_mode)
-	_weight = FpUi.label("", 14, Faultprint.CARBON, FpUi.bold())
+	_weight = FpUi.label("", 14, Faultprint.ui_ink, FpUi.bold())
 	_weight.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(_weight)
 	# Top: score and kill feed.
@@ -162,7 +162,7 @@ func _ready() -> void:
 	feed.offset_right = -20
 	feed.offset_top = 18
 	add_child(feed)
-	_hint = FpUi.label("", 18, Faultprint.CARBON, FpUi.bold())
+	_hint = FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
 	_hint.anchor_left = 0.5
 	_hint.anchor_right = 0.5
 	_hint.anchor_top = 0.62
@@ -170,11 +170,11 @@ func _ready() -> void:
 	_hint.offset_right = 400
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_hint)
-	_help = FpUi.label(HELP, 14, Faultprint.CARBON, FpUi.bold())
+	_help = FpUi.label(HELP, 14, Faultprint.ui_ink, FpUi.bold())
 	_help.position = Vector2(28, 70)
 	_help.visible = false
 	var help_panel := PanelContainer.new()
-	help_panel.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.BONE, 0.92), Faultprint.CARBON, 12, 2))
+	help_panel.add_theme_stylebox_override("panel", FpUi.panel(Color(Faultprint.ui_paper, 0.92), Faultprint.ui_ink, 12, 2))
 	help_panel.position = Vector2(24, 66)
 	help_panel.name = "Help"
 	help_panel.visible = false
@@ -225,17 +225,17 @@ func _process(delta: float) -> void:
 	_fps.visible = Settings.show_fps
 	_fps.text = "FPS %d　物理 %d Hz" % [Engine.get_frames_per_second(), Engine.physics_ticks_per_second]
 	_hp.set_text("%d" % ceili(player.health))
-	_hp.main = Faultprint.CARBON if player.health > 35 else FpUi.enemy_color()
+	_hp.main = Faultprint.ui_ink if player.health > 35 else FpUi.enemy_color()
 	_hp_bar.set_value(player.health / Player.MAX_HEALTH)
 	_state.set_text(Player.MOVE_NAMES[player.move])
 	_speed.text = "%.1f m/s" % player.flat_speed()
 	_dash.set_value(player.dash_ready())
-	_dash.fill = Faultprint.CARBON if player.dash_ready() >= 1.0 else Faultprint.SLATE
+	_dash.fill = Faultprint.ui_ink if player.dash_ready() >= 1.0 else Faultprint.SLATE
 	_wall.set_value(player.wall_time_left())
 	_kicks.text = "踢牆 " + "◆".repeat(player.kicks_left()) + "◇".repeat(maxi(player.max_kicks() - player.kicks_left(), 0))
 	var w := player.weapon
 	_ammo.set_text("%d" % w.ammo)
-	_ammo.main = Faultprint.CARBON if w.ammo > int(w.stats.mag) * 0.25 else Faultprint.ORANGE
+	_ammo.main = Faultprint.ui_ink if w.ammo > int(w.stats.mag) * 0.25 else Faultprint.ORANGE
 	_reserve.text = " / %d" % w.reserve
 	_gun.text = w.name
 	var mode_text: String = Arsenal.MODE_NAMES.get(w.mode(), w.mode())
@@ -291,20 +291,20 @@ class Crosshair:
 		if scoped:
 			# A printed scope: carbon ring and posts, thin cross.
 			var r := minf(size.x, size.y) * 0.42
-			draw_arc(c, r, 0, TAU, 72, Faultprint.CARBON, 6.0)
+			draw_arc(c, r, 0, TAU, 72, Faultprint.ui_ink, 6.0)
 			for d in [Vector2.LEFT, Vector2.RIGHT, Vector2.DOWN]:
-				draw_line(c + d * r, c + d * r * 0.25, Faultprint.CARBON, 4.0)
-			draw_line(c + Vector2(-r, 0), c + Vector2(r, 0), Faultprint.CARBON, 1.0)
-			draw_line(c + Vector2(0, -r), c + Vector2(0, r), Faultprint.CARBON, 1.0)
+				draw_line(c + d * r, c + d * r * 0.25, Faultprint.ui_ink, 4.0)
+			draw_line(c + Vector2(-r, 0), c + Vector2(r, 0), Faultprint.ui_ink, 1.0)
+			draw_line(c + Vector2(0, -r), c + Vector2(0, r), Faultprint.ui_ink, 1.0)
 		elif not off:
 			var px := tan(deg_to_rad(spread)) / tan(deg_to_rad(fov / 2.0)) * size.y / 2.0
 			var gap := clampf(px, 4.0, 120.0)
 			for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
 				var a: Vector2 = c + d * gap
 				var b: Vector2 = c + d * (gap + 9.0)
-				draw_line(a, b, Faultprint.CARBON, 4.0)
+				draw_line(a, b, Faultprint.ui_ink, 4.0)
 				draw_line(a, b, Color.WHITE, 2.0)
-			draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Faultprint.CARBON)
+			draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Faultprint.ui_ink)
 			draw_rect(Rect2(c - Vector2(1, 1), Vector2(2, 2)), Color.WHITE)
 		if _mark > 0.0:
 			var s := 9.0 + (4.0 if _mark_kill else 0.0)
@@ -312,9 +312,9 @@ class Crosshair:
 			if _mark_kill:
 				var pts := PackedVector2Array([c + Vector2(0, -s - 6), c + Vector2(s + 6, 0), c + Vector2(0, s + 6), c + Vector2(-s - 6, 0)])
 				draw_colored_polygon(pts, Color(FpUi.enemy_color(), 0.9))
-				draw_polyline(pts + PackedVector2Array([pts[0]]), Faultprint.CARBON, 2.0)
+				draw_polyline(pts + PackedVector2Array([pts[0]]), Faultprint.ui_ink, 2.0)
 			for d in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:
-				draw_line(c + d * 6.0, c + d * (6.0 + s), Faultprint.CARBON, 5.0)
+				draw_line(c + d * 6.0, c + d * (6.0 + s), Faultprint.ui_ink, 5.0)
 				draw_line(c + d * 6.0, c + d * (6.0 + s), col, 2.5)
 		for h in _hurt:
 			var ang: float = h[0] - PI / 2.0

@@ -62,7 +62,7 @@ static func panel(bg: Color, border := Color.TRANSPARENT, cut := 10, border_w :=
 	return s
 
 
-static func label(text: String, size := 16, color := Faultprint.CARBON, font: Font = null) -> Label:
+static func label(text: String, size := 16, color := Faultprint.ui_ink, font: Font = null) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
@@ -77,14 +77,14 @@ static func button(text: String, size := 18) -> Button:
 	b.text = text
 	b.add_theme_font_size_override("font_size", size)
 	b.add_theme_font_override("font", bold())
-	b.add_theme_color_override("font_color", Faultprint.CARBON)
+	b.add_theme_color_override("font_color", Faultprint.ui_ink)
 	b.add_theme_color_override("font_hover_color", Faultprint.CARBON)
-	b.add_theme_color_override("font_pressed_color", Faultprint.BONE)
+	b.add_theme_color_override("font_pressed_color", Faultprint.ui_paper)
 	b.add_theme_color_override("font_disabled_color", Faultprint.SLATE)
-	b.add_theme_stylebox_override("normal", panel(Faultprint.BONE, Faultprint.CARBON, 8, 2))
-	b.add_theme_stylebox_override("hover", panel(Faultprint.YELLOW, Faultprint.CARBON, 8, 2))
-	b.add_theme_stylebox_override("pressed", panel(Faultprint.CARBON, Faultprint.CARBON, 8, 2))
-	b.add_theme_stylebox_override("disabled", panel(Faultprint.DUST, Faultprint.SLATE, 8, 2))
+	b.add_theme_stylebox_override("normal", panel(Faultprint.ui_paper, Faultprint.ui_ink, 8, 2))
+	b.add_theme_stylebox_override("hover", panel(Faultprint.YELLOW, Faultprint.ui_ink, 8, 2))
+	b.add_theme_stylebox_override("pressed", panel(Faultprint.ui_ink, Faultprint.ui_ink, 8, 2))
+	b.add_theme_stylebox_override("disabled", panel(Faultprint.ui_dust, Faultprint.SLATE, 8, 2))
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.focus_mode = Control.FOCUS_NONE
 	return b
@@ -97,16 +97,16 @@ static func theme() -> Theme:
 	var t := Theme.new()
 	t.default_font = bold()
 	t.default_font_size = 16
-	t.set_color("font_color", "Label", Faultprint.CARBON)
-	t.set_stylebox("panel", "PanelContainer", panel(Faultprint.BONE, Faultprint.CARBON, 12, 2))
-	t.set_stylebox("normal", "LineEdit", panel(Color.WHITE, Faultprint.CARBON, 6, 2))
+	t.set_color("font_color", "Label", Faultprint.ui_ink)
+	t.set_stylebox("panel", "PanelContainer", panel(Faultprint.ui_paper, Faultprint.ui_ink, 12, 2))
+	t.set_stylebox("normal", "LineEdit", panel(Color.WHITE, Faultprint.ui_ink, 6, 2))
 	t.set_stylebox("focus", "LineEdit", panel(Color.WHITE, Faultprint.ORANGE, 6, 2))
-	t.set_color("font_color", "LineEdit", Faultprint.CARBON)
+	t.set_color("font_color", "LineEdit", Faultprint.ui_ink)
 	t.set_color("caret_color", "LineEdit", Faultprint.ORANGE)
-	var grabber := panel(Faultprint.CARBON, Color.TRANSPARENT, 2)
+	var grabber := panel(Faultprint.ui_ink, Color.TRANSPARENT, 2)
 	t.set_stylebox("grabber", "VScrollBar", grabber)
 	t.set_stylebox("grabber_highlight", "VScrollBar", panel(Faultprint.ORANGE, Color.TRANSPARENT, 2))
-	t.set_stylebox("scroll", "VScrollBar", panel(Faultprint.DUST, Color.TRANSPARENT, 2))
+	t.set_stylebox("scroll", "VScrollBar", panel(Faultprint.ui_dust, Color.TRANSPARENT, 2))
 	_fonts["theme"] = t
 	return t
 
@@ -116,14 +116,14 @@ class PrintText:
 	extends Control
 	var text := ""
 	var size_px := 32
-	var main := Faultprint.CARBON
+	var main := Faultprint.ui_ink
 	var plate_a := Faultprint.TEAL
 	var plate_b := Faultprint.ORANGE
 	var offset := 2.0
 	var align := HORIZONTAL_ALIGNMENT_LEFT
 	var font: Font
 
-	func _init(t := "", s := 32, c := Faultprint.CARBON) -> void:
+	func _init(t := "", s := 32, c := Faultprint.ui_ink) -> void:
 		text = t
 		size_px = s
 		main = c
@@ -158,8 +158,8 @@ class PrintText:
 class PrintBar:
 	extends Control
 	var value := 1.0
-	var fill := Faultprint.CARBON
-	var track := Color(Faultprint.BONE, 0.85)
+	var fill := Faultprint.ui_ink
+	var track := Color(Faultprint.ui_paper, 0.85)
 	var ticks := 10
 
 	func _init() -> void:
@@ -178,4 +178,4 @@ class PrintBar:
 		for i in range(1, ticks):
 			var x := size.x * i / ticks
 			draw_line(Vector2(x, size.y * 0.55), Vector2(x, size.y), Faultprint.SLATE, 1.0)
-		draw_rect(r, Faultprint.CARBON, false, 2.0)
+		draw_rect(r, Faultprint.ui_ink, false, 2.0)

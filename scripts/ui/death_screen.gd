@@ -29,7 +29,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	var shade := ColorRect.new()
-	shade.color = Color(Faultprint.BONE, 0.82)
+	shade.color = Color(Faultprint.ui_paper, 0.82)
 	shade.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(shade)
 	# A diagonal ink band behind the title: the print's "headline plate".
@@ -47,10 +47,10 @@ func _ready() -> void:
 	add_child(root)
 	_title = FpUi.PrintText.new("", 64)
 	_title.custom_minimum_size = Vector2(0, 84)
-	_title.plate_b = Faultprint.CARBON
-	_title.main = Faultprint.BONE
+	_title.plate_b = Faultprint.ui_ink
+	_title.main = Faultprint.ui_paper
 	root.add_child(_title)
-	_sub = FpUi.label("", 20, Faultprint.CARBON, FpUi.bold())
+	_sub = FpUi.label("", 20, Faultprint.ui_ink, FpUi.bold())
 	root.add_child(_sub)
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -59,7 +59,7 @@ func _ready() -> void:
 	var view_panel := PanelContainer.new()
 	view_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	view_panel.size_flags_stretch_ratio = 1.6
-	view_panel.add_theme_stylebox_override("panel", FpUi.panel(Faultprint.DUST, Faultprint.CARBON, 18, 3))
+	view_panel.add_theme_stylebox_override("panel", FpUi.panel(Faultprint.ui_dust, Faultprint.ui_ink, 18, 3))
 	body.add_child(view_panel)
 	var vbox := VBoxContainer.new()
 	view_panel.add_child(vbox)
@@ -76,14 +76,14 @@ func _ready() -> void:
 	side.add_theme_constant_override("separation", 12)
 	body.add_child(side)
 	side.add_child(FpUi.label("零件", 16, Faultprint.SLATE, FpUi.bold()))
-	_parts = FpUi.label("", 16, Faultprint.CARBON, FpUi.bold())
+	_parts = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
 	_parts.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	side.add_child(_parts)
 	side.add_child(FpUi.label("數值", 16, Faultprint.SLATE, FpUi.bold()))
-	_stats = FpUi.label("", 16, Faultprint.CARBON, FpUi.bold())
+	_stats = FpUi.label("", 16, Faultprint.ui_ink, FpUi.bold())
 	side.add_child(_stats)
 	side.add_child(FpUi.label("交手", 16, Faultprint.SLATE, FpUi.bold()))
-	_exchange = FpUi.label("", 18, Faultprint.CARBON, FpUi.bold())
+	_exchange = FpUi.label("", 18, Faultprint.ui_ink, FpUi.bold())
 	side.add_child(_exchange)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 14)

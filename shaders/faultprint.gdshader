@@ -39,6 +39,11 @@ uniform float fade_end = 140.0;
 // The "soft" look (settings, 0..1): paler, sparser, finer ink tinted by the surface colour
 // instead of near-black, no dots right in your face, a darker paper and no glaring whites.
 global uniform float fp_soft;
+// The dark print (settings): dark paper, the colours printed dim on it, and the light laid
+// down as pale dots on the lit side instead of black dots on the dark side.
+global uniform float fp_dark;
+const vec3 DARK_PAPER = vec3(0.0194, 0.0203, 0.0242); // #26272B, linear
+const vec3 PALE_INK = vec3(0.799, 0.745, 0.644);      // #E7E0D2, linear
 const vec3 SOFT_PAPER = vec3(0.539, 0.497, 0.418); // #C2BBAD, linear
 
 varying vec3 v_pos;
@@ -125,7 +130,7 @@ void fragment() {
 	v_paint = col;
 	v_fade = smoothstep(fade_start, fade_end, length(VERTEX)) * 0.85;
 	// Close up (running along a wall) the dots give way to the flat tone.
-	v_near = object_space ? 1.0 : mix(1.0, mix(0.25, 1.0, smoothstep(1.2, 6.0, length(VERTEX))), fp_soft);
+	v_near = object_space ? 1.0 : mix(1.0, mix(0.25, 1.0, smoothstep(1.2, 6.0, length(VERTEX))), max(fp_soft, fp_dark));
 	ALBEDO = vec3(1.0);
 	EMISSION = glow;
 }
@@ -155,7 +160,23 @@ float halftone2(float cover) {
 
 void light() {
 	float ndl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0) * ATTENUATION;
-	if (LIGHT_IS_DIRECTIONAL) {
+	if (LIGHT_IS_DIRECTIONAL && fp_dark > 0.5) {
+		float lit = smoothstep(0.42, 0.46, ndl);
+		float mid = smoothstep(0.08, 0.12, ndl);
+		// Saturated inks (routes, wayfinding) stay bright; greys sink into the paper.
+		float hi = max(v_paint.r, max(v_paint.g, v_paint.b));
+		float sat = (hi - min(v_paint.r, min(v_paint.g, v_paint.b))) / max(hi, 1e-3);
+		vec3 base = v_paint * mix(0.17, 0.62, clamp((sat - 0.35) * 2.5, 0.0, 1.0));
+		float tone = mix(0.5, mix(0.78, 1.0, lit), mid);
+		vec3 c = base * tone;
+		float d2 = v_d2;
+		c = mix(c, plate.rgb * 0.45, halftone(d2, (1.0 - mid) * 0.3) * plate_amount * 0.5 * v_near);
+		float cover = (lit * 0.16 + mid * (1.0 - lit) * 0.06) * v_near * (object_space ? 0.6 : 1.0);
+		vec3 pale = mix(v_paint, PALE_INK, 0.5) * 0.5;
+		c = mix(c, pale, halftone2(cover));
+		c = mix(c, DARK_PAPER, v_fade);
+		DIFFUSE_LIGHT += c * LIGHT_COLOR / PI;
+	} else if (LIGHT_IS_DIRECTIONAL) {
 		float lit = smoothstep(0.42, 0.46, ndl);
 		float mid = smoothstep(0.08, 0.12, ndl);
 		float tone = mix(shadow_tone, mix(mid_tone, 1.0, lit), mid);

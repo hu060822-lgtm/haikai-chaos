@@ -44,5 +44,5 @@ func _draw() -> void:
 		var length := (30.0 + 120.0 * k) * s.z
 		var dir := Vector2(cos(s.x), sin(s.x))
 		var a := c + dir * r0
-		var col := Color(Faultprint.CARBON, 0.55 * k * sin(phase * PI))
+		var col := Color(Faultprint.ui_ink, 0.55 * k * sin(phase * PI))
 		draw_line(a, a + dir * length, col, 1.5 + 2.5 * k)

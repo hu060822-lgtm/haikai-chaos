@@ -24,7 +24,7 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 | F1 / F2 / F3 | 操作說明 / 敵我顏色（色盲模式）/ 機器人開火開關 |
 | F4 / F5 / F7 | 移動除錯面板 / 鏡頭效果（完整、減少、關閉）/ 物理頻率 60·120·240 Hz |
 | T | 移動測試場：回到目前路線起點 |
-| Esc | 設定：滑鼠靈敏度、FOV、V-Sync、FPS 顯示、柔和畫面（預設開，降低刺眼）、鏡頭效果、**所有按鍵都能改** |
+| Esc | 設定：滑鼠靈敏度、FOV、V-Sync、FPS 顯示、畫面風格（原版／柔和／暗色印刷，預設暗色）、鏡頭效果、**所有按鍵都能改** |
 
 ## 移動測試場
 
@@ -79,6 +79,7 @@ godot --headless --fixed-fps 120 --path . --script res://tests/movement_feel_tes
 godot --headless --fixed-fps 120 --path . --script res://tests/route_test.gd -- 120
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/lab_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c11_shots.gd -- <資料夾>
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/look_shots.gd -- <資料夾>   # 三種畫面風格對照
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/game_shots.gd -- <資料夾>
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/map_shots.gd -- <資料夾>
 ```

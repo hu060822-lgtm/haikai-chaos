@@ -18,14 +18,16 @@ func _init() -> void:
 func add_kill(killer: String, killer_side: int, gun_name: String, build: Dictionary, tags: Array,
 		victim: String, victim_side: int, involves_you := false) -> void:
 	var row := PanelContainer.new()
-	var bg := Color(Faultprint.BONE, 0.9) if not involves_you else Color(Faultprint.YELLOW, 0.92)
-	row.add_theme_stylebox_override("panel", FpUi.panel(bg, Faultprint.CARBON, 8, 2))
+	var bg := Color(Faultprint.ui_paper, 0.9) if not involves_you else Color(Faultprint.YELLOW, 0.92)
+	# On your own (yellow) line the text stays dark ink in every look.
+	var ink := Faultprint.CARBON if involves_you else Faultprint.ui_ink
+	row.add_theme_stylebox_override("panel", FpUi.panel(bg, ink, 8, 2))
 	row.size_flags_horizontal = Control.SIZE_SHRINK_END
 	row.mouse_filter = MOUSE_FILTER_IGNORE
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
 	row.add_child(h)
-	h.add_child(_name(killer, killer_side))
+	h.add_child(_name(killer, killer_side, ink))
 	if not build.is_empty():
 		var pic := TextureRect.new()
 		pic.texture = GunThumb.texture(get_tree(), build, Vector2i(150, 54))
@@ -33,12 +35,12 @@ func add_kill(killer: String, killer_side: int, gun_name: String, build: Diction
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		h.add_child(pic)
-	var gun := FpUi.label(gun_name, 14, Faultprint.CARBON, FpUi.bold())
+	var gun := FpUi.label(gun_name, 14, ink, FpUi.bold())
 	h.add_child(gun)
 	for t in tags:
-		var tag := FpUi.label(" %s " % t, 12, Faultprint.BONE, FpUi.bold())
+		var tag := FpUi.label(" %s " % t, 12, Faultprint.ui_paper, FpUi.bold())
 		var tag_box := PanelContainer.new()
-		var sb := FpUi.panel(Faultprint.ORANGE if t == "爆頭" else Faultprint.CARBON, Color.TRANSPARENT, 4)
+		var sb := FpUi.panel(Faultprint.ORANGE if t == "爆頭" else Faultprint.ui_ink, Color.TRANSPARENT, 4)
 		sb.content_margin_left = 2
 		sb.content_margin_right = 2
 		sb.content_margin_top = 1
@@ -47,8 +49,8 @@ func add_kill(killer: String, killer_side: int, gun_name: String, build: Diction
 		tag_box.add_child(tag)
 		tag_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		h.add_child(tag_box)
-	h.add_child(FpUi.label("→", 16, Faultprint.CARBON, FpUi.bold()))
-	h.add_child(_name(victim, victim_side))
+	h.add_child(FpUi.label("→", 16, ink, FpUi.bold()))
+	h.add_child(_name(victim, victim_side, ink))
 	add_child(row)
 	move_child(row, 0)
 	while get_child_count() > MAX_LINES:
@@ -61,7 +63,7 @@ func add_kill(killer: String, killer_side: int, gun_name: String, build: Diction
 	t.tween_callback(row.queue_free)
 
 
-func _name(text: String, side: int) -> Control:
+func _name(text: String, side: int, ink: Color) -> Control:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	var color := FpUi.enemy_color() if side == 1 else FpUi.ally_color()
@@ -69,6 +71,6 @@ func _name(text: String, side: int) -> Control:
 	shape.add_theme_color_override("font_outline_color", Faultprint.CARBON)
 	shape.add_theme_constant_override("outline_size", 4)
 	box.add_child(shape)
-	var l := FpUi.label(text, 17, Faultprint.CARBON, FpUi.display(0.7))
+	var l := FpUi.label(text, 17, ink, FpUi.display(0.7))
 	box.add_child(l)
 	return box

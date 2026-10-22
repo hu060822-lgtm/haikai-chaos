@@ -22,9 +22,9 @@ func _init() -> void:
 	cam.fov = 70
 	cam.far = 600
 	main.add_child(cam)
-	for soft in [false, true]:
-		Faultprint.set_soft(soft)
-		var tag := "soft" if soft else "orig"
+	for look in [0, 1, 2]:
+		Faultprint.set_look(look)
+		var tag: String = ["orig", "soft", "dark"][look]
 		cam.global_position = Vector3(-48, 14, 52)
 		cam.rotation_degrees = Vector3(-22, 20, 0)
 		cam.current = true

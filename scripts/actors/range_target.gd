@@ -54,8 +54,8 @@ func _ready() -> void:
 	_sum.position = Vector3(0, 2.7, 0)
 	_sum.font_size = 64
 	_sum.outline_size = 14
-	_sum.modulate = Faultprint.CARBON
-	_sum.outline_modulate = Faultprint.BONE
+	_sum.modulate = Faultprint.ui_ink
+	_sum.outline_modulate = Faultprint.ui_paper
 	_sum.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_sum.no_depth_test = true
 	add_child(_sum)

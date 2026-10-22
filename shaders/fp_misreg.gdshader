@@ -10,6 +10,7 @@ uniform float alpha = 0.55;
 uniform vec2 offset_px = vec2(3.0, -2.0);
 uniform float push = 0.01; // how far behind (fraction of the distance to the camera)
 global uniform float fp_soft;
+global uniform float fp_dark;
 
 void vertex() {
 	vec4 view = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
@@ -22,5 +23,5 @@ void vertex() {
 void fragment() {
 	ALBEDO = color.rgb;
 	// Only faces turned toward the camera slip: a grazing face's ghost would land on itself.
-	ALPHA = alpha * mix(1.0, 0.35, fp_soft) * smoothstep(0.6, 0.85, dot(NORMAL, VIEW));
+	ALPHA = alpha * mix(1.0, 0.35, max(fp_soft, fp_dark)) * smoothstep(0.6, 0.85, dot(NORMAL, VIEW));
 }

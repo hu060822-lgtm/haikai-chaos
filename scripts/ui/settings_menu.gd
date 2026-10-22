@@ -79,10 +79,22 @@ func _general() -> Control:
 		Settings.vsync = on
 		Settings.save()
 		Settings.apply_display()))
-	box.add_child(_toggle("柔和畫面（降低刺眼）", Settings.soft_look, func(on: bool) -> void:
-		Settings.soft_look = on
-		Settings.save()
-		Faultprint.set_soft(on)))
+	box.add_child(FpUi.label("畫面風格（介面配色重開遊戲後套用）", 16))
+	var look_row := HBoxContainer.new()
+	box.add_child(look_row)
+	var look_buttons: Array[Button] = []
+	for i in Faultprint.LOOKS.size():
+		var lb := FpUi.button(Faultprint.LOOKS[i], 16)
+		lb.toggle_mode = true
+		lb.button_pressed = Settings.look == i
+		look_buttons.append(lb)
+		look_row.add_child(lb)
+		lb.pressed.connect(func() -> void:
+			Settings.look = i
+			Settings.save()
+			Faultprint.set_look(i)
+			for j in look_buttons.size():
+				look_buttons[j].set_pressed_no_signal(j == i))
 	box.add_child(_toggle("顯示 FPS", Settings.show_fps, func(on: bool) -> void:
 		Settings.show_fps = on
 		Settings.save()))
@@ -161,9 +173,9 @@ func _toggle(text: String, on: bool, changed: Callable) -> CheckButton:
 	c.text = text
 	c.button_pressed = on
 	c.add_theme_font_override("font", FpUi.bold())
-	c.add_theme_color_override("font_color", Faultprint.CARBON)
-	c.add_theme_color_override("font_hover_color", Faultprint.CARBON)
-	c.add_theme_color_override("font_pressed_color", Faultprint.CARBON)
+	c.add_theme_color_override("font_color", Faultprint.ui_ink)
+	c.add_theme_color_override("font_hover_color", Faultprint.ui_ink)
+	c.add_theme_color_override("font_pressed_color", Faultprint.ui_ink)
 	c.focus_mode = Control.FOCUS_NONE
 	c.toggled.connect(changed)
 	return c

@@ -35,9 +35,17 @@ const SURFACE := preload("res://shaders/faultprint.gdshader")
 const OUTLINE := preload("res://shaders/fp_outline.gdshader")
 const MISREG := preload("res://shaders/fp_misreg.gdshader")
 
-# The soft look (Settings.soft_look): a darker paper sky and calmer ink, against glare.
+# Looks (Settings.look): 0 the original light print, 1 soft (darker paper, calmer ink),
+# 2 dark print (dark paper, pale inks). The surfaces switch live through the fp_soft and
+# fp_dark shader globals; the UI colours below are read when a screen is built.
+const LOOKS := ["原版", "柔和", "暗色印刷"]
 const SOFT_PAPER := Color("#C2BBAD")
+const DARK_PAPER := Color("#26272B")
+const PAPERS := [BONE, SOFT_PAPER, DARK_PAPER]
 
+static var ui_ink := CARBON        # UI text, borders
+static var ui_paper := BONE        # UI panels
+static var ui_dust := DUST         # UI preview panels
 static var _cache := {}
 static var _envs: Array[Environment] = []
 
@@ -104,6 +112,8 @@ static func _plate_for(color: Color) -> Color:
 ## Adds a carbon inverted-hull silhouette to every mesh under `node`. Only for things the
 ## player has to pick out at speed (players, bots): the world gets its edges from geometry.
 static func outline(node: Node, width := 0.03, color := CARBON) -> void:
+	if Settings.look == 2 and color == CARBON:
+		color = DUST
 	var m := ShaderMaterial.new()
 	m.shader = OUTLINE
 	m.set_shader_parameter("color", linear(color))
@@ -153,7 +163,7 @@ static func flat(color: Color, through_walls := false) -> StandardMaterial3D:
 static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -> DirectionalLight3D:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = SOFT_PAPER if Settings.soft_look else BONE
+	env.background_color = PAPERS[Settings.look]
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	env.ambient_light_color = Color.BLACK
 	env.ambient_light_energy = 0.0
@@ -180,9 +190,14 @@ static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -
 	return sun
 
 
-## Switches every printed surface between the original and the soft look, live.
-static func set_soft(on: bool) -> void:
-	RenderingServer.global_shader_parameter_set("fp_soft", 1.0 if on else 0.0)
+## Switches every printed surface (live) and the UI palette (for screens built after this).
+static func set_look(look: int) -> void:
+	RenderingServer.global_shader_parameter_set("fp_soft", 1.0 if look == 1 else 0.0)
+	RenderingServer.global_shader_parameter_set("fp_dark", 1.0 if look == 2 else 0.0)
+	var dark := look == 2
+	ui_ink = Color("#E7E0D2") if dark else CARBON
+	ui_paper = Color("#2E3034") if dark else BONE
+	ui_dust = Color("#3E4045") if dark else DUST
 	for e in _envs:
 		if is_instance_valid(e):
-			e.background_color = SOFT_PAPER if on else BONE
+			e.background_color = PAPERS[look]
