@@ -21,26 +21,65 @@ static func ally_color() -> Color:
 	return INFO_SETS[info_set][2]
 
 
-## The default font, heavier and slanted a touch, for headings and numbers.
+## The bundled type (fonts/, SIL OFL): Chakra Petch for Latin and numbers, Barlow Condensed
+## for big HUD numerals, Noto Sans TC for Chinese. Each Latin face falls back to Noto.
+const FONT_FILES := {
+	"latin500": "res://fonts/chakra-petch-latin-500-normal.woff2",
+	"latin600": "res://fonts/chakra-petch-latin-600-normal.woff2",
+	"latin700": "res://fonts/chakra-petch-latin-700-normal.woff2",
+	"num700": "res://fonts/barlow-condensed-latin-700-normal.woff2",
+	"tc500": "res://fonts/NotoSansTC-500.woff2",
+	"tc700": "res://fonts/NotoSansTC-700.woff2",
+}
+
+
+## One face with its Chinese fallback (or Godot's own font if the files aren't there).
+static func _face(latin: String, cjk: String) -> Font:
+	var key := latin + "+" + cjk
+	if _fonts.has(key):
+		return _fonts[key]
+	var font: Font = ThemeDB.fallback_font
+	var base: FontFile = load(FONT_FILES[latin]) if ResourceLoader.exists(FONT_FILES[latin]) else null
+	var tc: FontFile = load(FONT_FILES[cjk]) if ResourceLoader.exists(FONT_FILES[cjk]) else null
+	if base != null:
+		base = base.duplicate()
+		if tc != null:
+			base.fallbacks = [tc]
+		font = base
+	_fonts[key] = font
+	return font
+
+
+## Makes the bundled body face the default for every control (call once at startup).
+static func install() -> void:
+	ThemeDB.fallback_font = body()
+
+
+## Body text: Chakra Petch 500 / Noto Sans TC 500.
+static func body() -> Font:
+	return _face("latin500", "tc500")
+
+
+## Headings and numbers, a touch slanted.
 static func display(size := 1.0) -> Font:
 	var key := "d%s" % size
 	if not _fonts.has(key):
 		var f := FontVariation.new()
-		f.base_font = ThemeDB.fallback_font
-		f.variation_embolden = 0.9 * size
-		f.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.12, 1.0), Vector2.ZERO)
+		f.base_font = _face("latin700", "tc700")
+		f.variation_embolden = 0.15 * size
+		f.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.1, 1.0), Vector2.ZERO)
 		f.spacing_glyph = 1
 		_fonts[key] = f
 	return _fonts[key]
 
 
+## Big HUD numerals (health, ammo, score): tall and condensed.
+static func numerals() -> Font:
+	return _face("num700", "tc700")
+
+
 static func bold() -> Font:
-	if not _fonts.has("b"):
-		var f := FontVariation.new()
-		f.base_font = ThemeDB.fallback_font
-		f.variation_embolden = 0.5
-		_fonts["b"] = f
-	return _fonts["b"]
+	return _face("latin600", "tc700")
 
 
 ## A panel with cut corners (corner_detail 1 turns rounded corners into bevels).

@@ -22,6 +22,12 @@ var bot_spawns: Array[Vector3] = []
 var waypoints: Array[Vector3] = []
 ## The firing range's distance boards (range targets are placed by Main).
 var range_targets: Array[Transform3D] = []
+## Team match: each team's spawn zone centre and spawn points (blue south, red north).
+var team_zones: Array[Vector3] = [Vector3(0, 0, 22.5), Vector3(0, 0, -22.0)]
+var team_spawns: Array = [
+	[Vector3(0, 0.1, 22.5), Vector3(-3, 0.1, 22.5), Vector3(3, 0.1, 22.5), Vector3(-1.5, 0.1, 20.5), Vector3(1.5, 0.1, 20.5)],
+	[Vector3(0, 0.1, -22.5), Vector3(-3, 0.1, -22.5), Vector3(3, 0.1, -22.5), Vector3(-1.5, 0.1, -20.5), Vector3(1.5, 0.1, -20.5)],
+]
 
 
 func _ready() -> void:

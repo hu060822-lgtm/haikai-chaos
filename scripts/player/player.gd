@@ -35,6 +35,7 @@ const CROUCH_HEIGHT := 1.0
 const EYE := 1.62
 const CROUCH_EYE := 0.88
 const WALL_KICKS := 3
+const DASH_CHARGES := 2.0   # ULTRAKILL-style: two dashes back to back, each refills on its own
 const SLAM_SPEED := 30.0
 const SLAM_RADIUS := 5.0
 const SLAM_DAMAGE := 30.0
@@ -120,7 +121,7 @@ var _mantle_t := 0.0
 var _mantle_speed := 0.0
 var _mantle_back := Vector3.ZERO
 var _dash_left := 0.0
-var _dash_charge := 1.0
+var _dash_charge := DASH_CHARGES
 var _dash_dir := Vector3.ZERO
 var _aim := 0.0
 var _slow := 0.0
@@ -171,6 +172,7 @@ func _ready() -> void:
 	_wind = AudioStreamPlayer.new()
 	_wind.stream = Sfx.wind()
 	_wind.volume_db = -60.0
+	_wind.bus = "SFX"
 	add_child(_wind)
 	base_fov = Settings.fov
 	_add_hitboxes()
@@ -252,7 +254,7 @@ func spawn_at(xform: Transform3D) -> void:
 	_coyote = 0.0
 	_slide_cd = 0.0
 	_slide_t = 0.0
-	_dash_charge = 1.0
+	_dash_charge = DASH_CHARGES
 	_kicks = max_kicks()
 	_climbed = false
 	_wall_coyote = 0.0
@@ -353,7 +355,7 @@ func _timers(delta: float) -> void:
 	_wall_ban_t -= delta
 	if _wall_ban_t <= 0.0:
 		_wall_ban = null
-	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), 1.0)
+	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), DASH_CHARGES)
 	_slow = maxf(_slow - delta, 0.0)
 	combat_left = maxf(combat_left - delta, 0.0)
 	marked = maxf(marked - delta, 0.0)
@@ -490,7 +492,7 @@ func _do_free(delta: float, wish: Vector3, on_floor: bool) -> void:
 		if _dash_charge >= 1.0:
 			_start_dash(wish)
 			return
-		_fail("衝刺還在充能（%d%%）" % roundi(_dash_charge * 100.0))
+		_fail("衝刺還在充能（%d%%）" % roundi(fmod(_dash_charge, 1.0) * 100.0))
 	if not on_floor and _want("crouch", true) and _pitch <= deg_to_rad(tune.slam_pitch):
 		if _height_above_ground() >= tune.slam_min_height:
 			_set_move(Move.SLAM, "空中低頭按蹲")
@@ -1040,7 +1042,7 @@ func _do_mantle(delta: float) -> void:
 
 
 func _start_dash(wish: Vector3) -> void:
-	_dash_charge = 0.0
+	_dash_charge -= 1.0
 	var dir := wish if wish != Vector3.ZERO else _look_flat()
 	_dash_dir = dir
 	_dash_left = tune.dash_time
@@ -1174,6 +1176,11 @@ func move_tags() -> Array:
 	return tags
 
 
+## The view's kill punch (CameraFx.kill_punch).
+func kill_punch(strength := 1.0) -> void:
+	_cam.kill_punch(strength)
+
+
 func flat_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
 
@@ -1266,7 +1273,7 @@ func _shoot() -> void:
 				var dmg: float = r.get("damage", 0.0)
 				var key: String = r.target.get("display_name") if r.target.get("display_name") != null else "?"
 				damage_dealt[key] = damage_dealt.get(key, 0.0) + dmg
-				hit_confirmed.emit({"zone": r.get("zone", "body"), "damage": dmg, "target": r.target}, r.get("kill", false))
+				hit_confirmed.emit({"zone": r.get("zone", "body"), "damage": dmg, "target": r.target, "at": r.to}, r.get("kill", false))
 		elif r.to.distance_to(r.from) < float(weapon.stats.range) * 1.39:
 			PrintFx.impact(world, r.to, r.normal, weapon.klass, false)
 	# Recoil: a kick up and a wobble sideways, recovered over time (the gun's ergonomics).
@@ -1370,14 +1377,14 @@ func can_mod() -> bool:
 	return alive and (SafeZone.is_safe(global_position, team) or combat_left <= 0.0)
 
 
-## A kill with a kill_dash gun: the dash is ready again.
+## A kill with a kill_dash gun: both dashes are ready again.
 func refill_dash() -> void:
-	_dash_charge = 1.0
+	_dash_charge = DASH_CHARGES
 
 
 ## Part effects that reach back into the movement (see Weapon "CHAOS 2").
 func add_dash(amount: float) -> void:
-	_dash_charge = minf(_dash_charge + amount, 1.0)
+	_dash_charge = minf(_dash_charge + amount, DASH_CHARGES)
 
 
 func rush(seconds: float) -> void:

@@ -316,4 +316,18 @@ func _test_scoring() -> void:
 	check(int(tm.score_kill("b0", 1, "p2", 555, [])[0]) == 0, "killing a teammate scores nothing")
 	check(int(tm.score_kill("p1", 0, "p1", 555, [])[0]) == 0, "killing yourself scores nothing")
 	check(tm.scores[1] == 0 and tm.scores[0] == 12 + 3 + 4 + 6, "the team score adds up (%s)" % str(tm.scores))
+	# Assists: 25+ damage this life (not the killer, not a teammate) shares the kill.
+	tm.entities = {"p1": {"team": 0, "display_name": "甲"}, "p3": {"team": 0, "display_name": "乙"},
+		"p4": {"team": 0, "display_name": "丙"}, "p2": {"team": 1, "display_name": "丁"}, "b0": {"team": 1, "display_name": "戊"}}
+	tm._dmg_log = {"p2": {"p1": 60.0, "p3": 30.0, "p4": 10.0, "b0": 50.0}}
+	var wire := tm._with_assists("p2", {"attacker_id": "p1"})
+	check(wire.assist_ids == ["p3"], "assists: only the other enemy with 25+ damage (%s)" % str(wire.assist_ids))
+	check(not tm._dmg_log.has("p2"), "the damage log clears on death")
+	tm.stats = {}
+	tm._stat("p1", "points", 7)
+	tm._stat("p1", "kills", 2)
+	tm._stat("p3", "points", 7)
+	tm._stat("p3", "kills", 3)
+	tm._stat("p2", "points", 2)
+	check(str(tm.mvp().get("id", "")) == "p3", "MVP: most points, then most kills (%s)" % str(tm.mvp()))
 	tm.free()

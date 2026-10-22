@@ -17,15 +17,15 @@ extends RefCounted
 
 # --- Ground ---------------------------------------------------------------------------
 var gravity := 21.0              # m/s²
-var run_speed := 7.4             # m/s × mobility
-var sprint_speed := 10.2          # m/s × mobility
+var run_speed := 7.9             # m/s × mobility
+var sprint_speed := 11.0          # m/s × mobility
 var crouch_speed := 3.6          # m/s × mobility
-var ground_accel := 11.0         # Quake units: target speed gained per second (×target)
+var ground_accel := 13.0         # Quake units: target speed gained per second (×target)
 var friction := 7.0              # 1/s (Quake friction)
 var stop_speed := 2.5            # m/s: friction acts as if at least this fast
 var overspeed_drag := 5.0        # m/s²: above target speed, holding a direction along it
 var ground_turn := 300.0         # deg/s: turning while over target speed on the ground
-var land_grace := 0.3           # s: no friction after landing faster than sprint speed
+var land_grace := 0.4           # s: no friction after landing faster than sprint speed
 
 # --- Jump and input windows -----------------------------------------------------------
 var jump_speed := 7.6            # m/s up × sqrt(mobility)
@@ -43,8 +43,8 @@ var air_turn_ref := 9.0          # m/s: above this the turn rate falls as 1/spee
 var air_turn_min := 0.45         # never below this share of air_turn
 var air_turn_max_angle := 115.0  # deg: input further back than this brakes instead
 var air_brake := 6.0             # m/s²
-var air_strafe_gain := 2.0       # m/s²: speed gained while steering (bunny-hop skill)
-var air_strafe_cap := 14.0       # m/s × mobility: no strafe gain above this
+var air_strafe_gain := 3.0       # m/s²: speed gained while steering (bunny-hop skill)
+var air_strafe_cap := 17.0       # m/s × mobility: no strafe gain above this
 var air_soft_cap := 24.0         # m/s: above this the excess bleeds
 var air_soft_drag := 0.6         # 1/s on the excess
 var hard_cap := 40.0             # m/s: safety only
@@ -52,9 +52,9 @@ var hard_cap := 40.0             # m/s: safety only
 # --- Slide ----------------------------------------------------------------------------
 var slide_min := 6.8             # m/s × mobility to start a slide on the ground
 var slide_land_min := 6.0        # m/s × mobility to land into a slide
-var slide_boost := 3.6           # m/s × mobility, once per slide_cooldown
+var slide_boost := 4.2           # m/s × mobility, once per slide_cooldown
 var slide_boost_fade := 19.0     # m/s: entry speed where the boost has faded to 0
-var slide_cooldown := 1.2        # s: between boosts (sliding itself is always allowed)
+var slide_cooldown := 0.9        # s: between boosts (sliding itself is always allowed)
 var slide_decel := 1.0           # m/s²
 var slide_friction := 0.1       # 1/s
 var slide_settle := 1.6          # s: after this, the slide winds down
@@ -107,6 +107,6 @@ var mantle_max := 2.3            # m
 var mantle_time := 0.18          # s
 var mantle_exit := 6.0           # m/s × mobility, at least
 var mantle_keep := 0.85          # share of the speed you came in with
-var dash_speed := 17.0           # m/s × mobility
+var dash_speed := 19.0           # m/s × mobility
 var dash_time := 0.15            # s
-var dash_recharge := 3.2         # s ÷ mobility
+var dash_recharge := 2.6         # s ÷ mobility, per charge (Player.DASH_CHARGES)

@@ -1,6 +1,7 @@
 class_name TeamMatch
 extends Node
-## 改版死鬥 PATCH WAR: C2's team mode, over the network. Two teams on FOLDED WORKS; the
+## 改版死鬥 PATCH WAR: C2's team mode, over the network. Two teams on a team map (FOLDED
+## WORKS or DREAM HOME: the map gives each team's zone and spawn points); the
 ## host fills empty slots with bots. First team to the score limit (or ahead when time
 ## runs out) wins. What makes it its own mode is how kills score, all of it about the
 ## gun-modding pillar:
@@ -33,12 +34,9 @@ const STYLE_BONUS := 1
 const META_KILLS := 4
 const META_BONUS := 3
 const BOT_DAMAGE := 0.7
+const ASSIST_DAMAGE := 25.0   # damage on a victim that makes you share the kill (+1 personal)
+const MAX_HIT := 600.0        # one hit over this is a bad packet, not a gun
 const LOAD_TIMEOUT := 8.0
-const ZONES := [Vector3(0, 0, 22.5), Vector3(0, 0, -22.0)]
-const SPAWNS := [
-	[Vector3(0, 0.1, 22.5), Vector3(-3, 0.1, 22.5), Vector3(3, 0.1, 22.5), Vector3(-1.5, 0.1, 20.5), Vector3(1.5, 0.1, 20.5)],
-	[Vector3(0, 0.1, -22.5), Vector3(-3, 0.1, -22.5), Vector3(3, 0.1, -22.5), Vector3(-1.5, 0.1, -20.5), Vector3(1.5, 0.1, -20.5)],
-]
 const BOT_NAMES := ["灰板", "模具", "套色", "網點", "鉚釘", "楔形", "印版", "斷層", "鋼架", "骨白"]
 
 var main: Main
@@ -56,6 +54,9 @@ var meta_gun := ""
 var bots_passive := false
 var my_id := ""
 var versions := {}        # id -> version of the gun it carries
+## id -> {kills, deaths, points} for the scoreboard (kills and deaths counted on every
+## machine from the death messages; points from the host's score messages).
+var stats := {}
 var _version_kills := {}  # version -> kills in this match
 var _fresh := {}          # "killer|version" -> kills
 var _send_t := 0.0
@@ -64,6 +65,7 @@ var _wait := 0.0
 var _dead_for := 0.0
 var _respawn_queued := false
 var _bot_seed := 17
+var _dmg_log := {}        # victim id -> {attacker id: damage}, on the victim's owner, cleared on death
 
 
 func _init() -> void:
@@ -81,7 +83,7 @@ func _ready() -> void:
 	SafeZone.clear()
 	SafeZone.repel = true
 	for t in 2:
-		SafeZone.add(ZONES[t], ZONE_RADIUS, t)
+		SafeZone.add(main.map.team_zones[t], ZONE_RADIUS, t)
 	SafeZone.draw(main.map, player.team)
 	player.died.connect(_on_local_died)
 	player.shot_traced.connect(func(from: Vector3, tos: PackedVector3Array) -> void: _send_fx(my_id, tos))
@@ -103,7 +105,7 @@ func _ready() -> void:
 
 
 func spawn_point(team: int, index := -1) -> Transform3D:
-	var points: Array = SPAWNS[team]
+	var points: Array = main.map.team_spawns[team]
 	var at: Vector3 = points[index % points.size()] if index >= 0 else points[randi() % points.size()]
 	return Transform3D(Basis(Vector3.UP, 0.0 if team == 0 else PI), at)
 
@@ -300,6 +302,16 @@ func send_hit(victim_id: String, info: Dictionary) -> void:
 func _hit(victim_id: String, wire: Dictionary) -> void:
 	if owner_of(victim_id) != net.my_id():
 		return
+	# Only the machine that owns the shooter may say it hit: no hits forged in someone
+	# else's name, none from teammates, none past any gun's damage. A dead shooter's last bullets still count (trades).
+	var attacker_id := str(wire.get("attacker_id", ""))
+	if owner_of(attacker_id) != multiplayer.get_remote_sender_id():
+		return
+	var shooter = entities.get(attacker_id)
+	if shooter == null or team_of(attacker_id) == team_of(victim_id):
+		return
+	if float(wire.get("damage", 0.0)) > MAX_HIT:
+		return
 	_apply_hit(victim_id, wire)
 
 
@@ -307,6 +319,11 @@ func _apply_hit(victim_id: String, wire: Dictionary) -> void:
 	var v = entities.get(victim_id)
 	if v == null or v is Avatar or not v.alive:
 		return
+	var attacker_id := str(wire.get("attacker_id", ""))
+	if attacker_id != "" and attacker_id != victim_id:
+		var dealt: Dictionary = _dmg_log.get(victim_id, {})
+		dealt[attacker_id] = float(dealt.get(attacker_id, 0.0)) + float(wire.get("damage", 0.0))
+		_dmg_log[victim_id] = dealt
 	v.take_hit(from_wire(wire))
 
 
@@ -333,11 +350,11 @@ func from_wire(wire: Dictionary) -> Dictionary:
 func _on_local_died(info: Dictionary) -> void:
 	_dead_for = 0.0
 	_respawn_queued = false
-	_died.rpc(my_id, to_wire(info))
+	_died.rpc(my_id, _with_assists(my_id, to_wire(info)))
 
 
 func _on_bot_died(bot: Bot, info: Dictionary) -> void:
-	_died.rpc(bot.id, to_wire(info))
+	_died.rpc(bot.id, _with_assists(bot.id, to_wire(info)))
 	get_tree().create_timer(RESPAWN).timeout.connect(func() -> void:
 		if over or not is_instance_valid(bot):
 			return
@@ -349,6 +366,19 @@ func _on_bot_died(bot: Bot, info: Dictionary) -> void:
 		bot.passive = bots_passive
 		versions[bot.id] = bot.weapon.version
 		_spawned.rpc(bot.id, xf.origin, bot.rotation.y, bot.weapon.build, bot.weapon.name))
+
+
+## Everyone (but the killer) who did ASSIST_DAMAGE to the victim this life shares the kill.
+func _with_assists(victim_id: String, wire: Dictionary) -> Dictionary:
+	var killer := str(wire.get("attacker_id", ""))
+	var helpers := []
+	var dealt: Dictionary = _dmg_log.get(victim_id, {})
+	for id in dealt:
+		if id != killer and float(dealt[id]) >= ASSIST_DAMAGE and team_of(id) != team_of(victim_id):
+			helpers.append(id)
+	_dmg_log.erase(victim_id)
+	wire.assist_ids = helpers
+	return wire
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -374,8 +404,24 @@ func _died(victim_id: String, wire: Dictionary) -> void:
 		wire.get("build", {}), tags, _name_of(victim_id), 0 if victim_team == player.team else 1, involves_you)
 	if killer_id == my_id and victim_id != my_id:
 		main.hud.kills += 1
+	_stat(victim_id, "deaths", 1)
+	if killer_id != "" and killer_id != victim_id and team_of(killer_id) != victim_team:
+		_stat(killer_id, "kills", 1)
+		for helper in wire.get("assist_ids", []):
+			_stat(str(helper), "assists", 1)
+			_stat(str(helper), "points", 1)
+			if str(helper) == my_id:
+				main.hud.callout("助攻", "%s　+1" % _name_of(victim_id), Counterform.DUST_WHITE)
 	if net.is_host():
 		_score_kill(victim_id, wire)
+
+
+func _stat(id: String, key: String, amount: int) -> void:
+	if id == "":
+		return
+	if not stats.has(id):
+		stats[id] = {"kills": 0, "deaths": 0, "assists": 0, "points": 0}
+	stats[id][key] = int(stats[id][key]) + amount
 
 
 func team_of(id: String) -> int:
@@ -469,7 +515,7 @@ func _score_kill(victim_id: String, wire: Dictionary) -> void:
 	if int(_version_kills.get(version, 0)) >= META_KILLS and version != meta_version:
 		new_meta = version
 		new_gun = str(wire.get("gun_name", "?"))
-	_score.rpc(scores, new_meta, new_gun, killer_id, str(result[1]))
+	_score.rpc(scores, new_meta, new_gun, killer_id, int(result[0]), str(result[1]))
 	var limit := int(NetSession.config.get("score", 50))
 	for t in 2:
 		if scores[t] >= limit and not over:
@@ -477,14 +523,15 @@ func _score_kill(victim_id: String, wire: Dictionary) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func _score(new_scores: Array, meta: int, gun: String, scorer_id: String, note: String) -> void:
+func _score(new_scores: Array, meta: int, gun: String, scorer_id: String, points: int, note: String) -> void:
 	scores = new_scores
+	_stat(scorer_id, "points", points)
+	if scorer_id == my_id:
+		main.hud.callout("+%d" % points, note, Counterform.SULFUR)
 	if meta != meta_version:
 		meta_version = meta
 		meta_gun = gun
 		main.hud.show_hint("新的版本答案：「%s」。拿著它的人，所有人都看得到" % gun, 5.0)
-	elif scorer_id == my_id:
-		main.hud.show_hint(note, 2.0)
 	score_changed.emit()
 
 
@@ -499,6 +546,21 @@ func _end(winner: int, final: Array) -> void:
 	main.show_results(winner, final, player.team)
 	if net.is_host():
 		get_tree().create_timer(10.0).timeout.connect(net.end_match)
+
+
+## The match's best player by personal points (kills, then fewer deaths break ties):
+## {id, name, points, kills, deaths, assists}, or {} before anyone has a stat.
+func mvp() -> Dictionary:
+	var best := {}
+	for id in stats:
+		if not entities.has(id):
+			continue
+		var s: Dictionary = stats[id]
+		var key := int(s.points) * 10000 + int(s.kills) * 100 - int(s.deaths)
+		if best.is_empty() or key > int(best.key):
+			best = {"key": key, "id": id, "name": _name_of(id), "points": int(s.points), "kills": int(s.kills),
+				"deaths": int(s.deaths), "assists": int(s.get("assists", 0))}
+	return best
 
 
 ## The score line for the HUD: "藍隊 23 ： 31 紅隊　7:12".

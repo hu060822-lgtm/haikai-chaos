@@ -23,6 +23,8 @@ var shake := Vector2.ZERO
 var _pitch := Spring.new(170.0, 22.0)
 var _height := Spring.new(140.0, 20.0)
 var _roll := Spring.new(120.0, 18.0)
+var _zoom := Spring.new(260.0, 20.0)
+var _fov_smooth := 0.0
 var _roll_smooth := 0.0
 var _shake_left := 0.0
 var _shake_amount := 0.0
@@ -75,6 +77,12 @@ func hurt(side: float) -> void:
 	_roll.kick(-0.35 * side)
 
 
+## A kill: the view punches in a few degrees and springs back (the "impact frame").
+func kill_punch(strength := 1.0) -> void:
+	_zoom.kick(-60.0 * strength)
+	_pitch.kick(0.12 * strength)
+
+
 func slam() -> void:
 	_height.kick(-3.0)
 	_shake_left = 0.3
@@ -87,7 +95,8 @@ func update(delta: float, roll_target: float, fov_target: float, aim: float) -> 
 	var k := intensity() * lerpf(1.0, 0.35, aim)
 	_roll_smooth = lerpf(_roll_smooth, roll_target, 1.0 - exp(-7.0 * delta))
 	roll = (_roll_smooth + _roll.step(delta)) * k
-	fov = lerpf(fov, fov_target * k, 1.0 - exp(-6.0 * delta))
+	_fov_smooth = lerpf(_fov_smooth, fov_target * k, 1.0 - exp(-6.0 * delta))
+	fov = _fov_smooth + _zoom.step(delta) * intensity()
 	pitch = _pitch.step(delta) * k
 	height = _height.step(delta) * k
 	_shake_left = maxf(_shake_left - delta, 0.0)
