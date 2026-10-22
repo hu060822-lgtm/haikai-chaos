@@ -1,0 +1,16 @@
+{
+  "name": "haikai-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node node_server.js",
+    "test": "node test.js",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

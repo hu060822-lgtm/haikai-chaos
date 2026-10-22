@@ -13,6 +13,7 @@ static var ink_lines := true    # outlines on every edge
 static var pixels := 0          # Faultprint.PIXEL_SIZES index: chunky low-res pixels
 static var music_vol := 0.7     # 0..1
 static var sfx_vol := 1.0
+static var relay_url := ""      # the relay server (wss://…); empty = the built-in one
 static var look := 3            # Faultprint.LOOKS: 0-2 the print looks, 3 Counterform (official)
 static var _loaded := false
 
@@ -32,6 +33,7 @@ static func load_all() -> void:
 		look = clampi(int(cfg.get_value("game", "look_v2", look)), 0, 3)
 		music_vol = clampf(float(cfg.get_value("audio", "music", music_vol)), 0.0, 1.0)
 		sfx_vol = clampf(float(cfg.get_value("audio", "sfx", sfx_vol)), 0.0, 1.0)
+		relay_url = str(cfg.get_value("net", "relay", relay_url))
 	CameraFx.load_settings()
 	apply_display()
 
@@ -48,6 +50,7 @@ static func save() -> void:
 	cfg.set_value("game", "pixels", pixels)
 	cfg.set_value("audio", "music", music_vol)
 	cfg.set_value("audio", "sfx", sfx_vol)
+	cfg.set_value("net", "relay", relay_url)
 	cfg.save(FILE)
 
 

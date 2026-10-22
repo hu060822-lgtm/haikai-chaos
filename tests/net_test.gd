@@ -4,7 +4,9 @@ extends SceneTree
 ## the lobby, starts 改版死鬥, and checks its side: the other player shows up and moves,
 ## a hit decided by the host lands on the client, the kill scores on the host and the
 ## score reaches the client, the client respawns, and the match ends back in the lobby.
-##   godot --headless --path . --script res://tests/net_test.gd -- host|client [port]
+##   godot --headless --path . --script res://tests/net_test.gd -- host|client [port] [--relay=ws://…]
+## With --relay the two meet on a relay server (relay/node_server.js) instead of ENet: the
+## host writes its room code to a file the client reads.
 
 const TIMEOUT := 40.0
 
@@ -72,9 +74,22 @@ func _quiet_bots() -> void:
 		b.passive = true
 
 
+func _code_file() -> String:
+	return OS.get_cache_dir().path_join("haikai_relay_code_%d" % port)
+
+
 func _host() -> void:
 	var m := main()
-	check(m.net.host(port) == OK, "opened a room on port %d" % port)
+	if Matchmaker.has_relay():
+		DirAccess.remove_absolute(_code_file())
+		check(m.net.host_relay() == OK, "opened a room on the relay")
+		var coded := await _until(func() -> bool: return NetSession.room_code.length() == 5, 8.0)
+		check(coded, "the relay gave the room a code (%s)" % NetSession.room_code)
+		var f := FileAccess.open(_code_file(), FileAccess.WRITE)
+		f.store_string(NetSession.room_code)
+		f.close()
+	else:
+		check(m.net.host(port) == OK, "opened a room on port %d" % port)
 	var joined := await _until(func() -> bool: return NetSession.roster.size() == 2, 15.0)
 	check(joined, "the client joined the lobby (roster %s)" % str(NetSession.roster))
 	if not joined:
@@ -139,7 +154,13 @@ func _host() -> void:
 
 func _client() -> void:
 	var m := main()
-	var ok := await _until(func() -> bool: return m.net.join("127.0.0.1", port) == OK and true, 1.0)
+	var ok := false
+	if Matchmaker.has_relay():
+		var have := await _until(func() -> bool: return FileAccess.file_exists(_code_file()), 15.0)
+		var code := FileAccess.get_file_as_string(_code_file()) if have else ""
+		ok = have and m.net.join_code(code) == OK
+	else:
+		ok = await _until(func() -> bool: return m.net.join("127.0.0.1", port) == OK and true, 1.0)
 	var joined := await _until(func() -> bool: return NetSession.roster.size() == 2, 15.0)
 	check(ok and joined, "joined the host's lobby")
 	if not joined:

@@ -30,6 +30,8 @@ var _mm_status: Label
 var _mm_ring: SearchRing
 var _mm_t := 0.0
 var _mm_state := ""      # "", "search", "joining", "hosting"
+var _relay_state := ""   # quick match: "", "asking", "ok", "down"
+var _list_t := 0.0
 
 
 func _init() -> void:
@@ -50,6 +52,9 @@ func _ready() -> void:
 	add_child(_top_bar())
 	show_page("home")
 	net.matchmaker.rooms_changed.connect(_fill_rooms)
+	net.matchmaker.relay_listed.connect(func(ok: bool) -> void:
+		if _relay_state == "asking":
+			_relay_state = "ok" if ok else "down")
 	net.roster_changed.connect(_on_roster)
 	net.status_changed.connect(func(t: String) -> void:
 		if _custom_status:
@@ -64,6 +69,8 @@ func show_page(id: String) -> void:
 		_pages[k].visible = k == id
 	if id == "custom":
 		net.matchmaker.listen()
+		net.matchmaker.list_relay()
+		_list_t = 4.0
 		_fill_rooms()
 	elif id != "search":
 		net.matchmaker.stop_listening()
@@ -273,16 +280,25 @@ func _custom() -> Control:
 	mk.add_theme_constant_override("separation", 10)
 	make.add_child(mk)
 	mk.add_child(FpUi.label("開一間房", 24, Counterform.DUST_WHITE, FpUi.display()))
-	var mk_note := FpUi.label("開好後會給你房間碼，傳給朋友就能加入。區網裡的人也會自動看到你的房間。", 15,
+	var mk_note := FpUi.label(("開好後會給你五個字的房間碼，朋友在任何網路都能用它加入，不用設定路由器。" if Matchmaker.has_relay()
+		else "開好後會給你房間碼，傳給朋友就能加入。區網裡的人也會自動看到你的房間。"), 15,
 		Color(Counterform.DUST_WHITE, 0.7), FpUi.body())
 	mk_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mk_note.custom_minimum_size = Vector2(300, 0)
 	mk.add_child(mk_note)
 	var host := action("開房")
 	host.pressed.connect(func() -> void:
-		if net.host() == OK:
+		var err := net.host_relay() if Matchmaker.has_relay() else net.host()
+		if err == OK:
 			_enter_lobby())
 	mk.add_child(host)
+	if Matchmaker.has_relay():
+		var lan_host := action("只在區網開房", false, 15)
+		lan_host.tooltip_text = "不經過中繼伺服器：延遲最低，但只有同一個網路（或虛擬區網）的人能加入"
+		lan_host.pressed.connect(func() -> void:
+			if net.host() == OK:
+				_enter_lobby())
+		mk.add_child(lan_host)
 	# Join by code.
 	var join := card()
 	join.custom_minimum_size = Vector2(340, 250)
@@ -292,7 +308,7 @@ func _custom() -> Control:
 	join.add_child(jn)
 	jn.add_child(FpUi.label("用房間碼加入", 24, Counterform.DUST_WHITE, FpUi.display()))
 	_code_edit = LineEdit.new()
-	_code_edit.placeholder_text = "XXXXX-XXXXX"
+	_code_edit.placeholder_text = "XXXXX"
 	_code_edit.custom_minimum_size = Vector2(300, 52)
 	_code_edit.add_theme_font_override("font", FpUi.numerals())
 	_code_edit.add_theme_font_size_override("font_size", 32)
@@ -306,7 +322,7 @@ func _custom() -> Control:
 		else:
 			net.join_code(code))
 	jn.add_child(go)
-	var ip_note := FpUi.label("也可以直接輸入 IP（例如 192.168.1.20）", 13, Color(Counterform.DUST_WHITE, 0.5), FpUi.body())
+	var ip_note := FpUi.label("五個字＝中繼房間；十個字＝區網房間；也可以直接輸入 IP", 13, Color(Counterform.DUST_WHITE, 0.5), FpUi.body())
 	jn.add_child(ip_note)
 	# LAN rooms.
 	var lan := card()
@@ -315,7 +331,7 @@ func _custom() -> Control:
 	var ln := VBoxContainer.new()
 	ln.add_theme_constant_override("separation", 8)
 	lan.add_child(ln)
-	ln.add_child(FpUi.label("區網裡的房間", 24, Counterform.DUST_WHITE, FpUi.display()))
+	ln.add_child(FpUi.label("開著的房間", 24, Counterform.DUST_WHITE, FpUi.display()))
 	_rooms_box = VBoxContainer.new()
 	_rooms_box.add_theme_constant_override("separation", 6)
 	ln.add_child(_rooms_box)
@@ -335,23 +351,33 @@ func _fill_rooms() -> void:
 		return
 	for c in _rooms_box.get_children():
 		c.queue_free()
-	if net.matchmaker.rooms.is_empty():
-		_rooms_box.add_child(FpUi.label("找不到……（同一個網路裡有人開房就會出現在這裡）", 15, Color(Counterform.DUST_WHITE, 0.5), FpUi.body()))
+	var all: Array = net.matchmaker.rooms.values() + net.matchmaker.relay_rooms.values()
+	if all.is_empty():
+		_rooms_box.add_child(FpUi.label("找不到……（有人開房就會出現在這裡）", 15, Color(Counterform.DUST_WHITE, 0.5), FpUi.body()))
 		return
-	for key in net.matchmaker.rooms:
-		var r: Dictionary = net.matchmaker.rooms[key]
+	var shown := {}
+	for r in all:
+		# A relay room also beacons on its LAN: list it once.
+		var key := str(r.get("code", "")) if r.get("relay", false) else "%s:%s" % [r.get("ip", ""), r.get("port", "")]
+		if shown.has(key):
+			continue
+		shown[key] = true
 		var line := HBoxContainer.new()
 		line.add_theme_constant_override("separation", 10)
 		var map_name: String = NetSession.MAPS.get(str(r.get("map", "folded")), "?")
-		var text := "%s 的房間　%d/%d　%s%s" % [r.get("name", "?"), int(r.get("players", 0)), int(r.get("max", 10)), map_name,
-			"　對戰中" if r.get("in_match", false) else ""]
+		var text := "%s 的房間　%d/%d　%s%s　%s" % [r.get("name", "?"), int(r.get("players", 0)), int(r.get("max", 10)), map_name,
+			"　對戰中" if r.get("in_match", false) else "", "網路" if r.get("relay", false) else "區網"]
 		var l := FpUi.label(text, 16, Counterform.DUST_WHITE, FpUi.bold())
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(l)
 		var b := action("加入", false, 15)
-		var ip: String = r.ip
-		var port := int(r.get("port", NetSession.PORT))
-		b.pressed.connect(func() -> void: net.join(ip, port))
+		if r.get("relay", false):
+			var code := str(r.code)
+			b.pressed.connect(func() -> void: net.join_relay(code))
+		else:
+			var ip: String = r.ip
+			var port := int(r.get("port", NetSession.PORT))
+			b.pressed.connect(func() -> void: net.join(ip, port))
 		line.add_child(b)
 		_rooms_box.add_child(line)
 
@@ -392,11 +418,15 @@ func _quick_match() -> void:
 	_mm_state = "search"
 	_mm_t = 0.0
 	_mm_title.text = "搜尋對戰中"
+	_relay_state = ""
+	if Matchmaker.has_relay():
+		_relay_state = "asking"
+		net.matchmaker.list_relay()
 	if not net.matchmaker.listen():
 		_mm_status.text = "這台電腦上已經有遊戲在找房：直接開一間"
 		_mm_t = Matchmaker.SEARCH
 	else:
-		_mm_status.text = "正在區網裡找開著的房間…"
+		_mm_status.text = "正在找開著的房間（區網和網路）…" if _relay_state != "" else "正在區網裡找開著的房間…"
 
 
 func _cancel_search() -> void:
@@ -408,24 +438,34 @@ func _cancel_search() -> void:
 
 
 func _process(delta: float) -> void:
+	if _page == "custom" and visible:
+		_list_t -= delta
+		if _list_t <= 0.0:
+			_list_t = 4.0
+			net.matchmaker.list_relay()
 	if _mm_state == "" or not visible:
 		return
 	_mm_t += delta
 	_mm_ring.t = _mm_t
 	if _mm_state == "search":
 		_mm_title.text = "搜尋對戰中　%d:%02d" % [int(_mm_t) / 60, int(_mm_t) % 60]
-		if _mm_t >= Matchmaker.SEARCH:
+		if _mm_t >= Matchmaker.SEARCH and _relay_state != "asking":
 			var best := net.matchmaker.best_room()
 			net.matchmaker.stop_listening()
 			if not best.is_empty():
 				_mm_state = "joining"
 				_mm_title.text = "找到了：%s 的房間" % best.get("name", "?")
-				net.join(str(best.ip), int(best.get("port", NetSession.PORT)))
+				if best.get("relay", false):
+					net.join_relay(str(best.code))
+				else:
+					net.join(str(best.ip), int(best.get("port", NetSession.PORT)))
 			else:
 				_mm_state = "hosting"
-				if net.host() == OK:
+				# Host where others can find us: on the relay when it answered, else the LAN.
+				var err := net.host_relay() if _relay_state == "ok" else net.host()
+				if err == OK:
 					_enter_lobby()
-					lobby.flash("沒有找到開著的房間：已經幫你開了一間。區網裡按「開始配對」的人會自動加入；也可以直接補機器人開打")
+					lobby.flash("沒有找到開著的房間：已經幫你開了一間。之後按「開始配對」的人會自動加入；也可以直接補機器人開打")
 				else:
 					_mm_state = ""
 					_mm_status.text = "開房失敗：%s" % NetSession.last_status

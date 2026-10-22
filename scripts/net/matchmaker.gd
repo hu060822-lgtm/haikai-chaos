@@ -8,17 +8,22 @@ extends Node
 ##                to this machine); listen() collects the rooms it hears in `rooms`.
 ##   quick match  search for SEARCH seconds, join the best open room, else open one and
 ##                wait (others' quick match finds you).
+##   relay        (C4) rooms on the relay server (relay/, RelayPeer): five-letter codes that
+##                work from any network, and a list of open rooms for quick match.
 ##   internet     open_internet() asks the router (UPnP) to forward the game port and
-##                returns the public code, so friends outside the LAN can join by code.
+##                returns the public code: the fallback when there's no relay.
 ##
-## No server of ours is involved: everything is peer to peer.
+## LAN play is peer to peer; the relay only forwards packets.
 
 signal rooms_changed()
 signal internet_done(ok: bool, code: String, message: String)
+signal relay_listed(ok: bool)
 
 const BEACON_PORT := 24681
 const GAME_ID := "HAIKAI_CHAOS"
-const PROTOCOL := 2
+const PROTOCOL := 3
+## The relay this build uses unless the settings name another (see relay/README.md).
+const DEFAULT_RELAY := ""
 const SEARCH := 2.5
 const FORGET := 3.5
 ## Crockford base32: no I, L, O, U, so codes survive being read aloud or retyped.
@@ -31,6 +36,10 @@ var _send: PacketPeerUDP
 var _beacon_t := 0.0
 var _announce: Callable
 var _upnp_thread: Thread
+## The relay's open rooms from the last list(): code -> {code, name, players, max, map, in_match}
+var relay_rooms := {}
+var _list_ws: WebSocketPeer
+var _list_until := 0
 
 
 func _init() -> void:
@@ -95,6 +104,58 @@ static func _is_172_private(a: String) -> bool:
 	return second >= 16 and second <= 31
 
 
+# --- Relay -------------------------------------------------------------------------
+
+## The relay server to use: the settings, a --relay=URL launch argument, or the default.
+static func relay_url() -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--relay="):
+			return a.substr(8)
+	if Settings.relay_url.strip_edges() != "":
+		return Settings.relay_url.strip_edges()
+	return DEFAULT_RELAY
+
+
+static func has_relay() -> bool:
+	return relay_url() != ""
+
+
+## Asks the relay for its open rooms; relay_listed(ok) when the answer (or a timeout) comes.
+func list_relay() -> void:
+	if not has_relay() or _list_ws != null:
+		return
+	_list_ws = WebSocketPeer.new()
+	if _list_ws.connect_to_url(relay_url()) != OK:
+		_list_ws = null
+		relay_listed.emit(false)
+		return
+	_list_until = Time.get_ticks_msec() + 4000
+
+
+func _poll_list() -> void:
+	_list_ws.poll()
+	var state := _list_ws.get_ready_state()
+	if state == WebSocketPeer.STATE_OPEN and _list_until > 0:
+		_list_ws.send_text(JSON.stringify({"op": "list", "game": GAME_ID, "proto": PROTOCOL}))
+		_list_until = -(Time.get_ticks_msec() + 4000)
+	while _list_ws.get_available_packet_count() > 0:
+		var msg = JSON.parse_string(_list_ws.get_packet().get_string_from_utf8())
+		if msg is Dictionary and msg.get("op") == "rooms":
+			relay_rooms.clear()
+			for r in msg.get("rooms", []):
+				r.relay = true
+				relay_rooms[str(r.code)] = r
+			_list_ws.close()
+			_list_ws = null
+			relay_listed.emit(true)
+			rooms_changed.emit()
+			return
+	if state == WebSocketPeer.STATE_CLOSED or Time.get_ticks_msec() > absi(_list_until):
+		_list_ws.close()
+		_list_ws = null
+		relay_listed.emit(false)
+
+
 # --- LAN beacon ------------------------------------------------------------------------
 
 ## Starts announcing: `info` is called each second for the room's details.
@@ -129,6 +190,8 @@ func stop_listening() -> void:
 
 
 func _process(delta: float) -> void:
+	if _list_ws != null:
+		_poll_list()
 	if _announce.is_valid():
 		_beacon_t -= delta
 		if _beacon_t <= 0.0:
@@ -164,15 +227,15 @@ func _process(delta: float) -> void:
 			rooms_changed.emit()
 
 
-## The open room quick match should join: not full, not mid-match first, most players.
+## The open room quick match should join: not full, not mid-match first, most players;
+## a LAN room beats a relay room (lower ping).
 func best_room() -> Dictionary:
 	var best := {}
 	var best_score := -1.0
-	for key in rooms:
-		var r: Dictionary = rooms[key]
+	for r in rooms.values() + relay_rooms.values():
 		if int(r.get("players", 0)) >= int(r.get("max", 10)):
 			continue
-		var score := float(r.get("players", 0)) + (0.0 if r.get("in_match", false) else 100.0)
+		var score := float(r.get("players", 0)) + (0.0 if r.get("in_match", false) else 100.0) + (0.0 if r.get("relay", false) else 50.0)
 		if score > best_score:
 			best_score = score
 			best = r

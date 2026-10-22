@@ -19,5 +19,12 @@ done
 # Netplay: a host and a client process, then a host alone with live bots.
 "$(dirname "$0")/net_test.sh" "$GODOT" 24687 || status=1
 run --path . --script res://tests/net_test.gd -- solo 24690
+# The relay server (C4): its protocol test, then the same host + client match through it.
+if command -v node > /dev/null && [ -d relay/node_modules ]; then
+	(cd relay && node test.js) | grep -E "^  (ok|FAIL)|TESTS" || status=1
+	"$(dirname "$0")/net_test.sh" "$GODOT" 24692 relay | grep -E "TESTS|FAIL" || status=1
+else
+	echo "relay tests skipped (need node and npm install in relay/)"
+fi
 echo "ALL: $([ $status -eq 0 ] && echo PASS || echo FAILED)"
 exit $status

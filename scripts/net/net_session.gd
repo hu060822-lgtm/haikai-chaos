@@ -1,6 +1,10 @@
 class_name NetSession
 extends Node
-## Netplay (C2): one player hosts (ENet, UDP port PORT), up to 9 others join by IP. This
+## Netplay (C2): one player hosts, up to 9 others join. Two ways to connect (C4):
+##   relay   (default when a relay server is set) through the relay server: a five-letter
+##           room code that works from any network, nothing to set up (RelayPeer)
+##   LAN     ENet on UDP port PORT: the LAN, a virtual LAN, or UPnP (Matchmaker)
+## This
 ## node ("Net" under Main, the same path on every machine) runs the lobby: who is in,
 ## which team, the match settings, and the start. The connection and the lobby live in
 ## static vars, so they survive the scene reload into (and out of) a match.
@@ -24,8 +28,10 @@ static var roster := {}
 static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded"}
 ## Maps a team match can be played on (id -> name); "random" picks one at the start.
 const MAPS := {"folded": "折疊工廠", "dream": "夢核之家", "random": "隨機"}
-## The room's code (LAN address) and, once UPnP worked, its internet code.
+## The room's code (relay code, or the LAN address) and, once UPnP worked, its internet code.
 static var room_code := ""
+## True when this session goes through the relay server.
+static var relay := false
 static var internet_code := ""
 static var my_name := ""
 static var in_match := false
@@ -46,6 +52,9 @@ func _ready() -> void:
 	multiplayer.connected_to_server.connect(_on_connected)
 	multiplayer.connection_failed.connect(_on_failed)
 	multiplayer.server_disconnected.connect(_on_server_gone)
+	var rp := multiplayer.multiplayer_peer as RelayPeer
+	if rp != null:
+		_watch_relay(rp)
 	if my_name == "":
 		my_name = "玩家%02d" % (randi() % 100)
 
@@ -62,6 +71,74 @@ func my_team() -> int:
 	return int(roster.get(my_id(), {}).get("team", 0))
 
 
+## Opens a room on the relay server (the code arrives a moment later; see `room_code`).
+func host_relay() -> Error:
+	var peer := RelayPeer.new()
+	roster = {1: {"name": my_name, "team": 0, "ready": true}}
+	var err := peer.create_host(Matchmaker.relay_url(), _room_info())
+	if err != OK:
+		_status("連不到中繼伺服器")
+		roster = {}
+		return err
+	multiplayer.multiplayer_peer = peer
+	_watch_relay(peer)
+	active = true
+	relay = true
+	in_match = false
+	room_code = ""
+	internet_code = ""
+	matchmaker.announce(_room_info)
+	_status("正在中繼伺服器上開房…")
+	roster_changed.emit()
+	return OK
+
+
+## Joins room `code` on the relay server.
+func join_relay(code: String) -> Error:
+	var peer := RelayPeer.new()
+	var err := peer.create_client(Matchmaker.relay_url(), code, my_name)
+	if err != OK:
+		_status("連不到中繼伺服器")
+		return err
+	multiplayer.multiplayer_peer = peer
+	_watch_relay(peer)
+	active = true
+	relay = true
+	in_match = false
+	roster = {}
+	room_code = code.strip_edges().to_upper()
+	_status("透過中繼伺服器加入 %s…" % room_code)
+	return OK
+
+
+func _watch_relay(peer: RelayPeer) -> void:
+	if not peer.hosted.is_connected(_on_relay_hosted):
+		peer.hosted.connect(_on_relay_hosted)
+		peer.relay_error.connect(_on_relay_error)
+
+
+func _on_relay_hosted(code: String) -> void:
+	room_code = code
+	_status("已開房：房間碼 %s（任何網路都能加入）" % code)
+	roster_changed.emit()
+
+
+func _on_relay_error(message: String) -> void:
+	_status(message)
+	if is_host() or roster.is_empty():
+		# Opening (or joining) failed: back out, keep the message on screen.
+		var keep := message
+		leave()
+		_status(keep)
+
+
+## Host on the relay: keep the relay's room list up to date.
+func _relay_sync() -> void:
+	var rp := multiplayer.multiplayer_peer as RelayPeer
+	if rp != null and is_host():
+		rp.set_info(_room_info())
+
+
 func host(port := PORT) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port, MAX_CLIENTS)
@@ -70,6 +147,7 @@ func host(port := PORT) -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	active = true
+	relay = false
 	in_match = false
 	roster = {1: {"name": my_name, "team": 0, "ready": true}}
 	room_code = Matchmaker.encode(Matchmaker.lan_ip(), port)
@@ -88,6 +166,7 @@ func join(address: String, port := PORT) -> Error:
 		return err
 	multiplayer.multiplayer_peer = peer
 	active = true
+	relay = false
 	in_match = false
 	roster = {}
 	_status("連線到 %s:%d…" % [address, port])
@@ -101,14 +180,20 @@ func _room_info() -> Dictionary:
 	if p is ENetMultiplayerPeer and p.host != null:
 		port = p.host.get_local_port()
 	return {"name": my_name, "port": port, "players": roster.size(), "max": MAX_CLIENTS + 1, "in_match": in_match,
-		"code": room_code, "map": str(config.get("map", "folded"))}
+		"code": room_code, "map": str(config.get("map", "folded")), "relay": relay}
 
 
-## Joins by room code (see Matchmaker.encode).
+## Joins by room code: five letters = a relay room, ten = a LAN address (Matchmaker.encode).
 func join_code(code: String) -> Error:
+	var clean := code.strip_edges().to_upper().replace("-", "").replace(" ", "")
+	if clean.length() == 5:
+		if not Matchmaker.has_relay():
+			_status("這是中繼伺服器的房間碼，但還沒設定中繼伺服器")
+			return ERR_UNCONFIGURED
+		return join_relay(clean)
 	var at := Matchmaker.decode(code)
 	if at.is_empty():
-		_status("房間碼不對：應該是 10 個字母或數字")
+		_status("房間碼不對：應該是 5 個（中繼）或 10 個（區網）字母或數字")
 		return ERR_INVALID_PARAMETER
 	return join(str(at.ip), int(at.port))
 
@@ -119,8 +204,10 @@ func leave() -> void:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	active = false
+	relay = false
 	in_match = false
 	roster = {}
+	room_code = ""
 	_status("已離開")
 	roster_changed.emit()
 
@@ -136,9 +223,12 @@ func _on_connected() -> void:
 
 
 func _on_failed() -> void:
+	var rp := multiplayer.multiplayer_peer as RelayPeer
+	var why := rp.error if rp != null and rp.error != "" else "連線失敗"
 	active = false
+	relay = false
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
-	_status("連線失敗")
+	_status(why)
 	roster_changed.emit()
 
 
@@ -189,6 +279,7 @@ func _hello(player_name: String) -> void:
 
 func _push_roster() -> void:
 	_roster.rpc(roster, config)
+	_relay_sync()
 	roster_changed.emit()
 
 
@@ -257,6 +348,7 @@ func start_match() -> void:
 		var ids := MAPS.keys().filter(func(k: String) -> bool: return k != "random")
 		cfg.map = ids[randi() % ids.size()]
 	_begin.rpc(roster, cfg)
+	_relay_sync()
 
 
 @rpc("authority", "call_local", "reliable")
@@ -282,6 +374,7 @@ func end_match() -> void:
 @rpc("authority", "call_local", "reliable")
 func _to_lobby() -> void:
 	in_match = false
+	_relay_sync()
 	for p in roster:
 		roster[p].ready = p == 1
 	Main.map_id = "folded"

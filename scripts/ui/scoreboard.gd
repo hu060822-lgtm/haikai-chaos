@@ -106,9 +106,13 @@ func _row(r: Array, you: bool, color: Color) -> Control:
 ## a client knows its own and the host's).
 func _ping(id: String) -> String:
 	var mp := team_match.multiplayer.multiplayer_peer
+	var peer := int(id.substr(1))
+	if mp is RelayPeer:
+		# Through the relay this machine only knows its own round trip (to the relay).
+		var rtt := (mp as RelayPeer).rtt_ms
+		return str(rtt) if peer == team_match.multiplayer.get_unique_id() and rtt >= 0 else "—"
 	if not (mp is ENetMultiplayerPeer):
 		return "—"
-	var peer := int(id.substr(1))
 	var me := team_match.multiplayer.get_unique_id()
 	var target := 1 if (peer == me and me != 1) else peer
 	if me != 1 and target != 1:

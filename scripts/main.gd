@@ -182,7 +182,7 @@ func _process(delta: float) -> void:
 
 ## Back to the title from anywhere (the host left, or you quit a match), offline.
 func back_to_title(message := "") -> void:
-	if net.multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+	if NetSession.active:
 		net.leave()
 	map_id = "folded"
 	team_mode = false

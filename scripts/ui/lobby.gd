@@ -230,10 +230,17 @@ func _refresh() -> void:
 	var host := net.is_host()
 	var cfg := NetSession.config
 	var code := NetSession.internet_code if NetSession.internet_code != "" else NetSession.room_code
-	_code.text = code if code != "" else "—"
-	_code_note.text = "外部位址（網路）" if NetSession.internet_code != "" else "區網／虛擬區網"
-	_code.get_parent().get_parent().get_parent().visible = host and code != ""
-	_net_btn.visible = host
+	if NetSession.relay:
+		# A relay room: the code works from anywhere, so everyone can pass it on.
+		_code.text = code if code != "" else "…"
+		_code_note.text = "中繼伺服器：任何網路都能加入"
+		_code.get_parent().get_parent().get_parent().visible = true
+		_net_btn.visible = false
+	else:
+		_code.text = code if code != "" else "—"
+		_code_note.text = "外部位址（網路）" if NetSession.internet_code != "" else "區網／虛擬區網"
+		_code.get_parent().get_parent().get_parent().visible = host and code != ""
+		_net_btn.visible = host
 	for id in _map_buttons:
 		var b: Button = _map_buttons[id]
 		b.set_pressed_no_signal(str(cfg.get("map", "folded")) == id)
