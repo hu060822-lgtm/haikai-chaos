@@ -36,6 +36,10 @@ uniform float grain = 0.035;
 // Far away everything fades back into the paper (aerial perspective, and no tiny dots).
 uniform float fade_start = 45.0;
 uniform float fade_end = 140.0;
+// The "soft" look (settings, 0..1): paler, sparser, finer ink tinted by the surface colour
+// instead of near-black, no dots right in your face, a darker paper and no glaring whites.
+global uniform float fp_soft;
+const vec3 SOFT_PAPER = vec3(0.539, 0.497, 0.418); // #C2BBAD, linear
 
 varying vec3 v_pos;
 varying vec3 v_nrm;
@@ -47,6 +51,7 @@ varying float v_mix;
 varying float v_aa;
 varying float v_far;
 varying vec3 v_paint;
+varying float v_near;
 varying float v_fade;
 
 float hash(vec2 p) {
@@ -97,7 +102,7 @@ void fragment() {
 	// a wall you're running along, no shimmer far away. Two octaves blend across a step.
 	vec2 uv = planar(v_pos, v_nrm) * dot_density;
 	float px = 1.0 / max(length(fwidth(uv)), 1e-4);
-	float level = clamp(log2(px / dot_px), -1.0, 6.0);
+	float level = clamp(log2(px / (dot_px * mix(1.0, 0.72, fp_soft))), -1.0, 6.0);
 	float l0 = floor(level);
 	v_mix = smoothstep(0.25, 0.75, fract(level));
 	vec2 u0 = uv * exp2(l0);
@@ -119,6 +124,8 @@ void fragment() {
 	}
 	v_paint = col;
 	v_fade = smoothstep(fade_start, fade_end, length(VERTEX)) * 0.85;
+	// Close up (running along a wall) the dots give way to the flat tone.
+	v_near = object_space ? 1.0 : mix(1.0, mix(0.25, 1.0, smoothstep(1.2, 6.0, length(VERTEX))), fp_soft);
 	ALBEDO = vec3(1.0);
 	EMISSION = glow;
 }
@@ -155,11 +162,15 @@ void light() {
 		// Ink grows smoothly toward the dark side inside the flat tones (a real halftone ramp).
 		float ramp = 1.0 - smoothstep(0.0, 0.46, ndl);
 		float cover = mix(mid_ink * ramp * 1.6, shadow_ink, 1.0 - mid) * (1.0 - lit);
+		float soft = fp_soft;
+		cover *= v_near * mix(1.0, 0.55, soft);
+		tone *= mix(1.0, 0.86, soft * lit);
 		vec3 c = v_paint * tone;
 		float d2 = v_d2;
-		c = mix(c, plate.rgb * 0.85, halftone(d2, cover * 0.55) * plate_amount * (1.0 - lit));
-		c = mix(c, ink.rgb, halftone2(cover));
-		c = mix(c, paper.rgb, v_fade);
+		c = mix(c, plate.rgb * 0.85, halftone(d2, cover * 0.55) * plate_amount * mix(1.0, 0.45, soft) * (1.0 - lit));
+		vec3 ink_c = mix(ink.rgb, v_paint * shadow_tone * 0.5, 0.72 * soft);
+		c = mix(c, ink_c, halftone2(cover));
+		c = mix(c, mix(paper.rgb, SOFT_PAPER, soft), v_fade);
 		DIFFUSE_LIGHT += c * LIGHT_COLOR / PI;
 	} else {
 		// Local lights (muzzle flashes, lamps) add one flat step of their colour.

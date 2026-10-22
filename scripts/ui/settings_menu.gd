@@ -79,6 +79,10 @@ func _general() -> Control:
 		Settings.vsync = on
 		Settings.save()
 		Settings.apply_display()))
+	box.add_child(_toggle("柔和畫面（降低刺眼）", Settings.soft_look, func(on: bool) -> void:
+		Settings.soft_look = on
+		Settings.save()
+		Faultprint.set_soft(on)))
 	box.add_child(_toggle("顯示 FPS", Settings.show_fps, func(on: bool) -> void:
 		Settings.show_fps = on
 		Settings.save()))

@@ -9,6 +9,7 @@ static var sens := 1.0          # × the base mouse sensitivity
 static var fov := 100.0         # horizontal-ish degrees (Godot's vertical FOV keeps aspect)
 static var vsync := false       # off by default: V-Sync adds frames of input delay
 static var show_fps := true
+static var soft_look := true   # calmer print: darker paper, paler and sparser ink
 static var _loaded := false
 
 
@@ -22,6 +23,7 @@ static func load_all() -> void:
 		fov = float(cfg.get_value("game", "fov", fov))
 		vsync = bool(cfg.get_value("game", "vsync", vsync))
 		show_fps = bool(cfg.get_value("game", "show_fps", show_fps))
+		soft_look = bool(cfg.get_value("game", "soft_look", soft_look))
 	CameraFx.load_settings()
 	apply_display()
 
@@ -33,10 +35,12 @@ static func save() -> void:
 	cfg.set_value("game", "fov", fov)
 	cfg.set_value("game", "vsync", vsync)
 	cfg.set_value("game", "show_fps", show_fps)
+	cfg.set_value("game", "soft_look", soft_look)
 	cfg.save(FILE)
 
 
 static func apply_display() -> void:
+	Faultprint.set_soft(soft_look)
 	if DisplayServer.get_name() == "headless":
 		return
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)

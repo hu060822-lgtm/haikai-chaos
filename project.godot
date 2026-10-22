@@ -25,6 +25,13 @@ buffering/agile_event_flushing=true
 common/physics_ticks_per_second=120
 common/max_physics_steps_per_frame=12
 
+[shader_globals]
+
+fp_soft={
+"type": "float",
+"value": 1.0
+}
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"

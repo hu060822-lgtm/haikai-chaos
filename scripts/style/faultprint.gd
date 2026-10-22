@@ -35,7 +35,11 @@ const SURFACE := preload("res://shaders/faultprint.gdshader")
 const OUTLINE := preload("res://shaders/fp_outline.gdshader")
 const MISREG := preload("res://shaders/fp_misreg.gdshader")
 
+# The soft look (Settings.soft_look): a darker paper sky and calmer ink, against glare.
+const SOFT_PAPER := Color("#C2BBAD")
+
 static var _cache := {}
+static var _envs: Array[Environment] = []
 
 
 ## A printed surface in world space (walls, floors, props). `options` overrides any shader
@@ -149,7 +153,7 @@ static func flat(color: Color, through_walls := false) -> StandardMaterial3D:
 static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -> DirectionalLight3D:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = BONE
+	env.background_color = SOFT_PAPER if Settings.soft_look else BONE
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	env.ambient_light_color = Color.BLACK
 	env.ambient_light_energy = 0.0
@@ -159,6 +163,8 @@ static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -
 	env.fog_light_color = BONE
 	env.fog_density = 0.0025
 	env.fog_sky_affect = 0.0
+	_envs = _envs.filter(func(e: Environment) -> bool: return is_instance_valid(e) and e.get_reference_count() > 1)
+	_envs.append(env)
 	var we := WorldEnvironment.new()
 	we.environment = env
 	parent.add_child(we)
@@ -167,7 +173,16 @@ static func environment(parent: Node, sun_angle := Vector3(-52.0, -38.0, 0.0)) -
 	sun.rotation_degrees = sun_angle
 	sun.light_color = Color.WHITE
 	sun.light_energy = 1.0
+	sun.add_to_group("fp_sun")
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 90.0
 	parent.add_child(sun)
 	return sun
+
+
+## Switches every printed surface between the original and the soft look, live.
+static func set_soft(on: bool) -> void:
+	RenderingServer.global_shader_parameter_set("fp_soft", 1.0 if on else 0.0)
+	for e in _envs:
+		if is_instance_valid(e):
+			e.background_color = SOFT_PAPER if on else BONE
