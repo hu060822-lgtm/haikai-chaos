@@ -24,6 +24,7 @@ var weapon: Weapon
 var waypoints: Array[Vector3] = []
 var target: Player
 var passive := false
+var marked := 0.0
 
 var _model: Node3D
 var _gun: Node3D
@@ -117,6 +118,7 @@ func _physics_process(delta: float) -> void:
 	weapon.tick(delta)
 	_slow = maxf(_slow - delta, 0.0)
 	_flash = maxf(_flash - delta, 0.0)
+	marked = maxf(marked - delta, 0.0)
 	if _burn > 0.0:
 		_burn -= delta
 		_damage(6.0 * delta, _burn_info)

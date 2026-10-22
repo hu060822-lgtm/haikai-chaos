@@ -51,7 +51,34 @@ const SPEED_BONUS_FULL := 20.0
 ##   headhunter   heads take 3x, everything else 0.75x
 ##   last_round   the magazine's last round deals this many times the damage
 ##   gamble       each shot deals 0.4x to 2.2x, at random
+## CHAOS 2 (see Arsenal's "CHAOS 2" parts; the player side is in Player):
+##   mark         a hit tags the target for this many seconds (seen through walls)
+##   spool        the rate climbs from SPOOL_FROM to 1 + spool over SPOOL_TIME of firing
+##   first_shot   the first shot after FIRST_SHOT_WAIT seconds of quiet deals this many times
+##   low_hp       damage multiplier while the shooter is under LOW_HP health
+##   streak       +this per hit in a row (up to STREAK_MAX); a miss resets it
+##   kill_heal    health back on a kill;  kill_explode: the victim blows up (radius)
+##   hit_dash     dash charge back per hit;  kick_refill: an air hit gives a wall kick back
+##   rush         seconds of extra speed per hit (Player.RUSH)
+##   homing       a shot bends to an enemy in sight within this many degrees of the aim
+##   echo         each shot repeats ECHO_DELAY later at this much damage, free
+##   heat_bonus   damage +this at full heat
+##   glass        damage multiplier, and the same multiplier on damage you take
+##   anonymous    kills by this gun show no name or model, and can't be copied
+const SPOOL_FROM := 0.6
+const SPOOL_TIME := 1.2
+const FIRST_SHOT_WAIT := 2.0
+const LOW_HP := 40.0
+const STREAK_MAX := 5
+const ECHO_DELAY := 0.2
+const KILL_BLAST := 45.0
+const MAG_BLAST := 40.0
 var shots_fired := 0
+## Time this gun has existed (ticks), and when it last fired, for spool and first_shot.
+var clock := 0.0
+var last_shot := -100.0
+var spool_t := 0.0
+var streak := 0
 
 var build: Dictionary
 var stats: Dictionary
@@ -138,6 +165,7 @@ func start_reload() -> bool:
 
 
 func tick(delta: float) -> void:
+	clock += delta
 	cooldown = maxf(cooldown - delta, 0.0)
 	if reload_left > 0.0:
 		reload_left -= delta
@@ -187,7 +215,22 @@ func wants_fire(held: bool, just: bool, released: bool) -> bool:
 
 ## The time between shots at the current mode.
 func interval() -> float:
-	return 1.0 / maxf(float(stats.rate), 0.1)
+	var rate := float(stats.rate)
+	if stats.effects.has("spool"):
+		rate *= lerpf(SPOOL_FROM, 1.0 + float(stats.effects.spool), clampf(spool_t / SPOOL_TIME, 0.0, 1.0))
+	return 1.0 / maxf(rate, 0.1)
+
+
+## Moves `count` rounds from the reserve into the magazine (feeds, refills); returns how many.
+func feed(count: int) -> int:
+	var take := mini(mini(count, int(stats.mag) - ammo), reserve)
+	if take <= 0:
+		return 0
+	ammo += take
+	reserve -= take
+	if is_reloading() and ammo >= int(stats.mag):
+		reload_left = 0.0
+	return take
 
 
 ## Fires one shot (or one double) from `origin` along -basis.z with a random cone of
@@ -196,6 +239,15 @@ func interval() -> float:
 func fire(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, context: Dictionary) -> Array:
 	var rounds := 2 if mode() == "double" and ammo >= 2 else 1
 	var fx: Dictionary = stats.effects
+	var quiet := clock - last_shot
+	spool_t = spool_t + quiet if quiet < 0.35 else 0.0
+	context.first = quiet >= FIRST_SHOT_WAIT
+	last_shot = clock
+	context.streak = streak
+	if "health" in shooter:
+		context.low_hp = float(shooter.health) < LOW_HP
+	if fx.has("homing") and stats.kind in ["hitscan", "charge", "bounce"]:
+		aim = _home(shooter, origin, aim, float(fx.homing), context)
 	context.last_round = ammo <= rounds
 	context.from_safe = SafeZone.is_safe(origin, int(context.get("team", -1)))
 	ammo -= rounds
@@ -231,7 +283,52 @@ func fire(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, conte
 				var spread := spread_deg if pellets == 1 else maxf(spread_deg, float(stats.spread))
 				results.append(_ray(shooter, origin, _spread_dir(aim, spread), float(stats.range) * 1.4, power, context))
 	_after_shot(shooter, aim, results)
+	if fx.has("echo") and not context.get("echo", false):
+		_schedule_echo(shooter, origin, aim, spread_deg, context)
 	return results
+
+
+## The shot again ECHO_DELAY later from the same spot, at fx.echo damage, costing nothing.
+func _schedule_echo(shooter: Node3D, origin: Vector3, aim: Basis, spread_deg: float, context: Dictionary) -> void:
+	var echo := context.duplicate()
+	echo.echo = true
+	echo.exclude = (context.get("exclude", []) as Array).duplicate()
+	shooter.get_tree().create_timer(ECHO_DELAY, false, true).timeout.connect(func() -> void:
+		if not is_instance_valid(shooter) or not shooter.is_inside_tree() or not shooter.get("alive"):
+			return
+		var power := float(stats.effects.get("echo", 0.5))
+		var world := shooter.get_tree().current_scene
+		for i in maxi(int(stats.pellets), 1):
+			var r := _ray(shooter, origin, _spread_dir(aim, spread_deg), float(stats.range) * 1.4, power, echo)
+			PrintFx.tracer(world, origin + (r.to - origin).normalized() * 0.6, r.to, klass)
+			if r.has("target") and r.target != shooter and shooter.has_signal("hit_confirmed") and float(r.get("damage", 0.0)) > 0.0:
+				shooter.hit_confirmed.emit({"zone": r.get("zone", "body"), "damage": r.damage, "target": r.target}, r.get("kill", false)))
+
+
+## Bends `aim` toward the nearest enemy in sight within `degrees` of it.
+func _home(shooter: Node3D, origin: Vector3, aim: Basis, degrees: float, context: Dictionary) -> Basis:
+	var forward := -aim.z
+	var best: Node3D = null
+	var best_angle := deg_to_rad(degrees)
+	var best_point := Vector3.ZERO
+	for t in shooter.get_tree().get_nodes_in_group("hittable"):
+		if t == shooter or not (t is Node3D) or not t.get("alive") or t.get("team") == null:
+			continue
+		if int(t.team) == int(context.get("team", -1)):
+			continue
+		var point := (t as Node3D).global_position + Vector3(0, 1.15, 0)
+		var angle := forward.angle_to((point - origin).normalized())
+		if angle >= best_angle:
+			continue
+		var q := PhysicsRayQueryParameters3D.create(origin, point, Geo.WORLD, context.get("exclude", []))
+		if not shooter.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			continue
+		best = t
+		best_angle = angle
+		best_point = point
+	if best == null:
+		return aim
+	return Basis.looking_at((best_point - origin).normalized(), Vector3.UP)
 
 
 ## What the shot does to the one who fired it (see the shooter-side effects above).
@@ -248,10 +345,23 @@ func _after_shot(shooter: Node3D, aim: Basis, results: Array) -> void:
 				break
 	var killed := false
 	var dealt := 0.0
+	var hits := 0
 	for r in results:
 		killed = killed or r.get("kill", false)
 		if r.get("target") != shooter:
 			dealt += float(r.get("damage", 0.0))
+			if float(r.get("damage", 0.0)) > 0.0:
+				hits += 1
+	streak = mini(streak + 1, STREAK_MAX) if hits > 0 else 0
+	if hits > 0:
+		if fx.has("hit_dash") and shooter.has_method("add_dash"):
+			shooter.add_dash(float(fx.hit_dash) * hits)
+		if fx.has("rush") and shooter.has_method("rush"):
+			shooter.rush(float(fx.rush))
+		if fx.get("kick_refill", false) and shooter.has_method("air_refill"):
+			shooter.air_refill()
+	if killed and fx.has("kill_heal") and "health" in shooter and shooter.get("alive"):
+		shooter.health = minf(float(shooter.health) + float(fx.kill_heal), 100.0)
 	if killed and fx.get("kill_refill", false):
 		ammo = maxi(ammo, int(stats.mag))
 	if killed and fx.get("kill_dash", false) and shooter.has_method("refill_dash"):
@@ -309,6 +419,11 @@ func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: f
 			if target.has_method("take_hit"):
 				var killed: bool = target.take_hit(info)
 				result.kill = result.get("kill", false) or killed
+				if not info.get("blocked", false):
+					if stats.effects.has("mark") and "marked" in target:
+						target.marked = maxf(float(target.marked), float(stats.effects.mark))
+					if killed and stats.effects.has("kill_explode"):
+						blast(shooter, hit.position, float(stats.effects.kill_explode), KILL_BLAST, context)
 			result.hit_body = true
 			result.target = target
 			result.zone = info.zone
@@ -364,6 +479,16 @@ func _hit_info(origin: Vector3, point: Vector3, dir: Vector3, zone: String, powe
 		dmg *= float(fx.last_round)
 	if fx.get("gamble", false):
 		dmg *= randf_range(0.4, 2.2)
+	if fx.has("first_shot") and context.get("first", false):
+		dmg *= float(fx.first_shot)
+	if fx.has("low_hp") and context.get("low_hp", false):
+		dmg *= float(fx.low_hp)
+	if fx.has("streak"):
+		dmg *= 1.0 + float(fx.streak) * int(context.get("streak", 0))
+	if fx.has("heat_bonus"):
+		dmg *= 1.0 + float(fx.heat_bonus) * clampf(heat, 0.0, 1.0)
+	if fx.has("glass"):
+		dmg *= float(fx.glass)
 	var head := HEAD_MULT
 	if fx.get("headhunter", false):
 		head = 3.0
@@ -375,10 +500,12 @@ func _hit_info(origin: Vector3, point: Vector3, dir: Vector3, zone: String, powe
 			dmg *= head
 		"legs":
 			dmg *= LEG_MULT
+	var anonymous: bool = fx.get("anonymous", false)
 	return {
 		"damage": dmg, "zone": zone, "distance": dist, "point": point, "dir": dir,
 		"attacker": context.get("attacker"), "attacker_name": context.get("name", "?"),
-		"team": context.get("team", -1), "gun_name": name, "build": build.duplicate(true),
+		"team": context.get("team", -1), "gun_name": "？？？" if anonymous else name,
+		"build": {} if anonymous else build.duplicate(true),
 		"effects": stats.effects, "moves": context.get("moves", []), "through_wall": false,
 		"from_safe": context.get("from_safe", false),
 	}
@@ -428,6 +555,36 @@ func _explode(shooter: Node3D, at: Vector3, radius: float, context: Dictionary) 
 		t.take_hit(info)
 
 
+## A blast of fixed `damage` (falling off to a fifth at the edge) at `at`, from this gun.
+func blast(shooter: Node3D, at: Vector3, radius: float, damage: float, context: Dictionary) -> void:
+	PrintFx.explosion(shooter.get_tree().current_scene, at, radius)
+	for t in shooter.get_tree().get_nodes_in_group("hittable"):
+		if not (t is Node3D) or not t.get("alive"):
+			continue
+		var d := (t as Node3D).global_position.distance_to(at)
+		if d > radius + 0.5:
+			continue
+		var info := _hit_info(at, at, ((t as Node3D).global_position - at).normalized(), "body", 1.0, context)
+		info.damage = damage * clampf(1.0 - d / (radius + 0.5), 0.2, 1.0)
+		info.blast = true
+		if t == context.get("attacker"):
+			info.damage *= 0.4
+			info.self_hit = true
+		t.take_hit(info)
+
+
+## The bomb magazine: the old magazine thrown ahead, blowing up where it lands.
+func throw_mag(shooter: Node3D, origin: Vector3, dir: Vector3, context: Dictionary) -> void:
+	var shell := Lobbed.new()
+	shell.weapon = self
+	shell.shooter = shooter
+	shell.context = context
+	shell.blast_radius = float(stats.effects.get("mag_bomb", 3.0))
+	shell.velocity = dir * 15.0 + Vector3(0, 3.0, 0)
+	shooter.get_tree().current_scene.add_child(shell)
+	shell.global_position = origin
+
+
 func _lob(shooter: Node3D, origin: Vector3, dir: Vector3, context: Dictionary) -> void:
 	var shell := Lobbed.new()
 	shell.weapon = self
@@ -446,6 +603,8 @@ class Lobbed:
 	var context: Dictionary
 	var velocity := Vector3.ZERO
 	var life := 4.0
+	## A thrown magazine (throw_mag) blows up with a fixed blast instead of the gun's.
+	var blast_radius := 0.0
 
 	func _ready() -> void:
 		mesh = LowPoly.blob(0.09, Vector3(1, 1, 1.4), 0)
@@ -460,7 +619,10 @@ class Lobbed:
 		var hit := get_world_3d().direct_space_state.intersect_ray(q)
 		if not hit.is_empty() or life <= 0.0:
 			var at: Vector3 = hit.position if not hit.is_empty() else global_position
-			weapon._explode(shooter, at, float(weapon.stats.effects.get("explode", 3.0)), context)
+			if blast_radius > 0.0:
+				weapon.blast(shooter, at, blast_radius, Weapon.MAG_BLAST, context)
+			else:
+				weapon._explode(shooter, at, float(weapon.stats.effects.get("explode", 3.0)), context)
 			queue_free()
 			return
 		global_position = next

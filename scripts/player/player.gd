@@ -42,6 +42,8 @@ const MOUSE_SENS := 0.0022
 ## in a fight, or COMBAT_FIRE since you last fired. Inside your safe zone it always opens.
 const COMBAT_LOCK := 4.0
 const COMBAT_FIRE := 1.5
+## Speed multiplier while a "rush" part's boost lasts.
+const RUSH := 1.15
 
 ## Movement state, for the HUD, the view model and the kill feed's move tags.
 enum Move { GROUND, AIR, SLIDE, WALLRUN, CLIMB, MANTLE, DASH, SLAM }
@@ -126,6 +128,10 @@ var damage_dealt := {}   # name -> damage you did to them (death screen)
 var damage_taken := {}   # name -> damage they did to you
 ## Seconds until you count as out of combat (see COMBAT_LOCK).
 var combat_left := 0.0
+## Seconds this player stays tagged by a "mark" hit (enemies see it through walls).
+var marked := 0.0
+var _rush := 0.0
+var _feed_t := 0.0
 var _spawn := Transform3D.IDENTITY
 var _hitboxes: Array[Area3D] = []
 
@@ -257,6 +263,8 @@ func spawn_at(xform: Transform3D) -> void:
 	_recoil_yaw = 0.0
 	accel = 0.0
 	combat_left = 0.0
+	marked = 0.0
+	_rush = 0.0
 	damage_dealt.clear()
 	damage_taken.clear()
 	weapon.set_build(weapon.build, weapon.name)
@@ -345,6 +353,8 @@ func _timers(delta: float) -> void:
 	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), 1.0)
 	_slow = maxf(_slow - delta, 0.0)
 	combat_left = maxf(combat_left - delta, 0.0)
+	marked = maxf(marked - delta, 0.0)
+	_rush = maxf(_rush - delta, 0.0)
 	if _burn > 0.0:
 		_burn -= delta
 		_apply_damage(6.0 * delta, _last_attacker, false)
@@ -369,7 +379,7 @@ func _wish_dir() -> Vector3:
 
 
 func _speed_mult() -> float:
-	return mobility * (0.6 if _slow > 0.0 else 1.0)
+	return mobility * (0.6 if _slow > 0.0 else 1.0) * (RUSH if _rush > 0.0 else 1.0)
 
 
 func _flat() -> Vector3:
@@ -410,7 +420,11 @@ func _fail(why: String) -> void:
 
 ## Half a tick of gravity (the other half comes after the move).
 func _gravity_half() -> void:
-	velocity.y = maxf(velocity.y - tune.gravity * get_physics_process_delta_time() * 0.5, -tune.terminal_fall)
+	var g := tune.gravity
+	# Glider stock: aiming while falling in the air.
+	if weapon.stats.effects.has("glide") and move == Move.AIR and _aim > 0.5 and velocity.y < 0.0:
+		g *= float(weapon.stats.effects.glide)
+	velocity.y = maxf(velocity.y - g * get_physics_process_delta_time() * 0.5, -tune.terminal_fall)
 	_half_g = true
 
 
@@ -554,6 +568,8 @@ func _start_slide(from_landing: bool) -> void:
 		why += "（加速冷卻中，保留速度）"
 	_set_move(Move.SLIDE, why)
 	Sfx.play(self, "slide")
+	if weapon.stats.effects.get("slide_reload", false) and weapon.feed(int(weapon.stats.mag)) > 0:
+		Sfx.ui(get_tree(), "hit")
 
 
 func _slide_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
@@ -785,6 +801,11 @@ func _wall_contact() -> Dictionary:
 
 func _do_wallrun(delta: float, wish: Vector3) -> void:
 	_wall_t += delta
+	if weapon.stats.effects.has("wall_feed"):
+		_feed_t += delta
+		if _feed_t >= float(weapon.stats.effects.wall_feed):
+			_feed_t = 0.0
+			weapon.feed(1)
 	var contact := _wall_contact()
 	if contact.is_empty():
 		_wall_lost += delta
@@ -1024,6 +1045,8 @@ func _start_dash(wish: Vector3) -> void:
 	velocity = dir * maxf(keep, tune.dash_speed * mobility)
 	_set_move(Move.DASH, "按 Q")
 	Sfx.play(self, "dash")
+	if weapon.stats.effects.has("dash_feed"):
+		weapon.feed(ceili(int(weapon.stats.mag) * float(weapon.stats.effects.dash_feed)))
 
 
 func _do_dash(delta: float) -> void:
@@ -1180,9 +1203,9 @@ func _weapon_frame(delta: float) -> void:
 	if not input_enabled:
 		return
 	if _want("reload", true) and weapon.ammo > 0 and weapon.start_reload():
-		view.reload(weapon.reload_time(), false)
+		_on_reload(false)
 	elif _want("reload", true) and weapon.start_reload():
-		view.reload(weapon.reload_time(), true)
+		_on_reload(true)
 	if _want("fire_mode", true):
 		weapon.cycle_mode()
 	var held := _want("fire") and move != Move.MANTLE
@@ -1192,7 +1215,14 @@ func _weapon_frame(delta: float) -> void:
 		_shoot()
 	elif weapon.ammo == 0 and not weapon.is_reloading() and weapon.reserve > 0 and weapon.cooldown <= 0.0:
 		if weapon.start_reload():
-			view.reload(weapon.reload_time(), true)
+			_on_reload(true)
+
+
+func _on_reload(empty: bool) -> void:
+	view.reload(weapon.reload_time(), empty)
+	if weapon.stats.effects.has("mag_bomb"):
+		var context := {"attacker": self, "name": display_name, "team": team, "exclude": exclusions(), "moves": move_tags()}
+		weapon.throw_mag(self, camera.global_position + -camera.global_basis.z * 0.6, -camera.global_basis.z, context)
 
 
 ## Cone of fire now, in degrees. Moving and being airborne widen the hip cone; aiming uses
@@ -1299,6 +1329,14 @@ func take_hit(info: Dictionary) -> bool:
 		return false
 	if SafeZone.blocks(info, team, global_position):
 		return false
+	var mine: Dictionary = weapon.stats.effects
+	if info.get("attacker") != self:
+		if mine.has("guard") and _aim > 0.5:
+			info.damage = float(info.damage) * (1.0 - float(mine.guard))
+		if mine.has("glass"):
+			info.damage = float(info.damage) * float(mine.glass)
+		if mine.get("pain_feed", false):
+			weapon.feed(ceili(float(info.damage) / 10.0))
 	var effects: Dictionary = info.get("effects", {})
 	if effects.has("knock"):
 		velocity += (info.dir as Vector3) * float(effects.knock) * 2.0 + Vector3(0, 2.0, 0)
@@ -1327,6 +1365,22 @@ func can_mod() -> bool:
 ## A kill with a kill_dash gun: the dash is ready again.
 func refill_dash() -> void:
 	_dash_charge = 1.0
+
+
+## Part effects that reach back into the movement (see Weapon "CHAOS 2").
+func add_dash(amount: float) -> void:
+	_dash_charge = minf(_dash_charge + amount, 1.0)
+
+
+func rush(seconds: float) -> void:
+	_rush = maxf(_rush, seconds)
+
+
+## An air hit with a kick_refill part: one wall kick and a quarter dash back.
+func air_refill() -> void:
+	if move in [Move.AIR, Move.WALLRUN, Move.DASH, Move.SLAM, Move.CLIMB]:
+		_kicks = mini(_kicks + 1, max_kicks())
+		add_dash(0.25)
 
 
 func _apply_damage(amount: float, info: Dictionary, _direct: bool) -> bool:
