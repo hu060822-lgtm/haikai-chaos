@@ -259,12 +259,12 @@ func _physics_process(delta: float) -> void:
 		_send_t = SEND_RATE
 		if player.alive:
 			_state.rpc(my_id, player.global_position, player.rotation.y, player._pitch, int(player.move), player.velocity,
-				player.health, player.marked)
+				player.health, player.marked, player.anim_state())
 		if net.is_host():
 			var list := []
 			for b in bots():
 				if b.alive:
-					list.append([b.id, b.global_position, b.rotation.y, int(b.move), b.velocity, b.health, b.marked])
+					list.append([b.id, b.global_position, b.rotation.y, int(b.move), b.velocity, b.health, b.marked, b.anim_state()])
 			if not list.is_empty():
 				_bot_states.rpc(list)
 	if net.is_host():
@@ -292,12 +292,12 @@ func _physics_process(delta: float) -> void:
 
 
 @rpc("any_peer", "unreliable_ordered")
-func _state(id: String, pos: Vector3, yaw: float, pitch: float, move: int, vel: Vector3, hp: float, marked: float) -> void:
+func _state(id: String, pos: Vector3, yaw: float, pitch: float, move: int, vel: Vector3, hp: float, marked: float, anim: Array) -> void:
 	if id != "p%d" % multiplayer.get_remote_sender_id():
 		return
 	var a = entities.get(id)
 	if a is Avatar and a.alive:
-		a.push_state(pos, yaw, pitch, move, vel, hp, marked)
+		a.push_state(pos, yaw, pitch, move, vel, hp, marked, anim)
 
 
 @rpc("authority", "unreliable_ordered")
@@ -305,7 +305,8 @@ func _bot_states(list: Array) -> void:
 	for s in list:
 		var a = entities.get(s[0])
 		if a is Avatar and a.alive:
-			a.push_state(s[1], s[2], 0.0, s[3], s[4], s[5], s[6])
+			var anim: Array = s[7] if s.size() > 7 else []
+			a.push_state(s[1], s[2], float(anim[1]) if anim.size() > 1 else 0.0, int(anim[0]) if anim.size() > 0 else s[3], s[4], s[5], s[6], anim)
 
 
 # --- Shots and hits --------------------------------------------------------------------
@@ -325,6 +326,7 @@ func _fx(id: String, tos: PackedVector3Array) -> void:
 	for to in tos:
 		PrintFx.tracer(main, from, to, klass)
 	Sfx.shot(a, klass, false)
+	a.shot_seen()
 
 
 func owner_of(id: String) -> int:

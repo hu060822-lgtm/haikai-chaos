@@ -39,11 +39,21 @@ var _support_pos := Vector3.ZERO
 var _support_rot := Vector3.ZERO
 var _mag: Node3D
 var _mag_at := Vector3.ZERO
-var _rack_at := Vector3.ZERO
-var _port_at := Vector3.ZERO
 var _reload_style := "mag"
 var _round_prop: MeshInstance3D
+var _prop_kind := ""
 var _seat := 0.0
+## Phase 4: the reload and the action between shots, from the timeline the third-person
+## body plays too (ReloadPlan).
+var _plan: ReloadPlan
+var _last_t := 0.0
+var _right: Node3D
+var _right_pos := Vector3.ZERO
+var _cycle := 0.0
+var _cycle_total := 0.4
+var _rate := 5.0
+const GRIP_EULER := {"cup": Vector3(-0.5, 0.2, 0.5), "pinch": Vector3(-0.4, 0.2, 0.4), "rack": Vector3(0.3, -0.4, -0.2),
+	"slap": Vector3(-0.45, -0.15, 0.35), "carry": Vector3(-0.3, 0.0, 0.5)}
 var _sway := Vector2.ZERO
 var _bob := 0.0
 var _lower := 0.0
@@ -76,6 +86,7 @@ func set_build(build: Dictionary) -> void:
 	_gun.scale = Vector3.ONE * _scale
 	_rig.add_child(_gun)
 	_scoped = float(Arsenal.stats(build).zoom) >= 2.0
+	_rate = float(Arsenal.stats(build).get("rate", 5.0))
 	_muzzle = _gun.get_meta("muzzle")
 	var slots: Dictionary = _gun.get_meta("slots", {})
 	_sight = slots.get("sight", Vector3(0, 0.1, 0))
@@ -85,24 +96,27 @@ func set_build(build: Dictionary) -> void:
 	_no_shadow(_gun)
 
 
-## Finds what the reload moves on this gun and how it loads:
-##   mag     a detachable magazine (box, drum, cell, tank, belt box, coil)
-##   rounds  a round at a time into a port (tube shotguns, revolvers, break actions, bows)
+## Finds what the reload moves on this gun and how it loads (ReloadPlan.template):
+##   mag     a detachable magazine (box, drum, cell, tank, belt box): `_mag` moves
+##   rounds  loaded by hand a round, a shell, a clip or a bolt at a time (the hand carries it)
 func _setup_reload(slots: Dictionary) -> void:
 	_reload = 0.0
+	_cycle = 0.0
+	_plan = null
+	_right = _hands.get_child(0) if _hands.get_child_count() > 0 else null
+	if _right != null:
+		_right_pos = _right.position
 	_support = _hands.get_child(1) if _hands.get_child_count() > 1 else null
 	if _support != null:
 		_support_pos = _support.position
 		_support_rot = _support.rotation
 	_mag = _gun.get_node_or_null("Magazine")
-	var style: String = _gun.get_meta("mag_style", "box")
-	_reload_style = "mag" if _mag != null and not style in ["tube", "none"] else "rounds"
+	var kind := ReloadPlan.template(_gun)
+	_reload_style = "mag" if kind in ["mag", "belt", "cell"] else "rounds"
 	_mag_at = slots.get("magazine", Vector3(0, -0.05, -0.06))
-	_rack_at = slots.get("charging", slots.get("bolt", Vector3(0, 0.08, 0.05)))
-	_port_at = slots.get("ammo", Vector3(0.03, 0.06, -0.05)) if style == "none" else _mag_at + Vector3(0, 0.02, 0)
+	_prop_kind = ""
 	if _support != null:
 		_round_prop = MeshInstance3D.new()
-		_round_prop.mesh = GunKit.rod(0.0075 if style == "tube" else 0.005, 0.03, 8)
 		_round_prop.material_override = Counterform.material("bare", Color("#B8925A"), false)
 		_round_prop.position = Vector3(0, 0.03, -0.035)
 		_round_prop.visible = false
@@ -291,12 +305,19 @@ func _process(_delta: float) -> void:
 func kick(recoil: float, _flash := 1.0) -> void:
 	_kick = 1.0
 	_kick_strength = clampf(recoil / 4.0, 0.25, 2.5)
+	# A bolt, pump or lever gun is worked after the shot.
+	if ReloadPlan.action(_gun) != "" and _reload <= 0.0:
+		_cycle_total = ReloadPlan.cycle_time(_rate)
+		_cycle = _cycle_total
 
 
 func reload(seconds: float, empty := false) -> void:
 	_reload = seconds
 	_reload_total = maxf(seconds, 0.01)
 	_reload_empty = empty
+	_cycle = 0.0
+	_plan = ReloadPlan.for_gun(_gun, seconds, empty) if _gun != null else null
+	_last_t = 0.0
 
 
 ## A knock in view space (metres per second of push).
@@ -319,6 +340,10 @@ func update_pose(delta: float, p: Dictionary) -> void:
 	var speed: float = p.speed
 	_kick = move_toward(_kick, 0.0, delta * 7.0)
 	_reload = maxf(_reload - delta, 0.0)
+	# The weapon's own clock wins: a reload cut short (a refill, a swap) ends here too.
+	if p.has("reload_left"):
+		_reload = minf(_reload, float(p.reload_left))
+	_cycle = maxf(_cycle - delta, 0.0)
 	_sway = _sway.lerp(Vector2.ZERO, minf(delta * 9.0, 1.0))
 	_sway = _sway.clamp(Vector2(-0.6, -0.6), Vector2(0.6, 0.6))
 	if p.floor and p.move == Player.Move.GROUND:
@@ -358,13 +383,20 @@ func update_pose(delta: float, p: Dictionary) -> void:
 	if _reload > 0.0:
 		var t := 1.0 - _reload / _reload_total
 		# The gun turns its magazine well (or loading port) toward you and dips a little;
-		# the seat of a new magazine knocks it up once.
+		# the plan tips it further its own way (a revolver's muzzle up, a break action's down).
 		var dip := smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.86, 1.0, t))
 		pos += Vector3(-0.055, -0.005, 0.03) * dip
 		rot += Vector3(0.3, 0.38, -0.6) * dip
-		_animate_reload(t)
-	elif _support != null and _support.position != _support_pos:
+		rot += _animate_reload(t, delta)
+	elif _support != null and (_support.position != _support_pos or (_right != null and _right.position != _right_pos)):
 		_rest_reload()
+	if _cycle > 0.0 and _reload <= 0.0:
+		var c := ReloadPlan.cycle_pose(ReloadPlan.action(_gun), 1.0 - _cycle / _cycle_total, _gun.get_meta("slots", {}))
+		if _right != null:
+			_right.position = _right_pos + (c.right as Vector3)
+		if _support != null:
+			_support.position = _support_pos + (c.support as Vector3)
+		rot += c.tilt as Vector3
 	_seat = move_toward(_seat, 0.0, delta * 9.0)
 	pos.y += _seat * 0.012
 	rot.x += _seat * 0.06
@@ -374,111 +406,39 @@ func update_pose(delta: float, p: Dictionary) -> void:
 		_gun.visible = not (_scoped and aim > 0.92)
 
 
-## The support hand and magazine at reload progress `t` (0..1), in gun space.
-func _animate_reload(t: float) -> void:
-	if _support == null:
-		return
-	if _reload_style == "mag":
-		_mag_reload(t)
-	else:
-		_round_reload(t)
-
-
-func _mag_reload(t: float) -> void:
-	var grab := _mag_at + Vector3(-0.012, -0.03, 0.006)
-	var away := grab + Vector3(-0.06, -0.34, 0.12)
-	var cup := Vector3(-0.5, 0.2, 0.5)  # hand rolled palm-up under the magazine
-	var hand := _support_pos
-	var hand_rot := _support_rot
-	var mag_off := Vector3.ZERO
-	var rack_end := 1.0 if not _reload_empty else 0.68
-	if t < 0.14:
-		var k := smoothstep(0.0, 0.14, t)
-		hand = _support_pos.lerp(grab, k)
-		hand_rot = _support_rot.lerp(cup, k)
-	elif t < 0.32:
-		# Old magazine out and down, out of view.
-		var k := smoothstep(0.14, 0.32, t)
-		hand = grab.lerp(away, k)
-		hand_rot = cup
-		mag_off = hand - grab
-	elif t < 0.4:
-		hand = away
-		hand_rot = cup
-		mag_off = away - grab
-	elif t < 0.62:
-		# The fresh one comes up from below, nose first.
-		var k := smoothstep(0.4, 0.62, t)
-		hand = away.lerp(grab, k)
-		hand_rot = cup
-		mag_off = hand - grab + Vector3(0, -0.012, 0) * (1.0 - k)
-		if k >= 0.999 and _seat <= 0.0:
-			_seat = 1.0
-	elif t < rack_end - 0.0001 and _reload_empty:
-		# Dry gun: up to the charging handle, pull it back, let it go.
-		var rack := _rack_at + Vector3(-0.02, 0.012, 0.01)
-		if t < 0.78:
-			var k := smoothstep(0.62, 0.78, t)
-			hand = grab.lerp(rack, k)
-			hand_rot = cup.lerp(Vector3(0.3, -0.4, -0.2), k)
-		elif t < 0.86:
-			var k := smoothstep(0.78, 0.86, t)
-			hand = rack + Vector3(0, 0.004, 0.055) * sin(k * PI)
-			hand_rot = Vector3(0.3, -0.4, -0.2)
-		else:
-			var k := smoothstep(0.86, 1.0, t)
-			hand = rack.lerp(_support_pos, k)
-			hand_rot = Vector3(0.3, -0.4, -0.2).lerp(_support_rot, k)
-	else:
-		var k := smoothstep(0.62, 1.0, t)
-		hand = grab.lerp(_support_pos, k)
-		hand_rot = cup.lerp(_support_rot, k)
-	_support.position = hand
-	_support.rotation = hand_rot
+## The hands, magazine and carried round at reload progress `t` (0..1), in gun space, from
+## the shared plan; returns the plan's tilt of the gun.
+func _animate_reload(t: float, delta: float) -> Vector3:
+	if _support == null or _plan == null:
+		return Vector3.ZERO
+	var s := _plan.sample(t, _support_pos)
+	_support.position = s.at
+	var ra: Vector3 = _support_rot if s.grip_a == "rest" else GRIP_EULER[s.grip_a]
+	var rb: Vector3 = _support_rot if s.grip_b == "rest" else GRIP_EULER[s.grip_b]
+	_support.rotation = ra.lerp(rb, s.grip_k)
+	if _right != null:
+		_right.position = _right_pos + (s.right as Vector3)
 	if _mag != null:
-		_mag.position = mag_off
-
-
-## One round (shell, cartridge, bolt) at a time: down to the belt, up to the port, push.
-func _round_reload(t: float) -> void:
-	var pushes := clampi(roundi(_reload_total / 0.42), 2, 6)
-	var port := _port_at + Vector3(-0.015, -0.02, 0.0)
-	var belt := port + Vector3(-0.06, -0.16, 0.08)
-	var hand := _support_pos
-	var hand_rot := _support_rot
-	var carrying := false
-	if t < 0.1:
-		var k := smoothstep(0.0, 0.1, t)
-		hand = _support_pos.lerp(belt, k)
-		hand_rot = _support_rot.lerp(Vector3(-0.4, 0.2, 0.4), k)
-	elif t < 0.9:
-		var c := (t - 0.1) / 0.8 * pushes
-		var k := c - floorf(c)
-		hand_rot = Vector3(-0.4, 0.2, 0.4)
-		if k < 0.45:
-			hand = belt.lerp(port, smoothstep(0.0, 0.45, k))
-			carrying = true
-		elif k < 0.65:
-			# Thumb it in.
-			hand = port + Vector3(0, 0.012, -0.02) * sin(smoothstep(0.45, 0.65, k) * PI)
-			carrying = k < 0.55
-			if k > 0.55 and _seat < 0.2:
-				_seat = 0.35
-		else:
-			hand = port.lerp(belt, smoothstep(0.65, 1.0, k))
-	else:
-		var k := smoothstep(0.9, 1.0, t)
-		hand = belt.lerp(_support_pos, k)
-		hand_rot = Vector3(-0.4, 0.2, 0.4).lerp(_support_rot, k)
-	_support.position = hand
-	_support.rotation = hand_rot
+		_mag.position = s.mag
+	var prop: String = s.prop
 	if _round_prop != null:
-		_round_prop.visible = carrying
+		if prop != _prop_kind and prop != "":
+			_round_prop.mesh = ReloadPlan.prop_mesh(prop)
+			_prop_kind = prop
+		_round_prop.visible = prop != ""
+	if _plan.seats_between(_last_t, t) > 0:
+		_seat = 1.0 if _plan.kind in ["mag", "belt", "cell", "coil"] else 0.35
+	_last_t = t
+	var hum: float = s.hum
+	var buzz := Vector3(sin(t * 190.0), cos(t * 230.0), 0.0) * 0.012 * hum if delta > 0.0 else Vector3.ZERO
+	return (s.tilt as Vector3) + buzz
 
 
 func _rest_reload() -> void:
 	_support.position = _support_pos
 	_support.rotation = _support_rot
+	if _right != null:
+		_right.position = _right_pos
 	if _mag != null:
 		_mag.position = Vector3.ZERO
 	if _round_prop != null:

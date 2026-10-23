@@ -23,7 +23,7 @@ const LIVE_LAYER := 1 << 11
 
 static var current: KillCam
 
-var frames: Array = []   # [t, {key: [pos, yaw, team]}]
+var frames: Array = []   # [t, {key: [pos, yaw, team, anim]}] (anim: CompetitorRig.anim)
 var shots: Array = []    # [t, from, to, klass]
 var replaying := 0
 var _t := 0.0
@@ -54,7 +54,8 @@ func _physics_process(delta: float) -> void:
 	var snap := {}
 	for c in get_tree().get_nodes_in_group("combatants"):
 		if c is Node3D and c.get("alive") and c.get("team") != null:
-			snap[c.get_instance_id()] = [(c as Node3D).global_position, (c as Node3D).rotation.y, int(c.team)]
+			var anim: Array = c.anim_state() if c.has_method("anim_state") else []
+			snap[c.get_instance_id()] = [(c as Node3D).global_position, (c as Node3D).rotation.y, int(c.team), anim]
 	var t := now()
 	frames.append([t, snap])
 	while not frames.is_empty() and t - float(frames[0][0]) > KEEP:
@@ -218,7 +219,12 @@ class Replay:
 			g.rotation.y = lerp_angle(float(sa[1]), float(sb[1]), w)
 			if g is CompetitorRig and delta > 0.0:
 				var v := (g.global_position - was) / delta if was.distance_to(g.global_position) < 3.0 else Vector3.ZERO
-				g.pose(delta, v, absf(v.y) < 2.0)
+				# The body plays what it was doing then (its move, wall, reload, shots).
+				var st: Array = (sa[3] as Array).duplicate() if sa.size() > 3 else []
+				if st.size() >= 11 and sb.size() > 3 and (sb[3] as Array).size() >= 11:
+					st[1] = lerpf(float(st[1]), float(sb[3][1]), w)
+					st[4] = lerpf(float(st[4]), float(sb[3][4]), w)
+				(g as CompetitorRig).play_state(delta, v, st)
 		var killer: Node3D = _ghosts.get(data.killer)
 		var victim: Node3D = _ghosts.get(data.victim)
 		if killer == null or not killer.visible:

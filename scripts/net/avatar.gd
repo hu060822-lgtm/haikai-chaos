@@ -27,7 +27,9 @@ var _hook := Vector3.INF
 var _hook_dir := Vector3.ZERO
 var _hook_flying := false
 
-var _states: Array = []   # [time, pos, yaw, pitch, move, vel]
+var _states: Array = []   # [time, pos, yaw, pitch, move, vel, anim]
+## Shots seen here (each tracer from this avatar), for working the action on its gun.
+var _shots := 0
 var _vel := Vector3.ZERO
 var _model: CompetitorRig
 var _prev_pos := Vector3.ZERO
@@ -94,12 +96,12 @@ func set_build(new_build: Dictionary, new_name: String) -> void:
 
 
 ## A state from the owner (20 times a second).
-func push_state(pos: Vector3, yaw: float, pitch: float, new_move: int, vel: Vector3, hp: float, new_marked: float) -> void:
+func push_state(pos: Vector3, yaw: float, pitch: float, new_move: int, vel: Vector3, hp: float, new_marked: float, anim: Array = []) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if _states.is_empty():
 		global_position = pos
 		rotation.y = yaw
-	_states.append([now, pos, yaw, pitch, new_move, vel])
+	_states.append([now, pos, yaw, pitch, new_move, vel, anim])
 	while _states.size() > 2 and now - float(_states[0][0]) > KEEP:
 		_states.pop_front()
 	health = hp
@@ -136,10 +138,32 @@ func _process(delta: float) -> void:
 	_prev_pos = global_position
 	_pitch = lerpf(float(a[3]), float(b[3]), k)
 	if _model != null:
-		var m: int = int(b[4])
-		_model.pose(delta, _seen_vel, m != Player.Move.AIR and m != Player.Move.WALLRUN and m != Player.Move.GRAPPLE,
-			0.0, m == Player.Move.SLIDE,
-			0 if m != Player.Move.WALLRUN else 1, _pitch)
+		_model.play_state(delta, _seen_vel, anim_state())
+
+
+## The body's animation state at the moment drawn (CompetitorRig.anim): the owner's, with
+## the reload clock run on to now and the shots this machine saw.
+func anim_state() -> Array:
+	if _states.is_empty():
+		return []
+	var t := Time.get_ticks_msec() / 1000.0 - INTERP
+	var at: Array = _states[0]
+	for s in _states:
+		if float(s[0]) <= t:
+			at = s
+	var st: Array = (at[6] as Array).duplicate() if at.size() > 6 and (at[6] as Array).size() >= 11 else []
+	if st.is_empty():
+		var m := int(at[4])
+		return CompetitorRig.anim(m, _pitch, 0.0, Vector3.ZERO, null, 0, _shots, m != Player.Move.AIR and m != Player.Move.WALLRUN and m != Player.Move.GRAPPLE)
+	st[1] = _pitch
+	st[4] = maxf(float(st[4]) - maxf(t - float(at[0]), 0.0), 0.0)
+	st[8] = _shots
+	return st
+
+
+## One of this avatar's shots was drawn here.
+func shot_seen() -> void:
+	_shots += 1
 
 
 ## How it's moving on this screen (props it runs through get kicked by this).

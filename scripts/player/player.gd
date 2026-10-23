@@ -75,6 +75,9 @@ var base_fov := 96.0
 
 # What the debug panel shows (filled every tick; cheap).
 var transitions: Array = []      # newest first: {t, from, to, why}
+## Counters for the third-person body (CompetitorRig.anim): wall kicks and shots so far.
+var kick_count := 0
+var shot_count := 0
 var failures: Array = []         # newest first: {t, why}
 var landing := ""                # the last landing: 一般 / 高速 / 滑鏟 / 重 / 重踩
 var limiter := ""                # what shaped the speed this tick
@@ -1025,6 +1028,7 @@ func _wall_kick(wall: Dictionary) -> void:
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
 	view.jolt(global_basis.inverse() * n * 0.015)
 	_set_move(Move.AIR, "踢牆（剩 %d 次）" % _kicks, true)
+	kick_count += 1
 	Sfx.play(self, "kick")
 	# C7: every wall is runnable, so the wall just kicked doesn't catch you again at once.
 	if wall.has("collider"):
@@ -1408,6 +1412,7 @@ func _shoot() -> void:
 	var aim := camera.global_basis
 	var origin := camera.global_position
 	var results := weapon.fire(self, origin, aim, current_spread(), context)
+	shot_count += 1
 	var muzzle := view.muzzle_global()
 	view.kick(float(weapon.stats.recoil), 1.0)
 	PrintFx.muzzle(view.gun_node(), view.muzzle_local(), weapon.klass, 1.0)
@@ -1530,7 +1535,7 @@ func _camera_frame(delta: float) -> void:
 	var fov := (base_fov + _cam.fov) / lerpf(1.0, maxf(zoom, 1.0), _aim)
 	camera.fov = lerpf(camera.fov, fov, 1.0 - exp(-14.0 * delta))
 	view.update_pose(delta, {"aim": _aim, "speed": flat_speed(), "move": move, "floor": is_on_floor(),
-		"roll": _cam.roll, "vy": velocity.y, "reloading": weapon.is_reloading(),
+		"roll": _cam.roll, "vy": velocity.y, "reloading": weapon.is_reloading(), "reload_left": weapon.reload_left,
 		"sprint": _want("sprint") and move == Move.GROUND and flat_speed() > tune.run_speed * mobility})
 
 
@@ -1644,3 +1649,9 @@ func _die(info: Dictionary) -> void:
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", 0)
 	died.emit(info)
+
+
+## How the third-person body should look right now (sent to others, recorded for replays).
+func anim_state() -> Array:
+	var wall := _wall_normal if move == Move.WALLRUN or move == Move.CLIMB else Vector3.ZERO
+	return CompetitorRig.anim(int(move), _pitch, 1.0 if _crouching else 0.0, wall, weapon, kick_count, shot_count, is_on_floor())
