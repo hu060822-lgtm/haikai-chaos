@@ -292,7 +292,7 @@ const MAX_RAGDOLLS := 10
 ## Collision layer of ragdoll pieces: they hit the world and each other, never people or shots.
 const RAG_LAYER := PhysicsFx.LAYER
 static var _live: Array = []
-var _pieces: Array[RigidBody3D] = []
+var _pieces: Array[Node] = []
 
 
 ## How hard a kill throws the body: 1 for a bullet, up to ~4 for a blast.
