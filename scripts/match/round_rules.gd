@@ -196,6 +196,8 @@ func _round_start(n: int, new_wins: Array, new_money: Dictionary, new_builds: Di
 	tm.scores = wins.duplicate()
 	var main := tm.main
 	main.death.hide_death()
+	# Smoke, decoys and barricades go; the map's panels are back (C6).
+	Deploy.reset_round()
 	# Everyone back at their team's spawn, with the gun they own.
 	var mine: Dictionary = builds.get(tm.my_id, Arsenal.STARTER)
 	if Weapon.version_of(mine) != tm.player.weapon.version or not tm.player.alive:

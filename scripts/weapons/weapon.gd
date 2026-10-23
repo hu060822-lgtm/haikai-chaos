@@ -551,6 +551,7 @@ func _chain(shooter: Node3D, from_target: Node, point: Vector3, info: Dictionary
 
 func _explode(shooter: Node3D, at: Vector3, radius: float, context: Dictionary) -> void:
 	PrintFx.explosion(shooter.get_tree().current_scene, at, radius)
+	Deploy.blow(at, radius)
 	for t in shooter.get_tree().get_nodes_in_group("hittable"):
 		if not (t is Node3D):
 			continue
@@ -568,6 +569,7 @@ func _explode(shooter: Node3D, at: Vector3, radius: float, context: Dictionary) 
 ## A blast of fixed `damage` (falling off to a fifth at the edge) at `at`, from this gun.
 func blast(shooter: Node3D, at: Vector3, radius: float, damage: float, context: Dictionary) -> void:
 	PrintFx.explosion(shooter.get_tree().current_scene, at, radius)
+	Deploy.blow(at, radius)
 	for t in shooter.get_tree().get_nodes_in_group("hittable"):
 		if not (t is Node3D) or not t.get("alive"):
 			continue

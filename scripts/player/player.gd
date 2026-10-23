@@ -49,8 +49,12 @@ const COMBAT_FIRE := 1.5
 const RUSH := 1.15
 
 ## Movement state, for the HUD, the view model and the kill feed's move tags.
-enum Move { GROUND, AIR, SLIDE, WALLRUN, CLIMB, MANTLE, DASH, SLAM }
-const MOVE_NAMES := ["地面", "空中", "滑鏟", "牆跑", "攀牆", "翻越", "衝刺", "重踩"]
+## GRAPPLE and CHARGE (C6) belong to the class abilities (Anchor, Ram), which drive them.
+enum Move { GROUND, AIR, SLIDE, WALLRUN, CLIMB, MANTLE, DASH, SLAM, GRAPPLE, CHARGE }
+const MOVE_NAMES := ["地面", "空中", "滑鏟", "牆跑", "攀牆", "翻越", "衝刺", "重踩", "勾索", "肩撞"]
+## A RAM hit: for this long the cone opens wide and the scope drops (never a stun).
+const STAGGER_SPREAD := 3.0
+const STEP_EVERY := 2.3
 
 var display_name := "你"
 var team := 0
@@ -58,6 +62,9 @@ var health := MAX_HEALTH
 var alive := true
 var input_enabled := true
 var weapon: Weapon
+## The class (C6): Kit id and its ability on the ability key.
+var kit_id := Kit.DEFAULT
+var ability: Ability
 var mobility := 1.0
 var tune := MoveTuning.new()
 
@@ -136,6 +143,8 @@ var marked := 0.0
 var _rush := 0.0
 var _feed_t := 0.0
 var _spawn := Transform3D.IDENTITY
+var _stagger := 0.0
+var _step_dist := 0.0
 var _hitboxes: Array[Area3D] = []
 
 
@@ -179,6 +188,8 @@ func _ready() -> void:
 	_add_hitboxes()
 	if weapon == null:
 		equip({"frame": "carbine", "parts": {}, "tune": {}})
+	if ability == null:
+		set_kit(Settings.kit)
 
 
 func _add_hitboxes() -> void:
@@ -219,6 +230,19 @@ func equip(build: Dictionary, gun_name := "") -> void:
 	weapon_changed.emit()
 
 
+## Takes class `id` (C6): a fresh ability, full charges.
+func set_kit(id: String) -> void:
+	if ability != null:
+		ability.cancel()
+	kit_id = Kit.valid(id)
+	ability = Kit.make(kit_id, self)
+
+
+## Where abilities are aimed from: the camera.
+func ability_aim() -> Transform3D:
+	return camera.global_transform
+
+
 ## How a gun's weight moves you: 1.0 at about 3 kg, faster when lighter, down to 0.66.
 static func mobility_of(stats: Dictionary) -> float:
 	return clampf(1.12 - 0.04 * float(stats.weight), 0.66, 1.1)
@@ -249,6 +273,10 @@ func spawn_at(xform: Transform3D) -> void:
 	_set_crouch(false)
 	_slow = 0.0
 	_burn = 0.0
+	_stagger = 0.0
+	if ability != null:
+		ability.cancel()
+		ability.refill()
 	# Every movement timer back to its start, so a respawn behaves the same every time.
 	_buffer = 0.0
 	_crouch_buf = 0.0
@@ -313,7 +341,15 @@ func _physics_process(delta: float) -> void:
 		_buffer = tune.jump_buffer
 	if _want("crouch", true):
 		_crouch_buf = tune.crouch_buffer
+	if ability != null:
+		ability.tick(delta)
+		if _want("ability", true):
+			ability.press()
+		elif input_enabled and Input.is_action_just_released("ability"):
+			ability.release()
 	match move:
+		Move.GRAPPLE, Move.CHARGE:
+			ability.move_frame(self, delta, wish)
 		Move.MANTLE:
 			_do_mantle(delta)
 		Move.DASH:
@@ -358,6 +394,7 @@ func _timers(delta: float) -> void:
 		_wall_ban = null
 	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), DASH_CHARGES)
 	_slow = maxf(_slow - delta, 0.0)
+	_stagger = maxf(_stagger - delta, 0.0)
 	combat_left = maxf(combat_left - delta, 0.0)
 	marked = maxf(marked - delta, 0.0)
 	_rush = maxf(_rush - delta, 0.0)
@@ -1080,6 +1117,7 @@ func _land_slam() -> void:
 	_slam_height = maxf(_slam_from - global_position.y, 0.0)
 	_slam_bounce = tune.slam_bounce_window
 	PrintFx.landing(get_tree().current_scene, global_position, 1.0, true)
+	Deploy.blow(global_position, SLAM_RADIUS)
 	_cam.slam()
 	view.kick(4.0, 0.0)
 	for t in get_tree().get_nodes_in_group("hittable"):
@@ -1105,6 +1143,13 @@ func _height_above_ground() -> float:
 
 func _after_move(fall_before: float) -> void:
 	var on_floor := is_on_floor()
+	# Your own footsteps, like everyone else's (CompetitorRig): one every STEP_EVERY metres.
+	if on_floor and move == Move.GROUND:
+		_step_dist += flat_speed() * get_physics_process_delta_time()
+		if _step_dist >= STEP_EVERY:
+			_step_dist = 0.0
+			if flat_speed() > 2.5:
+				Sfx.step(self, flat_speed())
 	if on_floor and not _was_on_floor:
 		_on_land(fall_before)
 	_was_on_floor = on_floor
@@ -1113,6 +1158,8 @@ func _after_move(fall_before: float) -> void:
 ## Three kinds of landing: into a slide (crouch held and fast: the speed carries on), fast
 ## (no friction for a moment, time to jump or slide) and normal.
 func _on_land(fall: float) -> void:
+	if move == Move.GRAPPLE or move == Move.CHARGE:
+		return
 	if move == Move.SLAM:
 		landing = "重踩"
 		_land_slam()
@@ -1208,7 +1255,8 @@ func windows() -> Dictionary:
 
 func _weapon_frame(delta: float) -> void:
 	weapon.tick(delta)
-	var aiming := input_enabled and _want("aim") and not weapon.is_reloading() and move != Move.MANTLE
+	var aiming := input_enabled and _want("aim") and not weapon.is_reloading() and move != Move.MANTLE \
+		and move != Move.GRAPPLE and move != Move.CHARGE and _stagger <= 0.0
 	var aim_rate := delta / maxf(float(weapon.stats.aim_time), 0.05)
 	_aim = move_toward(_aim, 1.0 if aiming else 0.0, aim_rate)
 	if not input_enabled:
@@ -1219,8 +1267,8 @@ func _weapon_frame(delta: float) -> void:
 		_on_reload(true)
 	if _want("fire_mode", true):
 		weapon.cycle_mode()
-	var held := _want("fire") and move != Move.MANTLE
-	var just := _want("fire", true) and move != Move.MANTLE
+	var held := _want("fire") and move != Move.MANTLE and move != Move.CHARGE
+	var just := _want("fire", true) and move != Move.MANTLE and move != Move.CHARGE
 	var released := Input.is_action_just_released("fire")
 	if weapon.wants_fire(held, just, released):
 		_shoot()
@@ -1247,8 +1295,11 @@ func current_spread() -> float:
 		Move.SLIDE: move_mult = 1.3
 		Move.WALLRUN: move_mult = 1.25
 		Move.CLIMB, Move.MANTLE: move_mult = 2.2
+		Move.GRAPPLE: move_mult = 1.6
 	if _crouching and move == Move.GROUND:
 		move_mult *= 0.75
+	if _stagger > 0.0:
+		move_mult *= STAGGER_SPREAD
 	var aimed := float(weapon.stats.aim_spread) + float(weapon.stats.sway) * 0.6 + speed * 0.05
 	return lerpf(hip * move_mult, aimed * (1.0 + (move_mult - 1.0) * 0.5), _aim)
 
@@ -1268,7 +1319,7 @@ func _shoot() -> void:
 		PrintFx.tracer(world, muzzle, r.to, weapon.klass)
 		if r.has("target"):
 			PrintFx.impact(world, r.to, r.normal, weapon.klass, true)
-			if r.target != self:
+			if r.target != self and not (r.target as Node).is_in_group("deployables"):
 				if r.get("damage", 0.0) > 0.0 and r.target.get("team") != null and r.target.team != team:
 					combat_left = COMBAT_LOCK
 				var dmg: float = r.get("damage", 0.0)
@@ -1293,6 +1344,7 @@ func _shoot() -> void:
 func _process(_delta: float) -> void:
 	if alive:
 		_place_head(_render_prev.lerp(_render_curr, Engine.get_physics_interpolation_fraction()))
+	_draw_rope()
 	if _weapon_cam != null:
 		_weapon_cam.global_transform = camera.global_transform
 		_weapon_layer.visible = camera.current and view.is_visible_in_tree()
@@ -1383,6 +1435,24 @@ func _camera_frame(delta: float) -> void:
 
 # --- Damage --------------------------------------------------------------------------------
 
+## Our own ANCHOR line, from low on the right of the view to the hook.
+var _rope: RopeLine
+
+
+func _draw_rope() -> void:
+	var end := Vector3.INF
+	if ability is Anchor and alive:
+		end = (ability as Anchor).line_end()
+	if end == Vector3.INF:
+		if _rope != null:
+			_rope.visible = false
+		return
+	if _rope == null:
+		_rope = RopeLine.new()
+		add_child(_rope)
+	_rope.show_line(camera.global_transform * Vector3(0.22, -0.28, -0.45), end)
+
+
 func take_hit(info: Dictionary) -> bool:
 	if not alive:
 		return false
@@ -1405,6 +1475,12 @@ func take_hit(info: Dictionary) -> bool:
 		_slow = maxf(_slow, float(effects.slow))
 	if effects.has("stun"):
 		_slow = maxf(_slow, float(effects.stun))
+	if effects.has("stagger"):
+		_stagger = maxf(_stagger, float(effects.stagger))
+		_slow = maxf(_slow, float(effects.stagger) * 0.6)
+		_aim = 0.0
+		_recoil_pitch += deg_to_rad(4.0)
+		_recoil_yaw += deg_to_rad(randf_range(-5.0, 5.0))
 	if effects.has("burn") or effects.has("bleed"):
 		_burn = maxf(_burn, float(effects.get("burn", effects.get("bleed", 0.0))))
 	if effects.has("mark") and info.get("attacker") != self:
@@ -1459,6 +1535,8 @@ func _apply_damage(amount: float, info: Dictionary, _direct: bool) -> bool:
 
 func _die(info: Dictionary) -> void:
 	alive = false
+	if ability != null:
+		ability.cancel()
 	_set_move(Move.GROUND, "死亡")
 	velocity = Vector3.ZERO
 	PrintFx.takedown(get_tree().current_scene, global_position, Faultprint.INFO_ALLY)

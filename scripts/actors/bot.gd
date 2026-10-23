@@ -63,6 +63,16 @@ var _burn := 0.0
 var _burn_info := {}
 var _flash := 0.0
 var rng := RandomNumberGenerator.new()
+## The class (C6). Bots don't swing on lines: they get one of BOT_KITS and use it simply
+## (_use_ability): a decoy on the way somewhere, smoke and cover in a fight at range, a
+## charge up close.
+const BOT_KITS := ["decoy", "bulwark", "veil", "ram"]
+var kit_id := ""
+var ability: Ability
+var _stagger := 0.0
+var _lunge := Vector3.ZERO
+var _lunge_left := 0.0
+var _ability_think := 0.0
 
 
 func _ready() -> void:
@@ -111,6 +121,12 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	global_position = at
 	rotation = Vector3(0, rng.randf() * TAU, 0)
 	velocity = Vector3.ZERO
+	if ability == null:
+		set_kit(BOT_KITS[rng.randi() % BOT_KITS.size()] if kit_id == "" else kit_id)
+	ability.cancel()
+	ability.refill()
+	_stagger = 0.0
+	_lunge_left = 0.0
 	health = MAX_HEALTH
 	alive = true
 	visible = true
@@ -130,6 +146,50 @@ func arm(build: Dictionary) -> void:
 		_gun.queue_free()
 	_gun = GunModels.build(weapon.build)
 	_model.find_child("GunHand", true, false).add_child(_gun)
+
+
+func set_kit(id: String) -> void:
+	kit_id = Kit.valid(id)
+	ability = Kit.make(kit_id, self)
+
+
+## Where its abilities aim: from the eye, at its target if it has one in sight.
+func ability_aim() -> Transform3D:
+	var eye := _eye()
+	if _see and target != null and is_instance_valid(target):
+		var to := target.global_position + Vector3(0, 1.0, 0) - eye
+		if to.length() > 0.5:
+			return Transform3D(Basis.looking_at(to.normalized(), Vector3.UP), eye)
+	return Transform3D(global_basis, eye)
+
+
+## A shove it can't steer out of (a RAM charge), for `seconds`.
+func lunge(v: Vector3, seconds: float) -> void:
+	_lunge = v
+	_lunge_left = seconds
+
+
+## When to use the class ability (checked a few times a second).
+func _use_ability() -> void:
+	if ability == null or not ability.can_use() or passive:
+		return
+	var sees := _see and target != null and is_instance_valid(target)
+	var d := global_position.distance_to(target.global_position) if sees else INF
+	match kit_id:
+		"decoy":
+			if not sees and flat_speed() > 2.0 and rng.randf() < 0.04:
+				ability.press()
+			elif sees and hurt_within(1.0) and rng.randf() < 0.3:
+				ability.press()
+		"veil":
+			if sees and d > 14.0 and (hurt_within(1.5) or rng.randf() < 0.05):
+				ability.press()
+		"bulwark":
+			if sees and d > 8.0 and (health < 60.0 or weapon.is_reloading()) and rng.randf() < 0.5:
+				ability.press()
+		"ram":
+			if sees and d < 6.5 and rng.randf() < 0.6:
+				ability.press()
 
 
 func exclusions() -> Array:
@@ -155,7 +215,17 @@ func _physics_process(delta: float) -> void:
 		if _model != null:
 			_model.pose(delta, velocity, is_on_floor())
 		return
+	if target != null and not is_instance_valid(target):
+		target = null
+		_see = false
 	weapon.tick(delta)
+	if ability != null:
+		ability.tick(delta)
+		_ability_think -= delta
+		if _ability_think <= 0.0:
+			_ability_think = 0.3
+			_use_ability()
+	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_flash = maxf(_flash - delta, 0.0)
 	marked = maxf(marked - delta, 0.0)
@@ -170,6 +240,15 @@ func _physics_process(delta: float) -> void:
 		_look_for_target()
 	var speed := SPEED * (0.55 if _slow > 0.0 else 1.0)
 	var flat := Vector3.ZERO
+	if _lunge_left > 0.0:
+		_lunge_left -= delta
+		velocity.x = _lunge.x
+		velocity.z = _lunge.z
+		velocity.y -= GRAVITY * delta
+		move_and_slide()
+		if _model != null:
+			_model.pose(delta, velocity, is_on_floor())
+		return
 	if _see and target != null:
 		_reaction -= delta
 		_face(target.global_position, delta, 9.0)
@@ -303,7 +382,8 @@ func flat_speed() -> float:
 func _pick_target() -> void:
 	var eye := _eye()
 	var options := []
-	for c in get_tree().get_nodes_in_group("combatants"):
+	# Decoys look like anyone else to a bot: it can be fooled.
+	for c in get_tree().get_nodes_in_group("combatants") + get_tree().get_nodes_in_group("decoys"):
 		if c == self or not (c is Node3D) or not c.get("alive") or c.get("team") == null or int(c.team) == team:
 			continue
 		options.append([eye.distance_to((c as Node3D).global_position), c])
@@ -315,7 +395,7 @@ func _pick_target() -> void:
 		if options[i][0] > SIGHT:
 			break
 		var q := PhysicsRayQueryParameters3D.create(eye, c.global_position + Vector3(0, 1.3, 0), Geo.WORLD, exclusions())
-		if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+		if get_world_3d().direct_space_state.intersect_ray(q).is_empty() and not Deploy.sight_blocked(eye, c.global_position + Vector3(0, 1.3, 0)):
 			if c != target:
 				target = c
 				_see = false
@@ -325,6 +405,8 @@ func _pick_target() -> void:
 
 
 func _look_for_target() -> void:
+	if target != null and not is_instance_valid(target):
+		target = null
 	_pick_target()
 	if target == null or not target.get("alive"):
 		_see = false
@@ -341,7 +423,7 @@ func _look_for_target() -> void:
 	if facing < -0.1 and d > 6.0 and not was:
 		return
 	var q := PhysicsRayQueryParameters3D.create(eye, aim_at, Geo.WORLD, exclusions())
-	if get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+	if get_world_3d().direct_space_state.intersect_ray(q).is_empty() and not Deploy.sight_blocked(eye, aim_at):
 		_see = true
 		_last_seen = target.global_position
 		if not was:
@@ -399,6 +481,11 @@ func take_hit(info: Dictionary) -> bool:
 		_burn_info = info
 	if e.has("mark"):
 		marked = maxf(marked, float(e.mark))
+	if e.has("stagger"):
+		# Off balance: a beat before it can shoot straight again, and slower for a moment.
+		_stagger = maxf(_stagger, float(e.stagger))
+		_reaction = maxf(_reaction, float(e.stagger))
+		_slow = maxf(_slow, float(e.stagger) * 0.6)
 	_hurt_at = Time.get_ticks_msec() / 1000.0
 	if _model != null and info.get("dir") is Vector3:
 		_model.flinch(info.dir, clampf(float(info.get("damage", 20.0)) / 30.0, 0.3, 1.5))
@@ -421,6 +508,8 @@ func _damage(amount: float, info: Dictionary) -> bool:
 
 func _die(info: Dictionary) -> void:
 	alive = false
+	if ability != null:
+		ability.cancel()
 	health = 0.0
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", 0)

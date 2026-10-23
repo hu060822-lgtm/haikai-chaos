@@ -508,6 +508,7 @@ func _wings() -> void:
 	var backrooms := mat("stripes", Color("#E8D9A0"), Color("#DCCB8A"))
 	var tile_wall := mat("tile", Color("#EEF4F2"))
 	var n := [0]
+	layout.mark_breaches(2)  # C6: rammable shortcuts
 	layout.build_walls(self, OUTER_H, func(size: Vector3, at: Vector3) -> void:
 		var near_site := absf(at.x) > 40.0 and absf(at.z) < 28.0
 		box(size, at, tile_wall if near_site else backrooms, 0.0, true)

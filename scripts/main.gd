@@ -51,6 +51,8 @@ func _ready() -> void:
 	Music.setup_buses()
 	net = NetSession.new()
 	add_child(net)
+	Deploy.clear()
+	Deploy.viewer_team = 0
 	var tdm := team_mode and NetSession.active
 	team_mode = tdm
 	if map_id == "lab":
@@ -104,6 +106,7 @@ func _ready() -> void:
 	_ui.add_child(move_debug)
 	bench = Bench.new()
 	bench.closed.connect(_on_bench_closed)
+	bench.kit_chosen.connect(_on_kit_chosen)
 	_ui.add_child(bench)
 	death = DeathScreen.new()
 	death.respawn_requested.connect(_respawn)
@@ -339,6 +342,8 @@ func _try_bench() -> void:
 		if not team_match.rules.can_buy():
 			hud.show_hint("預算戰：只有每回合開頭的備戰時間能改槍")
 			return
+		bench.kit = player.kit_id
+		bench.kit_locked = false
 		bench.open(player.weapon.build, player.weapon.name, false)
 		hud.visible = false   # the money line sits where the score bar is
 		player.input_enabled = false
@@ -348,10 +353,21 @@ func _try_bench() -> void:
 	if not player.can_mod():
 		hud.show_hint("戰鬥中不能改槍：%.1f 秒沒有交火，或回到重生區" % player.combat_left)
 		return
+	bench.kit = player.kit_id
+	bench.kit_locked = team_match != null and not SafeZone.is_safe(player.global_position, player.team)
 	bench.open(player.weapon.build, player.weapon.name, not SafeZone.is_safe(player.global_position, player.team))
 	player.input_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_viewport().set_input_as_handled()
+
+
+func _on_kit_chosen(id: String) -> void:
+	player.set_kit(id)
+	Settings.kit = player.kit_id
+	Settings.save()
+	if team_match != null:
+		team_match.announce_kit()
+	hud.show_hint("職業：%s（%s，按 F）" % [Kit.label(id), Kit.info(id).ability], 3.0)
 
 
 func _on_settings_closed() -> void:

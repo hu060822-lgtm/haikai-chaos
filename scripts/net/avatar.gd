@@ -20,6 +20,12 @@ var move := 0
 var build := {}
 var gun_name := ""
 var match_node: Node
+## The class (C6), as its owner said; and its ANCHOR line, drawn from what it sends.
+var kit_id := Kit.DEFAULT
+var _rope: RopeLine
+var _hook := Vector3.INF
+var _hook_dir := Vector3.ZERO
+var _hook_flying := false
 
 var _states: Array = []   # [time, pos, yaw, pitch, move, vel]
 var _vel := Vector3.ZERO
@@ -104,6 +110,7 @@ func push_state(pos: Vector3, yaw: float, pitch: float, new_move: int, vel: Vect
 
 func _process(delta: float) -> void:
 	marked = maxf(marked - delta, 0.0)
+	_draw_rope(delta)
 	if _states.is_empty() or not alive:
 		return
 	var t := Time.get_ticks_msec() / 1000.0 - INTERP
@@ -130,13 +137,52 @@ func _process(delta: float) -> void:
 	_pitch = lerpf(float(a[3]), float(b[3]), k)
 	if _model != null:
 		var m: int = int(b[4])
-		_model.pose(delta, _seen_vel, m != Player.Move.AIR and m != Player.Move.WALLRUN,
+		_model.pose(delta, _seen_vel, m != Player.Move.AIR and m != Player.Move.WALLRUN and m != Player.Move.GRAPPLE,
 			0.0, m == Player.Move.SLIDE,
 			0 if m != Player.Move.WALLRUN else 1, _pitch)
 
 
 func flat_speed() -> float:
 	return Vector2(_vel.x, _vel.z).length()
+
+
+## What its ability is doing, from its owner (TeamMatch._ability_fx).
+func ability_fx(what: String, data: Dictionary) -> void:
+	match what:
+		"hook":
+			_hook = data.get("from", muzzle())
+			_hook_dir = data.get("dir", Vector3.FORWARD)
+			_hook_flying = true
+			Sfx.play(self, "hook_fire", -6.0)
+		"rope_on":
+			_hook = data.get("at", _hook)
+			_hook_flying = false
+			Sfx.play(self, "hook_hit", -4.0)
+		"rope_off":
+			_hook = Vector3.INF
+			_hook_flying = false
+		"ram":
+			Sfx.play(self, "ram_wind", -4.0)
+			get_tree().create_timer(Ram.WIND).timeout.connect(func() -> void:
+				if is_inside_tree():
+					Sfx.play(self, "ram", -2.0))
+
+
+func _draw_rope(delta: float) -> void:
+	if _hook == Vector3.INF or not alive:
+		if _rope != null:
+			_rope.visible = false
+		return
+	if _rope == null:
+		_rope = RopeLine.new()
+		add_child(_rope)
+	if _hook_flying:
+		_hook += _hook_dir * Anchor.HOOK_SPEED * delta
+		if _hook.distance_to(global_position) > Anchor.RANGE + 4.0:
+			_hook = Vector3.INF
+			_rope.visible = false
+			return
+	_rope.show_line(muzzle(), _hook)
 
 
 func exclusions() -> Array:
@@ -179,6 +225,7 @@ func die(dir := Vector3.ZERO) -> void:
 		_gun = null
 	alive = false
 	visible = false
+	_hook = Vector3.INF
 	_states.clear()
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", 0)

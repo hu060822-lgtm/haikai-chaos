@@ -17,6 +17,7 @@ run --path . --script res://tests/judge_test.gd
 run --path . --script res://tests/balance_test.gd
 run --path . --script res://tests/maps_test.gd
 run --path . --script res://tests/bomb_test.gd -- 24696
+run --path . --script res://tests/abilities_test.gd
 for hz in 60 120 240; do
 	run --fixed-fps $hz --path . --script res://tests/movement_feel_test.gd -- $hz
 	run --fixed-fps $hz --path . --script res://tests/route_test.gd -- $hz

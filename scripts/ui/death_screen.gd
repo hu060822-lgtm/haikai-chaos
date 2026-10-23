@@ -109,7 +109,7 @@ func _ready() -> void:
 	buttons.add_theme_constant_override("separation", 14)
 	buttons.size_flags_vertical = Control.SIZE_SHRINK_END
 	root.add_child(buttons)
-	_copy = FpUi.button("抄下這把槍  [F]", 22)
+	_copy = FpUi.button("抄下這把槍  [G]", 22)
 	_copy.pressed.connect(_on_copy)
 	# Room to spare: scaled windows measure the text a little narrower than they draw it.
 	_copy.custom_minimum_size = Vector2(300, 48)
@@ -154,7 +154,7 @@ func show_death(info: Dictionary, dealt: float, taken: float, clip := {}) -> voi
 		_stats.text = "—"
 		_copy.disabled = true
 	_exchange.text = "你對他　%d 傷害\n他對你　%d 傷害" % [roundi(dealt), roundi(taken)]
-	_copy.text = "抄下這把槍  [F]"
+	_copy.text = "抄下這把槍  [G]"
 	_again.text = AGAIN
 	_again.disabled = false
 
