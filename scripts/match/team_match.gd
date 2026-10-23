@@ -79,6 +79,8 @@ var judge := HitJudge.new()
 ## peer -> round trip to the host in ms (from the host's pings; everyone gets the table).
 var pings := {}
 var _ping_t := 0.0
+var _was_alive := {}      # host: id -> alive last tick (a respawn resets the ledger)
+var _forced_here := false
 
 
 func _init() -> void:
@@ -260,8 +262,17 @@ func _physics_process(delta: float) -> void:
 		var now := Time.get_ticks_msec() / 1000.0
 		for id in entities:
 			var e = entities[id]
-			if e != null and is_instance_valid(e) and e.alive:
+			var alive: bool = e != null and is_instance_valid(e) and e.alive
+			if alive:
 				judge.record(id, (e as Node3D).global_position, now)
+				if not _was_alive.get(id, false):
+					judge.spawned(id)
+				# Alive past what the host's ledger allows: the host calls it.
+				if e is Avatar and judge.overdue(id, now):
+					judge.forced += 1
+					judge.spawned(id)
+					_died.rpc(id, judge.last_hit.get(id, {"attacker_name": "?", "attacker_id": ""}))
+			_was_alive[id] = alive
 		_ping_t -= delta
 		if _ping_t <= 0.0:
 			_ping_t = PING_EVERY
@@ -375,7 +386,30 @@ func _forward(victim_id: String, wire: Dictionary) -> void:
 	if owner == net.my_id():
 		_apply_hit(victim_id, wire)
 	else:
+		_ledger(victim_id, wire)
 		_hit.rpc_id(owner, victim_id, wire)
+
+
+## Host: what a hit on a client's player should do to it, by the host's count (HitJudge).
+func _ledger(victim_id: String, wire: Dictionary) -> void:
+	var v = entities.get(victim_id)
+	if not (v is Avatar) or not v.alive or (rules != null and not rules.fighting()):
+		return
+	if wire.get("from_safe", false) or SafeZone.is_safe((v as Node3D).global_position, int(v.team)):
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	var victim_fx: Dictionary = Arsenal.stats(v.build).effects if not (v.build as Dictionary).is_empty() else {}
+	var dmg := float(wire.get("damage", 0.0))
+	judge.took(victim_id, dmg, victim_fx, wire, now)
+	var attacker_id := str(wire.get("attacker_id", ""))
+	var shooter = entities.get(attacker_id)
+	var gun: Dictionary = shooter.build if shooter is Avatar else (shooter.weapon.build if shooter != null and shooter.get("weapon") else {})
+	if not gun.is_empty():
+		var fx: Dictionary = Arsenal.stats(gun).effects
+		if fx.has("leech"):
+			judge.healed(attacker_id, dmg * float(fx.leech))
+		if fx.has("kill_heal") and float(judge.ledger.get(victim_id, 100.0)) <= 0.0:
+			judge.healed(attacker_id, float(fx.kill_heal))
 
 
 ## From the host only: a judged hit on something this machine owns.
@@ -440,6 +474,9 @@ func from_wire(wire: Dictionary) -> Dictionary:
 func _on_local_died(info: Dictionary) -> void:
 	_dead_for = 0.0
 	_respawn_queued = false
+	if _forced_here:
+		_forced_here = false
+		return
 	_died.rpc(my_id, _with_assists(my_id, to_wire(info)))
 
 
@@ -476,11 +513,16 @@ func _with_assists(victim_id: String, wire: Dictionary) -> Dictionary:
 @rpc("any_peer", "call_local", "reliable")
 func _died(victim_id: String, wire: Dictionary) -> void:
 	var sender := multiplayer.get_remote_sender_id()
-	if sender != 0 and owner_of(victim_id) != sender and sender != net.my_id():
+	# The victim's owner says it died; or the host says so (its ledger, see HitJudge).
+	if sender != 0 and owner_of(victim_id) != sender and sender != net.my_id() and sender != 1:
 		return
 	var victim = entities.get(victim_id)
 	if victim is Avatar:
 		victim.die()
+	elif victim == player and player.alive and sender == 1 and not net.is_host():
+		# The host's count says we're dead: we are (no second announcement).
+		_forced_here = true
+		player._apply_damage(player.health + 1.0, from_wire(wire), false)
 	var killer_id := str(wire.get("attacker_id", ""))
 	var killer_team := int(wire.get("team", -1))
 	var victim_team := team_of(victim_id)
