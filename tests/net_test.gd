@@ -41,6 +41,15 @@ func _init() -> void:
 	quit(1 if failures > 0 else 0)
 
 
+
+## The map to play on: --map=<id> among the test's arguments (else the room's default).
+func _map_arg() -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--map="):
+			return a.substr(6)
+	return ""
+
+
 func check(ok: bool, what: String) -> void:
 	print("  %s %s: %s" % ["ok  " if ok else "FAIL", role, what])
 	if not ok:
@@ -270,6 +279,8 @@ func _claims(tm: TeamMatch, me: Player) -> void:
 func _solo() -> void:
 	var m := main()
 	check(m.net.host(port) == OK, "opened a room")
+	if _map_arg() != "":
+		m.net.set_config("map", _map_arg())
 	m.net.set_config("team_size", 3)
 	m.net.start_match()
 	var started := await _until(func() -> bool: return team_match() != null and team_match().running, 15.0)

@@ -67,7 +67,10 @@ const BRIDGE := Rect2(-52, -2, 4, 4)
 const DAIS := Rect2(62, -8, 10, 16)
 const DAIS_RAMP := Rect2(56, -4, 6, 8)
 ## Pews (x of each 2 m row, both sides of the centre aisle, z 4..10).
-const PEWS := [-32, -28, -24, -20, 12, 16, 20, 24, 28, 32, 36]
+const PEWS := [-32, -28, -24, -20, -16, -12, 12, 16, 20, 32, 36]
+## The great pillars (south one; its twin north), close enough to the altar to cut the
+## dais's view of the nave.
+const GREAT_PILLAR := Rect2(24, 2, 4, 4)
 const ARCADE := [-30, -20, -10, 0, 10, 20]
 
 
@@ -108,7 +111,7 @@ func _plan() -> void:
 	for x in ARCADE:
 		g.carve2(Rect2(x, 12, 2, 2), "o")
 	g.carve2(Rect2(4, 12, 2, 2), "o")                     # the pulpit
-	g.carve2(Rect2(-14, 2, 4, 4), "o")                    # the great pillars
+	g.carve2(GREAT_PILLAR, "o")                           # the great pillars
 	g.carve(Rect2(16, -2, 4, 4), "o")                     # the font
 	for x in PEWS:
 		g.carve2(Rect2(x, 4, 2, 6), "c")
@@ -123,7 +126,7 @@ func _plan() -> void:
 	g.carve2(Rect2(-10, 32, 4, 4))
 	g.carve2(Rect2(6, 32, 4, 4))
 	# The altar: the chancel arch, side doors from the aisles, the room.
-	g.carve(Rect2(40, -8, 4, 16))
+	g.carve(Rect2(40, -6, 4, 12))
 	g.carve2(Rect2(40, 12, 4, 4))
 	g.carve(Rect2(44, -18, 30, 36), "a")
 	g.carve2(Rect2(58, 4, 4, 2), "o")                     # candle stands beside the dais ramp
@@ -236,7 +239,7 @@ func _nave() -> void:
 			p.collision_layer = Geo.WORLD | Geo.RUNNABLE
 			p.add_to_group("runnable")
 	for z in [4.0, -4.0]:
-		var p := Geo.block(self, Vector3(3.6, WALL_H, 3.6), Vector3(-12, WALL_H / 2.0, z), Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.15})
+		var p := Geo.block(self, Vector3(3.6, WALL_H, 3.6), Vector3(GREAT_PILLAR.get_center().x, WALL_H / 2.0, z), Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.15})
 		p.collision_layer = Geo.WORLD | Geo.RUNNABLE
 		p.add_to_group("runnable")
 		Geo.block(self, Vector3(1.8, 2.2, 1.8), Vector3(5, 1.1, 13.0 * signf(z)), Counterform.OXIDE_RUST, Vector3.ZERO, {"bevel": 0.06})

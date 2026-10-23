@@ -12,7 +12,7 @@ var port := NetSession.PORT + 12
 
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
-	if args.size() > 0:
+	if args.size() > 0 and not args[0].begins_with("--"):
 		port = int(args[0])
 	_prices()
 	change_scene_to_file("res://scenes/main.tscn")
@@ -20,6 +20,15 @@ func _init() -> void:
 	await _match()
 	print("ROUNDS TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)
+
+
+
+## The map to play on: --map=<id> among the test's arguments (else the room's default).
+func _map_arg() -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--map="):
+			return a.substr(6)
+	return ""
 
 
 func check(ok: bool, what: String) -> void:
@@ -92,6 +101,8 @@ func _kill(tm: TeamMatch, id: String) -> void:
 func _match() -> void:
 	var m := main()
 	check(m.net.host(port) == OK, "opened a room")
+	if _map_arg() != "":
+		m.net.set_config("map", _map_arg())
 	m.net.set_config("team_size", 2)
 	m.net.set_config("mode", "rounds")
 	m.net.set_config("rounds", 2)
