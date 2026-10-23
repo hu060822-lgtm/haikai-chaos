@@ -13,7 +13,11 @@ extends Node3D
 ##   aim       the torso, head and arms follow the look pitch (the gun goes with the arms)
 ##   flinch()  a hit knocks the torso back a little on a spring
 ##   die()     goes limp: knees buckle, the hips drop, the torso folds over and the body
-##             settles on the floor with a small bounce, head and arms loose
+##             settles on the floor with a small bounce, head and arms loose (kill replays)
+##   ragdoll() C7: a real physics body instead: every joint becomes a rigid piece linked
+##             to its parent by a loose cone joint, thrown by the killing hit and the
+##             speed it died at. Explosions, knock-backs, shoulder charges and shotgun
+##             blasts throw it much harder (kill_force), so bodies fly.
 ##
 ## Everything is procedural (no animation data), the same at any frame rate.
 
@@ -187,6 +191,24 @@ func flinch(dir: Vector3, strength := 1.0) -> void:
 		return
 	var local := global_basis.inverse() * dir
 	_flinch_v += Vector3(-local.z * 3.2, local.x * 1.6, -local.x * 2.4) * strength
+	_hit_flash()
+
+
+## C7: a hit shows on the body: everything flashes white for a few frames.
+static var _flash_mat: StandardMaterial3D
+var _flash_left := 0.0
+
+func _hit_flash() -> void:
+	if _flash_mat == null:
+		_flash_mat = StandardMaterial3D.new()
+		_flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_flash_mat.albedo_color = Color(1, 1, 1, 0.55)
+		_flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if _flash_left <= 0.0:
+		for m in find_children("*", "GeometryInstance3D", true, false):
+			(m as GeometryInstance3D).material_overlay = _flash_mat
+	_flash_left = 0.07
+	set_process(true)
 
 
 ## Goes limp. `dir` is the way the killing shot travelled (it falls away from it).
@@ -236,10 +258,12 @@ static func _bounce(x: float) -> float:
 
 ## A corpse: the model taken off its owner (who is about to vanish or respawn), left
 ## lying in the world, sinking away after `keep` seconds.
-static func leave_corpse(model: Node3D, dir: Vector3, keep := 6.0) -> void:
+static func leave_corpse(model: Node3D, dir: Vector3, keep := 6.0, force := 1.0, carry := Vector3.ZERO) -> void:
 	if model == null or not model.is_inside_tree():
 		return
-	var world := model.get_tree().current_scene
+	var world: Node = model.get_tree().current_scene
+	if world == null:
+		world = model.get_parent()
 	var xf := model.global_transform
 	model.get_parent().remove_child(model)
 	world.add_child(model)
@@ -247,6 +271,9 @@ static func leave_corpse(model: Node3D, dir: Vector3, keep := 6.0) -> void:
 	var marker := model.get_node_or_null("Marker")
 	if marker != null:
 		marker.visible = false
+	if model is CompetitorRig and RAGDOLLS:
+		(model as CompetitorRig).ragdoll(dir, force, carry, keep)
+		return
 	if model is CompetitorRig:
 		(model as CompetitorRig).die(dir)
 		model.set_process(true)
@@ -256,6 +283,156 @@ static func leave_corpse(model: Node3D, dir: Vector3, keep := 6.0) -> void:
 	tw.tween_callback(model.queue_free)
 
 
+# --- Ragdoll (C7) ------------------------------------------------------------------------
+
+## Physics bodies for corpses (off: the old procedural fall).
+static var RAGDOLLS := true
+## Corpses lying around at once; the oldest goes first.
+const MAX_RAGDOLLS := 10
+## Collision layer of ragdoll pieces: they hit the world and each other, never people or shots.
+const RAG_LAYER := PhysicsFx.LAYER
+static var _live: Array = []
+var _pieces: Array[RigidBody3D] = []
+
+
+## How hard a kill throws the body: 1 for a bullet, up to ~4 for a blast.
+static func kill_force(info: Dictionary) -> float:
+	var f := 1.0 + clampf(float(info.get("damage", 20.0)) / 60.0, 0.0, 1.0)
+	var e: Dictionary = info.get("effects", {}) if info.get("effects") is Dictionary else {}
+	if info.get("blast", false) or e.has("explode"):
+		f += 2.6
+	if e.has("knock"):
+		f += clampf(absf(float(e.knock)) * 0.25, 0.4, 2.0)
+	if int(info.get("pellets", 1)) > 3 or str(info.get("gun_name", "")) in ["重踩", "肩撞"]:
+		f += 1.0
+	if str(info.get("zone", "")) == "head":
+		f += 0.4
+	return clampf(f, 1.0, 4.5)
+
+
+## Turns the rigged body into linked rigid pieces and throws it: `dir` the way the killing
+## hit went, `force` from kill_force, `carry` the speed the body had.
+func ragdoll(dir: Vector3, force := 1.0, carry := Vector3.ZERO, keep := 6.0) -> void:
+	if dead or hips == null:
+		return
+	dead = true
+	set_process(false)
+	_live.append(self)
+	while _live.size() > MAX_RAGDOLLS:
+		var old = _live.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+	var world := get_parent()
+	var joints: Array[Node3D] = [hips, torso, head, arms, thighs[0], thighs[1], shins[0], shins[1]]
+	var parents := {torso: hips, head: torso, arms: torso, thighs[0]: hips, thighs[1]: hips, shins[0]: thighs[0], shins[1]: thighs[1]}
+	var mass := {hips: 14.0, torso: 20.0, head: 5.0, arms: 9.0, thighs[0]: 8.0, thighs[1]: 8.0, shins[0]: 5.0, shins[1]: 5.0}
+	var body_of := {}
+	var pivots := {}
+	for j in joints:
+		pivots[j] = j.global_position
+	# Each joint's meshes go onto a rigid body of their own, shaped by their bounds.
+	for j in joints:
+		var b := RigidBody3D.new()
+		b.name = "Rag%s%d" % [j.name, _pieces.size()]
+		b.collision_layer = RAG_LAYER
+		b.collision_mask = PhysicsFx.MASK
+		b.add_to_group("loose")
+		b.mass = mass[j]
+		b.linear_damp = 0.15
+		b.angular_damp = 1.2
+		b.continuous_cd = true
+		var pm := PhysicsMaterial.new()
+		pm.friction = 0.9
+		pm.bounce = 0.15
+		b.physics_material_override = pm
+		world.add_child(b)
+		b.global_transform = j.global_transform
+		var box := AABB()
+		var first := true
+		for child in j.get_children():
+			if not (child is MeshInstance3D) or (child as MeshInstance3D).mesh == null:
+				continue
+			var mi := child as MeshInstance3D
+			var a := mi.transform * mi.mesh.get_aabb()
+			box = a if first else box.merge(a)
+			first = false
+		if first:
+			box = AABB(Vector3(-0.08, -0.08, -0.08), Vector3(0.16, 0.16, 0.16))
+		var shape := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = (box.size * 0.85).max(Vector3(0.08, 0.08, 0.08)).min(Vector3(0.6, 0.6, 0.6))
+		shape.shape = bs
+		shape.position = box.get_center()
+		b.add_child(shape)
+		for child in j.get_children():
+			if child is Node3D and not (child in joints):
+				var xf: Transform3D = (child as Node3D).global_transform
+				j.remove_child(child)
+				b.add_child(child)
+				(child as Node3D).global_transform = xf
+		body_of[j] = b
+		_pieces.append(b)
+	for j in parents:
+		var joint := ConeTwistJoint3D.new()
+		world.add_child(joint)
+		# The twist axis (X) runs along the bone, from the parent's pivot out to this one.
+		var bone: Vector3 = (pivots[j] - pivots[parents[j]])
+		var x := bone.normalized() if bone.length() > 0.01 else Vector3.UP
+		var y := x.cross(Vector3.FORWARD if absf(x.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+		joint.global_transform = Transform3D(Basis(x, y, x.cross(y)), pivots[j])
+		joint.node_a = joint.get_path_to(body_of[parents[j]])
+		joint.node_b = joint.get_path_to(body_of[j])
+		var knee: bool = j == shins[0] or j == shins[1]
+		joint.set_param(ConeTwistJoint3D.PARAM_SWING_SPAN, deg_to_rad(25.0 if knee else (50.0 if j == head else 70.0)))
+		joint.set_param(ConeTwistJoint3D.PARAM_TWIST_SPAN, deg_to_rad(10.0 if knee else 35.0))
+		joint.set_param(ConeTwistJoint3D.PARAM_SOFTNESS, 0.8)
+		joint.set_param(ConeTwistJoint3D.PARAM_RELAXATION, 0.9)
+		_pieces.append(joint)
+	# The throw: the body's own speed, plus the hit pushing the chest and head hardest.
+	var push := dir.normalized() if dir.length() > 0.01 else -global_basis.z
+	var throw := push * (2.2 + 3.0 * (force - 1.0)) + Vector3.UP * (0.6 + 1.6 * maxf(force - 1.5, 0.0))
+	for j in joints:
+		var b: RigidBody3D = body_of[j]
+		var share := 1.0 if j in [torso, head, arms] else 0.65
+		b.linear_velocity = carry * 0.9 + throw * share
+		b.angular_velocity = Vector3(randf_range(-2, 2), randf_range(-2, 2), randf_range(-2, 2)) * (0.6 + 0.4 * force)
+	var tw := create_tween()
+	tw.tween_interval(keep)
+	tw.tween_callback(_settle)
+	tw.tween_method(_sink, 0.0, 1.2, 1.5)
+	tw.tween_callback(queue_free)
+
+
+## The body stops being physical and sinks into the floor.
+func _settle() -> void:
+	for p in _pieces:
+		if p is RigidBody3D and is_instance_valid(p):
+			var b := p as RigidBody3D
+			b.freeze = true
+			b.collision_layer = 0
+			b.set_meta("rest_y", b.global_position.y)
+
+
+func _sink(depth: float) -> void:
+	for p in _pieces:
+		if p is RigidBody3D and is_instance_valid(p):
+			var b := p as RigidBody3D
+			b.global_position.y = float(b.get_meta("rest_y", b.global_position.y)) - depth
+
+
+func _exit_tree() -> void:
+	_live.erase(self)
+	for p in _pieces:
+		if is_instance_valid(p):
+			p.queue_free()
+	_pieces.clear()
+
+
 func _process(delta: float) -> void:
+	if _flash_left > 0.0:
+		_flash_left -= delta
+		if _flash_left <= 0.0:
+			for m in find_children("*", "GeometryInstance3D", true, false):
+				(m as GeometryInstance3D).material_overlay = null
 	if dead:
 		_limp(delta)

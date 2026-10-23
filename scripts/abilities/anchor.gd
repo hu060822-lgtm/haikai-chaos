@@ -177,6 +177,7 @@ func _let_go(p: Player, hop: bool, why := "放開勾索") -> void:
 	Deploy.fx(user, "rope_off", {})
 	if p == null:
 		return
+	p.burst(0.7)
 	if hop:
 		p.velocity.y = maxf(p.velocity.y, 0.0) + RELEASE_HOP
 		why = "放索跳"

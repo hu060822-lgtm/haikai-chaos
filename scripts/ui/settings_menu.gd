@@ -5,8 +5,13 @@ extends Control
 ## want (Esc cancels). Everything is saved as it changes.
 
 signal closed()
+## The player wants out of the room or practice, back to the title (C7).
+signal leave_requested()
 
 var _waiting := ""                 # the action waiting for a new key, or ""
+## True while a match or practice is running (the leave button shows then).
+var in_game := false
+var _leave: Button
 var _bind_buttons := {}            # action -> Button
 var _sens_label: Label
 var _fov_label: Label
@@ -44,6 +49,11 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = SIZE_EXPAND_FILL
 	title_row.add_child(spacer)
+	_leave = FpUi.button("離開房間，回主畫面", 18)
+	_leave.pressed.connect(func() -> void:
+		visible = false
+		leave_requested.emit())
+	title_row.add_child(_leave)
 	var back := FpUi.button("回到遊戲（Esc）", 18)
 	back.pressed.connect(close)
 	title_row.add_child(back)
@@ -136,6 +146,9 @@ func _general() -> Control:
 				px_buttons[j].set_pressed_no_signal(j == i))
 	box.add_child(_toggle("顯示 FPS", Settings.show_fps, func(on: bool) -> void:
 		Settings.show_fps = on
+		Settings.save()))
+	box.add_child(_toggle("輔助瞄準（準心靠近敵人時變慢、輕微跟隨）", Settings.aim_assist, func(on: bool) -> void:
+		Settings.aim_assist = on
 		Settings.save()))
 	box.add_child(FpUi.label("鏡頭效果（速度 FOV、傾斜、落地晃動、速度線）", 16))
 	var fx_row := HBoxContainer.new()
@@ -249,6 +262,8 @@ func _refresh_keys() -> void:
 
 func open() -> void:
 	visible = true
+	if _leave != null:
+		_leave.visible = in_game
 	_waiting = ""
 	_refresh_keys()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

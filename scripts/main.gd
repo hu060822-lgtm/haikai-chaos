@@ -117,6 +117,7 @@ func _ready() -> void:
 	_ui.add_child(death)
 	settings_menu = SettingsMenu.new()
 	settings_menu.closed.connect(_on_settings_closed)
+	settings_menu.leave_requested.connect(leave_to_title)
 	scoreboard = Scoreboard.new()
 	_ui.add_child(scoreboard)
 	lobby = Lobby.new()
@@ -130,7 +131,9 @@ func _ready() -> void:
 	front_end.net = net
 	front_end.lobby = lobby
 	front_end.practice_chosen.connect(_choose_map)
-	front_end.settings_requested.connect(func() -> void: settings_menu.open())
+	front_end.settings_requested.connect(func() -> void:
+		settings_menu.in_game = false
+		settings_menu.open())
 	_title = front_end
 	_ui.add_child(front_end)
 	_menu_cam = Camera3D.new()
@@ -203,6 +206,17 @@ func back_to_title(message := "") -> void:
 	skip_title = false
 	open_lobby = message == ""
 	title_message = message
+	get_tree().reload_current_scene.call_deferred()
+
+
+## Esc → leave (C7): out of the room or practice, straight to the title's home page.
+func leave_to_title() -> void:
+	if NetSession.active:
+		net.leave()
+	team_mode = false
+	skip_title = false
+	open_lobby = false
+	title_message = ""
 	get_tree().reload_current_scene.call_deferred()
 
 
@@ -330,6 +344,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_try_bench()
 	elif event.is_action_pressed("pause") and not bench.visible and not death.visible and not settings_menu.visible:
+		settings_menu.in_game = not _title.visible and not lobby.visible
 		player.input_enabled = false
 		settings_menu.open()
 		get_viewport().set_input_as_handled()
@@ -383,7 +398,7 @@ func _on_bench_closed(build: Dictionary, gun_name: String) -> void:
 		team_match.rules.request_buy(build, gun_name)
 	else:
 		player.equip(build, gun_name)
-		hud.show_hint("%s　重量 %.1f kg　機動性 %d%%" % [gun_name, player.weapon.stats.weight, roundi(player.mobility * 100)])
+		hud.show_hint("%s　重量 %.1f kg　開鏡 %.2f s" % [gun_name, player.weapon.stats.weight, player.weapon.stats.aim_time])
 	player.input_enabled = player.alive
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -399,7 +414,12 @@ var _streak_at := -100.0
 func _on_hit_confirmed(info: Dictionary, killed: bool) -> void:
 	var head: bool = info.get("zone", "") == "head"
 	hud.hit_marker(head, killed, info)
-	Sfx.ui(get_tree(), "kill" if killed else ("head" if head else "hit"))
+	# C7: every hit is felt: a punch of the view, a thud under the tick, pitched by damage.
+	var dmg := float(info.get("damage", 10.0))
+	Sfx.ui(get_tree(), "kill" if killed else ("head" if head else "hit"), -6.0, randf_range(0.95, 1.08))
+	Sfx.ui(get_tree(), "thud", -4.0 if killed else -9.0, clampf(1.25 - dmg / 120.0, 0.7, 1.2))
+	if info.get("target") != player:
+		player.hit_punch(head)
 	if not killed or info.get("target") == player:
 		return
 	var now := Time.get_ticks_msec() / 1000.0

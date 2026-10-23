@@ -21,7 +21,7 @@ func _init() -> void:
 	for b in m.bots:
 		b.passive = true
 		b.frozen = true
-		b.global_position = Vector3(300, Y + 0.2, 300)
+		_park(b)
 	await _wait(0.2)
 	await _kits(m)
 	await _anchor(m)
@@ -65,6 +65,15 @@ func _arena(m: Main) -> void:
 	Geo.block(m, Vector3(120, 1, 120), Vector3(0, Y - 0.5, 0), c)
 	Geo.block(m, Vector3(30, 14, 1), Vector3(0, Y + 7, -30), c)          # the wall to hook
 	Geo.block(m, Vector3(6, 1, 6), Vector3(30, Y + 12, 0), c)            # a slab to swing under
+	Geo.block(m, Vector3(60, 1, 20), Vector3(320, Y - 0.5, 300), c)      # where idle bots wait
+
+
+## Bots not in a test wait on a floor of their own, apart (stacked on each other, one
+## standing on a falling one picks up its speed as a moving floor).
+func _park(b: Bot) -> void:
+	var i := maxi(main().bots.find(b), 0)
+	b.global_position = Vector3(300 + i * 4.0, Y + 0.2, 300)
+	b.velocity = Vector3.ZERO
 
 
 func _place(p: Player, at: Vector3, yaw: float, pitch_deg := 0.0) -> void:
@@ -173,6 +182,7 @@ func _decoy(m: Main) -> void:
 	bot.frozen = false
 	bot.passive = true
 	bot.global_position = d.global_position + Vector3(0, 0, -12)
+	bot.velocity = Vector3.ZERO
 	bot.look_at(d.global_position, Vector3.UP)
 	bot.target = null
 	await _wait(0.4)
@@ -185,7 +195,7 @@ func _decoy(m: Main) -> void:
 	await _wait(0.2)
 	check(bot.target == null or bot.target != d, "DECOY: the bot lets go of a popped decoy")
 	bot.frozen = true
-	bot.global_position = Vector3(300, Y + 0.2, 300)
+	_park(bot)
 
 
 # --- BULWARK ---------------------------------------------------------------------------
@@ -270,6 +280,7 @@ func _veil(m: Main) -> void:
 	bot.frozen = false
 	bot.passive = true
 	bot.global_position = b - Vector3(0, 1.5, 0)
+	bot.velocity = Vector3.ZERO  # it has been falling while frozen out of the way
 	bot.look_at(a, Vector3.UP)
 	p.global_position = a - Vector3(0, 1.5, 0)
 	p.velocity = Vector3.ZERO
@@ -284,7 +295,7 @@ func _veil(m: Main) -> void:
 	await _wait(SmokeCloud.BLOWN + 0.2)
 	check(Deploy.sight_blocked(a, b), "VEIL: it fills back in")
 	bot.frozen = true
-	bot.global_position = Vector3(300, Y + 0.2, 300)
+	_park(bot)
 	s.t = s.flight + SmokeCloud.LIFE - 0.05
 	await _wait(0.2)
 	check(not is_instance_valid(s), "VEIL: it ends")
@@ -302,6 +313,7 @@ func _ram(m: Main) -> void:
 	bot.passive = true
 	bot.health = Bot.MAX_HEALTH
 	bot.global_position = Vector3(0, Y + 0.1, 26)
+	bot.velocity = Vector3.ZERO
 	await _wait(0.3)
 	await _press()
 	var charged := await _until(func() -> bool: return p.move == Player.Move.CHARGE, 0.5)
@@ -310,7 +322,7 @@ func _ram(m: Main) -> void:
 	check(bot.health == Bot.MAX_HEALTH - Ram.DAMAGE, "RAM: the shoulder hits for %.0f (bot %.0f)" % [Ram.DAMAGE, bot.health])
 	check(p.move != Player.Move.CHARGE and p.global_position.z > 25.0, "RAM: the charge stops on them")
 	bot.frozen = true
-	bot.global_position = Vector3(300, Y + 0.2, 300)
+	_park(bot)
 	# The stagger on us: a wide cone and no scope, but we can still move and shoot.
 	var before := p.current_spread()
 	p.take_hit({"damage": 1.0, "team": 1, "dir": Vector3.BACK, "effects": {"stagger": Ram.STAGGER}, "attacker_name": "x"})

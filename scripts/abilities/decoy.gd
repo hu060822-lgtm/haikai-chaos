@@ -168,4 +168,9 @@ func _vanish(popped: bool) -> void:
 		tw.tween_property(tag, "position:y", tag.position.y + 0.8, 0.9)
 		tw.parallel().tween_property(tag, "modulate:a", 0.0, 0.9)
 		tw.tween_callback(tag.queue_free)
+		# C7: it drops like a body (it was hit, after all), and fades soon.
+		if _model != null:
+			var m := _model
+			_model = null
+			CompetitorRig.leave_corpse(m, -global_basis.z * 0.2 + velocity.normalized() * 0.5, 1.2, 1.4, velocity)
 	queue_free()

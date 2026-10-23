@@ -1,16 +1,15 @@
 class_name Player
 extends CharacterBody3D
 ## The first-person competitor: momentum movement with a full set of movement tech, and
-## a custom gun from the bench. The gun's weight drives the movement (Player.mobility):
-## a feather pistol makes you faster, kick off walls more and dash more often; a 12 kg
-## machine gun keeps you mostly on the ground. That trade is the core of CHAOS.
+## a custom gun from the bench. Since C7 the gun's weight no longer changes the movement
+## (Player.mobility stays 1.0): a 13 kg rifle moves like a pistol, it only aims slower.
 ##
 ## Movement model (numbers in MoveTuning): velocity is the only truth. No state sets a
 ## fixed speed; each applies accelerations, friction and drag to the velocity it inherits,
 ## so speed carries through every transition. The core loop is
 ##   sprint -> slide -> slide jump -> steer in the air -> land (into a slide) -> again
 ## and the walls extend it:
-##   wall run     in the air beside an orange-banded wall, input along it: run along it
+##   wall run     in the air beside any wall, input along it: run along it
 ##   wall jump    jump off a wall run (or just after leaving one): out along the wall's
 ##                normal plus your input, keeping the speed along the wall
 ##   wall kick    jump beside any wall in the air (a few per air time)
@@ -243,9 +242,10 @@ func ability_aim() -> Transform3D:
 	return camera.global_transform
 
 
-## How a gun's weight moves you: 1.0 at about 3 kg, faster when lighter, down to 0.66.
-static func mobility_of(stats: Dictionary) -> float:
-	return clampf(1.12 - 0.04 * float(stats.weight), 0.66, 1.1)
+## How a gun moves you. C7: always 1.0, so every gun has the full movement kit (movement
+## is one of the game's pillars); weight still slows aiming and adds sway (Arsenal._derive).
+static func mobility_of(_stats: Dictionary) -> float:
+	return 1.0
 
 
 ## Wall kicks per air time: heavy guns get fewer.
@@ -312,9 +312,86 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var sens := MOUSE_SENS * Settings.sens * lerpf(1.0, 1.0 / maxf(float(weapon.stats.zoom), 1.0), _aim)
+		sens *= lerpf(1.0, ASSIST_SLOW, assist)
 		rotate_y(-event.relative.x * sens)
 		_pitch = clampf(_pitch - event.relative.y * sens, deg_to_rad(-88), deg_to_rad(88))
 		view.sway(event.relative)
+
+
+# --- Aim assist (C7) ----------------------------------------------------------------
+## A light hand on the mouse, because the movement is fast: when an enemy's chest (or a
+## decoy's) is within ASSIST_CONE of the crosshair, in range and in sight (not through
+## smoke), the mouse slows down over it (ASSIST_SLOW) and the view follows the target's
+## motion across the screen a little (ASSIST_TRACK), plus a small pull toward it while
+## firing or aiming that grows with your own speed. Never snaps, never locks on.
+
+const ASSIST_CONE := 6.5          # degrees
+const ASSIST_SLOW := 0.6          # mouse speed over a target at the centre
+const ASSIST_TRACK := 0.45        # share of the target's angular motion the view follows
+const ASSIST_PULL := 3.0          # degrees per second toward it while firing / aiming
+const ASSIST_PULL_SPEED := 0.35   # more pull per m/s of your own speed
+
+## 0..1: how strongly the assist holds right now (for the mouse and the HUD).
+var assist := 0.0
+var assist_target: Node3D = null
+var _assist_dir := Vector3.ZERO
+
+
+func _aim_assist(delta: float) -> void:
+	var was := assist_target
+	assist = 0.0
+	assist_target = null
+	if not Settings.aim_assist or not input_enabled or weapon == null:
+		return
+	var eye := camera.global_position
+	var fwd := -camera.global_basis.z
+	var reach := float(weapon.stats.range) * 1.3
+	var best_angle := deg_to_rad(ASSIST_CONE)
+	var best_dir := Vector3.ZERO
+	var targets := get_tree().get_nodes_in_group("combatants") + get_tree().get_nodes_in_group("decoys")
+	for n in targets:
+		if n == self or not (n is Node3D) or not is_instance_valid(n):
+			continue
+		if n.get("alive") == false or n.get("team") == null or int(n.get("team")) == team:
+			continue
+		var chest: Vector3 = (n as Node3D).global_position + Vector3(0, 1.15, 0)
+		var to := chest - eye
+		var d := to.length()
+		if d > reach or d < 0.5:
+			continue
+		var dir := to / d
+		var angle := fwd.angle_to(dir)
+		# The cone narrows a little with distance, so a far target isn't a magnet.
+		if angle >= best_angle * clampf(14.0 / d, 0.45, 1.0):
+			continue
+		var q := PhysicsRayQueryParameters3D.create(eye, chest, Geo.WORLD, exclusions())
+		if not get_world_3d().direct_space_state.intersect_ray(q).is_empty() or Deploy.sight_blocked(eye, chest):
+			continue
+		best_angle = angle
+		best_dir = dir
+		assist_target = n
+	if assist_target == null:
+		return
+	assist = clampf(1.0 - best_angle / deg_to_rad(ASSIST_CONE), 0.0, 1.0)
+	var turn := Vector2.ZERO
+	# Follow the target's motion across the view (only once we've seen it for a tick).
+	if was == assist_target and _assist_dir != Vector3.ZERO:
+		turn += _angles(_assist_dir, best_dir) * ASSIST_TRACK * assist
+	if _want("fire") or _aim > 0.5:
+		var rate := deg_to_rad(ASSIST_PULL + ASSIST_PULL_SPEED * flat_speed()) * delta * (0.5 + assist)
+		var err := _angles(fwd, best_dir)
+		turn += err.limit_length(rate)
+	_assist_dir = best_dir
+	rotate_y(turn.x)
+	_pitch = clampf(_pitch + turn.y, deg_to_rad(-88), deg_to_rad(88))
+
+
+## Yaw and pitch (radians) that turn direction a into b.
+static func _angles(a: Vector3, b: Vector3) -> Vector2:
+	var fa := Vector3(a.x, 0, a.z).normalized()
+	var fb := Vector3(b.x, 0, b.z).normalized()
+	var yaw := fa.signed_angle_to(fb, Vector3.UP) if fa != Vector3.ZERO and fb != Vector3.ZERO else 0.0
+	return Vector2(yaw, asin(clampf(b.y, -1.0, 1.0)) - asin(clampf(a.y, -1.0, 1.0)))
 
 
 # --- Frame ---------------------------------------------------------------------------
@@ -377,6 +454,7 @@ func _physics_process(delta: float) -> void:
 	_render_curr = global_position
 	accel = lerpf(accel, (flat_speed() - speed_before) / delta, 1.0 - exp(-12.0 * delta))
 	_place_head(global_position)
+	_aim_assist(delta)
 	_weapon_frame(delta)
 	_camera_frame(delta)
 
@@ -606,6 +684,7 @@ func _start_slide(from_landing: bool) -> void:
 		var boost := tune.slide_boost * mobility * fade
 		_set_flat(h / speed * (speed + boost))
 		_slide_cd = tune.slide_cooldown
+		_cam.burst(0.5 * fade)
 		why += "（加速 +%.1f）" % boost
 	else:
 		why += "（加速冷卻中，保留速度）"
@@ -772,8 +851,12 @@ func _probe(offset: Vector3, dir: Vector3, length: float) -> Dictionary:
 	return hit if wall else {}
 
 
+## C7: every wall of the world can be run on (the orange bands now only mark the walls a
+## map was built around). Moving things (decoys, other people) and the shield panels can't.
 func _is_runnable(collider: Object) -> bool:
-	return collider is CollisionObject3D and (collider.collision_layer & Geo.RUNNABLE) != 0
+	if not (collider is StaticBody3D or collider is AnimatableBody3D) or collider is Barricade:
+		return false
+	return ((collider as CollisionObject3D).collision_layer & Geo.WORLD) != 0
 
 
 ## The direction along a wall (normal `n`) that `h` is going.
@@ -787,7 +870,7 @@ func _wallrun_block(wall: Dictionary, wish: Vector3) -> String:
 	if wall.side == 0:
 		return "正面撞牆：牆跑要沿著牆跑"
 	if not wall.runnable:
-		return "這面牆不能牆跑（沒有橘色線）"
+		return "這不是牆（會動的東西、護盾板）"
 	if wall.collider == _wall_ban:
 		return "剛離開這面牆（落地或換一面牆後重置）"
 	var h := _flat()
@@ -797,7 +880,7 @@ func _wallrun_block(wall: Dictionary, wish: Vector3) -> String:
 		return "沿牆速度不足（%.1f < %.1f）" % [speed, tune.wallrun_min]
 	if absf(h.normalized().dot(wall.normal)) > tune.wallrun_angle:
 		return "切入角度太正"
-	if wish == Vector3.ZERO or wish.dot(along) < 0.2:
+	if wish == Vector3.ZERO or wish.dot(along) < -0.05:
 		return "方向鍵沒有朝著沿牆的方向"
 	if _height_above_ground() < tune.wallrun_min_height:
 		return "離地太低"
@@ -920,6 +1003,7 @@ func _wall_jump(wish: Vector3, n: Vector3, node: Object, why: String) -> void:
 	velocity = dir * maxf(h.length() * tune.wall_jump_keep, tune.wall_jump_speed * mobility)
 	_ensure_out(n, tune.wall_jump_out * mobility)
 	_launch(tune.wall_jump_up * sqrt(mobility))
+	_cam.burst(0.6)
 	_ban_wall(node)
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
 	view.jolt(global_basis.inverse() * n * 0.015)
@@ -942,6 +1026,10 @@ func _wall_kick(wall: Dictionary) -> void:
 	view.jolt(global_basis.inverse() * n * 0.015)
 	_set_move(Move.AIR, "踢牆（剩 %d 次）" % _kicks, true)
 	Sfx.play(self, "kick")
+	# C7: every wall is runnable, so the wall just kicked doesn't catch you again at once.
+	if wall.has("collider"):
+		_wall_ban = wall.collider
+		_wall_ban_t = tune.wall_rearm
 
 
 ## The direction to leave a wall (normal `n`): the input, bent until it leaves the wall at
@@ -1086,6 +1174,7 @@ func _start_dash(wish: Vector3) -> void:
 	_dash_left = tune.dash_time
 	var keep := maxf(_flat().dot(dir), 0.0)
 	velocity = dir * maxf(keep, tune.dash_speed * mobility)
+	_cam.burst(0.9)
 	_set_move(Move.DASH, "按 Q")
 	Sfx.play(self, "dash")
 	if weapon.stats.effects.has("dash_feed"):
@@ -1227,6 +1316,16 @@ func move_tags() -> Array:
 ## The view's kill punch (CameraFx.kill_punch).
 func kill_punch(strength := 1.0) -> void:
 	_cam.kill_punch(strength)
+
+
+## A hit of ours landed (C7): the view punches in a touch, the gun kicks.
+func hit_punch(head: bool) -> void:
+	_cam.hit_punch(head)
+	view.jolt(Vector3(0, 0.004, 0.03 if head else 0.016))
+
+
+func burst(strength := 1.0) -> void:
+	_cam.burst(strength)
 
 
 func flat_speed() -> float:
@@ -1414,14 +1513,16 @@ func _camera_frame(delta: float) -> void:
 		roll_target = deg_to_rad(8.0) * -signf(global_basis.x.dot(_wall_normal))
 	elif move == Move.SLIDE:
 		roll_target = deg_to_rad(-3.0)
-	var fov_target := clampf((flat_speed() - tune.run_speed) / 14.0, 0.0, 1.0) * 12.0
+	# C7: more of it, sooner: up to 18° wider, and a faint rumble past ~17 m/s.
+	var fov_target := pow(clampf((flat_speed() - tune.run_speed * 0.9) / 15.0, 0.0, 1.0), 0.8) * 18.0
+	_cam.rumble(clampf((velocity.length() - 17.0) / 10.0, 0.0, 1.0))
 	_cam.update(delta, roll_target, fov_target, _aim)
 	camera.rotation.z = _cam.roll
 	_eye_now = lerpf(_eye_now, _eye, 1.0 - exp(-14.0 * delta))
 	_place_head(global_position)
 	# Wind rises with speed: the ear's half of the speed feel.
-	var rush := clampf((velocity.length() - tune.sprint_speed) / 12.0, 0.0, 1.0)
-	_wind.volume_db = lerpf(-60.0, -9.0, sqrt(rush)) if rush > 0.0 else -60.0
+	var rush := clampf((velocity.length() - tune.run_speed) / 14.0, 0.0, 1.0)
+	_wind.volume_db = lerpf(-46.0, -4.0, sqrt(rush)) if rush > 0.0 else -60.0
 	_wind.pitch_scale = 0.8 + rush * 0.6
 	if rush > 0.0 and not _wind.playing:
 		_wind.play()

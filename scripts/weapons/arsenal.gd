@@ -16,11 +16,16 @@ class_name Arsenal
 ## is free and always there, and every scavenger also carries a knife (Player handles it),
 ## so nobody goes in unable to fight back.
 
+## C7: every gun takes every part. All slots are open on every frame, any part fits its
+## slot whatever the frame, tags or calibre, and nothing blocks a slot (a suppressed barrel
+## still takes a muzzle device). The old fitting rules stay below for FREE_FIT = false.
+const FREE_FIT := true
+
 ## Every slot a build can have, parents before the slots they open (clean() walks this
 ## once, in order). A slot's type (SLOT_TYPE) is what parts name in "slot".
 const SLOTS := ["receiver", "barrel", "muzzle", "silencer", "gas", "handguard", "rail_l", "rail_r",
-	"foregrip", "underbarrel", "mount", "sight", "grip", "trigger", "bolt", "charging", "magazine",
-	"ammo", "stock", "buttpad", "gadget"]
+	"foregrip", "underbarrel", "mount", "sight", "tactical", "grip", "trigger", "bolt", "spring", "charging",
+	"magwell", "magazine", "ammo", "stock", "cheek", "buttpad", "sling", "gadget"]
 ## Slots that share a type with another (both rails take rail accessories).
 const SLOT_TYPE := {"rail_l": "rail", "rail_r": "rail"}
 ## Names of slot types (and of the two rail slots).
@@ -30,13 +35,14 @@ const SLOT_NAMES := {
 	"underbarrel": "下掛", "mount": "副瞄座", "sight": "瞄具", "grip": "握把", "trigger": "扳機組",
 	"bolt": "槍機", "charging": "拉機柄", "magazine": "彈匣", "ammo": "彈藥", "stock": "槍托",
 	"buttpad": "托底", "gadget": "怪東西",
+	"tactical": "上置戰術", "spring": "緩衝復進", "magwell": "彈匣井", "cheek": "托腮板", "sling": "槍背帶",
 }
 ## The four groups the bench shows slots in.
 const SLOT_GROUPS := [
 	["前段", ["barrel", "muzzle", "silencer", "gas", "handguard", "rail_l", "rail_r", "foregrip", "underbarrel"]],
-	["上方", ["mount", "sight"]],
-	["機匣", ["receiver", "grip", "trigger", "bolt", "charging", "magazine", "ammo"]],
-	["後段", ["stock", "buttpad", "gadget"]],
+	["上方", ["mount", "sight", "tactical"]],
+	["機匣", ["receiver", "grip", "trigger", "bolt", "spring", "charging", "magwell", "magazine", "ammo"]],
+	["後段", ["stock", "cheek", "buttpad", "sling", "gadget"]],
 ]
 
 ## Calibres. "family" is what ammo and some parts fit by (it works like a frame tag).
@@ -63,6 +69,7 @@ const CALIBERS := {
 	"4g": {"name": "4 號巨型霰彈", "family": "shell"},
 	"rocket": {"name": "13mm 火箭彈", "family": "odd"},
 	"air": {"name": "壓縮空氣", "family": "odd"},
+	"9x39": {"name": "9×39mm 亞音速", "family": "rifle"},
 }
 
 ## Fire modes a frame can have; the player cycles them (B).
@@ -110,6 +117,33 @@ const DEFAULTS := {
 }
 
 const FRAMES := {
+	# --- C7 frames (Tarkov / Delta Force inspired)
+	"vector_smg": {
+		"name": "減後座衝鋒槍", "price": 650, "weight": 2.7, "length": 62.0, "tags": ["gun"], "cal": ".45",
+		"damage": 10.0, "rate": 15.0, "modes": ["auto", "burst", "semi"], "mag": 25, "reserve": 100, "reload": 2.3,
+		"spread": 3.4, "moa": 7.0, "range": 34.0, "noise": 34.0, "recoil": 0.7, "recoil_h": 0.6, "zoom": 1.25,
+		"ergo": 70.0, "velocity": 290.0, "pen": 16.0, "flash": 40.0, "reliability": 90.0, "heat": 0.02, "cooling": 0.45,
+		"slots": ["barrel", "muzzle", "rail_l", "rail_r", "foregrip", "sight", "grip", "trigger", "magazine", "ammo", "stock", "gadget"],
+		"desc": "槍機往下滑，把後座力壓進握把下面：射速驚人、槍口幾乎不跳。近距離的絞肉機。",
+	},
+	"scout_rifle": {
+		"name": "偵察步槍", "price": 520, "weight": 3.0, "length": 98.0, "tags": ["gun", "bolt_action"], "cal": "7.62",
+		"damage": 55.0, "rate": 1.1, "mag": 10, "reserve": 30, "reload": 2.6,
+		"spread": 0.8, "moa": 1.4, "range": 90.0, "noise": 52.0, "recoil": 4.8, "recoil_h": 0.5, "zoom": 1.5,
+		"ergo": 66.0, "velocity": 820.0, "pen": 58.0, "flash": 45.0, "reliability": 99.0,
+		"effects": {"bipod": true},
+		"slots": ["barrel", "muzzle", "rail_l", "foregrip", "mount", "sight", "trigger", "bolt", "magazine", "ammo", "stock", "gadget"],
+		"desc": "輕量栓動，前托藏著一副腳架。比狙擊槍輕快，跑跳中也能開一槍再走。",
+	},
+	"silent_rifle": {
+		"name": "微聲突擊步槍", "price": 820, "weight": 2.9, "length": 87.0, "tags": ["gun"], "cal": "9x39",
+		"damage": 24.0, "rate": 11.0, "modes": ["auto", "semi"], "mag": 20, "reserve": 80, "reload": 2.5,
+		"spread": 3.0, "moa": 4.5, "range": 50.0, "noise": 12.0, "recoil": 2.0, "recoil_h": 1.1, "zoom": 1.3,
+		"ergo": 60.0, "velocity": 295.0, "pen": 50.0, "flash": 5.0, "reliability": 88.0, "heat": 0.025, "cooling": 0.4,
+		"effects": {"suppressed": true},
+		"slots": ["muzzle", "handguard", "mount", "sight", "grip", "trigger", "bolt", "charging", "magazine", "ammo", "stock", "gadget"],
+		"desc": "槍管整根包在消音器裡，打亞音速重彈：幾乎聽不到、看不到火光，穿透很好，掉彈很快。",
+	},
 	# --- Handguns
 	"revolver": {
 		"name": "舊警用左輪", "price": 0, "weight": 1.0, "length": 28.0, "tags": ["gun", "revolver"], "cal": ".357",
@@ -1021,6 +1055,60 @@ const PARTS := {
 		"effects": {"dash_feed": 0.4}, "desc": "側邊一個彈簧供彈器：每次衝刺，彈匣補回四成。"},
 	"pogo_pad": {"name": "彈跳托底", "slot": "buttpad", "price": 160, "weight": 0.2, "fits": "all",
 		"effects": {"recoil_push": 1.2}, "x": {"recoil": 0.9}, "desc": "托底裡藏一顆彈簧：每一槍把你往後頂一點。朝下開槍就是彈跳棒。"},
+
+	# --- C7: new slot types (Tarkov / Delta Force style), every one fits every gun
+	# Top tactical (上置戰術): devices on the top rail, ahead of the sight.
+	"top_light": {"name": "上置戰術燈", "slot": "tactical", "price": 90, "weight": 0.15, "fits": "all",
+		"effects": {"light": true}, "desc": "裝在頂部導軌上的燈，照得更遠。"},
+	"top_laser": {"name": "上置雷射", "slot": "tactical", "price": 140, "weight": 0.1, "fits": "all",
+		"x": {"spread": 0.8}, "effects": {"laser": true}, "desc": "頂部的雷射：腰射更集中。"},
+	"rangefinder": {"name": "雷射測距儀", "slot": "tactical", "price": 200, "weight": 0.2, "fits": "all",
+		"x": {"moa": 0.88, "range": 1.1}, "+": {"ergo": -2.0}, "desc": "知道距離就知道要抬多少：遠距離更準。"},
+	"thermal_clip": {"name": "熱成像夾片", "slot": "tactical", "price": 420, "weight": 0.35, "fits": "all",
+		"effects": {"thermal": true}, "+": {"ergo": -5.0}, "desc": "夾在瞄具前的熱成像：煙裡也看得到熱的東西。很重。"},
+	"ballistic_pc": {"name": "彈道電腦", "slot": "tactical", "price": 320, "weight": 0.25, "fits": "all",
+		"x": {"moa": 0.8, "recoil_h": 0.9}, "+": {"ergo": -3.0}, "desc": "小螢幕算好風偏和落點：更準，晃動更少。"},
+	# Buffer and recoil spring (緩衝復進): how fast the action cycles against how hard it kicks.
+	"buffer_heavy": {"name": "鎢配重緩衝器", "slot": "spring", "price": 120, "weight": 0.15, "fits": "all",
+		"x": {"rate": 0.9, "recoil": 0.85}, "desc": "更重的緩衝：射速慢一點，後座軟很多。"},
+	"spring_light": {"name": "競速復進簧", "slot": "spring", "price": 100, "weight": -0.05, "fits": "all",
+		"x": {"rate": 1.12, "recoil": 1.1}, "+": {"reliability": -3.0}, "desc": "彈簧比較軟：射得更快，更跳，偶爾卡彈。"},
+	"tuned_buffer": {"name": "可調緩衝系統", "slot": "spring", "price": 260, "weight": 0.1, "fits": "all",
+		"tune": {"name": "緩衝", "lo": "快", "hi": "穩", "x": {"rate": [1.18, 0.85], "recoil": [1.15, 0.8]}},
+		"desc": "旋鈕調整緩衝重量：要快還是要穩，自己選。"},
+	"hydraulic_buffer": {"name": "液壓緩衝器", "slot": "spring", "price": 340, "weight": 0.3, "fits": "all",
+		"x": {"recoil": 0.78, "recoil_h": 0.85, "rate": 0.95}, "desc": "油壓吸收每一下後座：很穩，比較重。"},
+	"runaway_spring": {"name": "失控彈簧", "slot": "spring", "price": 180, "weight": 0.0, "fits": "all",
+		"x": {"rate": 1.35, "recoil": 1.25, "heat": 1.3}, "+": {"reliability": -8.0},
+		"desc": "從彈簧床拆下來的。射速瘋狂，槍也瘋狂。"},
+	# Magwell (彈匣井): faster reloads, more spare rounds.
+	"flared_magwell": {"name": "擴口彈匣井", "slot": "magwell", "price": 80, "weight": 0.1, "fits": "all",
+		"x": {"reload": 0.85}, "desc": "開口做大：彈匣閉著眼睛也插得進去。"},
+	"funnel_magwell": {"name": "比賽漏斗彈匣井", "slot": "magwell", "price": 160, "weight": 0.2, "fits": "all",
+		"x": {"reload": 0.75}, "+": {"ergo": -2.0}, "desc": "射擊比賽用的大漏斗：換彈非常快，有點礙手。"},
+	"ambi_release": {"name": "雙邊彈匣釋放鈕", "slot": "magwell", "price": 70, "weight": 0.02, "fits": "all",
+		"x": {"reload": 0.9}, "+": {"ergo": 2.0}, "desc": "左右手都按得到：換彈快一點，也更順手。"},
+	"mag_coupler": {"name": "彈匣並聯夾", "slot": "magwell", "price": 120, "weight": 0.3, "fits": "all",
+		"x": {"reload": 0.85, "reserve": 1.3}, "+": {"ergo": -3.0}, "desc": "兩個彈匣夾在一起：備彈多三成，翻面就換好。"},
+	# Cheek riser (托腮板): a steadier face on the stock.
+	"cheek_raised": {"name": "墊高托腮塊", "slot": "cheek", "price": 60, "weight": 0.05, "fits": "all",
+		"x": {"moa": 0.9}, "+": {"ergo": 2.0}, "desc": "臉貼得穩，眼睛剛好對上瞄具：更準。"},
+	"cheek_leather": {"name": "皮革托腮", "slot": "cheek", "price": 50, "weight": 0.05, "fits": "all",
+		"x": {"recoil": 0.95}, "+": {"ergo": 3.0}, "desc": "軟皮包著泡棉：後座打在臉上不痛。"},
+	"cheek_gel": {"name": "凝膠托腮", "slot": "cheek", "price": 110, "weight": 0.1, "fits": "all",
+		"x": {"recoil_h": 0.85}, "desc": "凝膠吃掉橫向的抖動。"},
+	"cheek_adjust": {"name": "可調托腮", "slot": "cheek", "price": 140, "weight": 0.12, "fits": "all",
+		"tune": {"name": "高度", "lo": "低", "hi": "高", "x": {"moa": [1.05, 0.82]}, "+": {"ergo": [5.0, -3.0]}},
+		"desc": "高度可調：低一點舉槍快，高一點打得準。"},
+	# Sling (槍背帶): how the gun hangs off you.
+	"single_point": {"name": "單點背帶", "slot": "sling", "price": 40, "weight": 0.1, "fits": "all",
+		"+": {"ergo": 4.0}, "desc": "掛在胸前，放手也不會掉：轉換更快。"},
+	"two_point": {"name": "雙點背帶", "slot": "sling", "price": 50, "weight": 0.12, "fits": "all",
+		"x": {"recoil_h": 0.9}, "+": {"ergo": 2.0}, "desc": "繃緊背帶抵著槍：橫向後座小一點。"},
+	"bungee_sling": {"name": "彈力背帶", "slot": "sling", "price": 70, "weight": 0.1, "fits": "all",
+		"x": {"moa": 1.05}, "+": {"ergo": 6.0}, "desc": "有彈性，槍甩來甩去都很順。準度略差。"},
+	"tow_strap": {"name": "拖車吊帶", "slot": "sling", "price": 30, "weight": 0.4, "fits": "all",
+		"x": {"recoil": 0.9}, "+": {"ergo": -3.0}, "desc": "黃色拖車帶，什麼都綁得住。很重，後座小一點。"},
 }
 
 const STARTER := {"frame": "revolver", "parts": {}, "tune": {}}
@@ -1096,7 +1184,11 @@ static func frame_stat(frame_id: String, stat: String) -> Variant:
 static func fits(frame_id: String, part_id: String) -> bool:
 	var f := frame(frame_id)
 	var p := part(part_id)
-	if f.is_empty() or p.is_empty() or not _frame_ok(frame_id, p):
+	if f.is_empty() or p.is_empty():
+		return false
+	if FREE_FIT:
+		return true
+	if not _frame_ok(frame_id, p):
 		return false
 	return _tags_fit(frame_id, _frame_calibers(frame_id), p)
 
@@ -1139,6 +1231,9 @@ static func possible_slots(frame_id: String) -> Array[String]:
 	var result: Array[String] = []
 	if f.is_empty():
 		return result
+	if FREE_FIT:
+		result.assign(SLOTS)
+		return result
 	var cals := _frame_calibers(frame_id)
 	var open: Array = f.slots.duplicate()
 	for slot in SLOTS:
@@ -1164,7 +1259,7 @@ static func caliber_of(build: Dictionary) -> String:
 ## Which part opened this slot ("" for a root slot of the frame).
 static func opened_by(build: Dictionary, slot: String) -> String:
 	build = clean(build)
-	if slot in frame(build.frame).get("slots", []):
+	if FREE_FIT or slot in frame(build.frame).get("slots", []):
 		return ""
 	for s in SLOTS:
 		var id: String = build.parts.get(s, "")
@@ -1313,7 +1408,7 @@ static func _apply_tune(result: Dictionary, tune: Dictionary, t: float) -> void:
 static func _walk(build: Dictionary, stop_at: String) -> Dictionary:
 	var frame_id: String = str(build.get("frame", ""))
 	var f := frame(frame_id)
-	var open: Array = (f.get("slots", []) as Array).duplicate()
+	var open: Array = (SLOTS if FREE_FIT and not f.is_empty() else f.get("slots", [])).duplicate()
 	var blocked: Array = []
 	var parts := {}
 	var cal: String = str(f.get("cal", DEFAULTS.cal))
@@ -1334,8 +1429,9 @@ static func _walk(build: Dictionary, stop_at: String) -> Dictionary:
 		for added in p.get("adds", []):
 			if not added in open:
 				open.append(added)
-		for gone in p.get("blocks", []):
-			blocked.append(gone)
+		if not FREE_FIT:
+			for gone in p.get("blocks", []):
+				blocked.append(gone)
 		if p.has("set_cal"):
 			cal = p.set_cal
 	for gone in blocked:
@@ -1345,7 +1441,11 @@ static func _walk(build: Dictionary, stop_at: String) -> Dictionary:
 
 static func _fits_slot(frame_id: String, cal: String, slot: String, part_id: String) -> bool:
 	var p := part(part_id)
-	if p.is_empty() or p.slot != slot_type(slot) or not _frame_ok(frame_id, p):
+	if p.is_empty() or p.slot != slot_type(slot):
+		return false
+	if FREE_FIT:
+		return true
+	if not _frame_ok(frame_id, p):
 		return false
 	if p.has("cal") and not cal in p.cal:
 		return false

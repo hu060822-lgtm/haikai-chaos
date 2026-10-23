@@ -228,7 +228,17 @@ const SITE_COVER := [
 func _wings() -> void:
 	var colors := [Faultprint.CONCRETE, Faultprint.SLATE, Faultprint.BONE]
 	var n := [0]
+	# C7: service passages through the thick blocks either side of the top lanes, one with
+	# a vault window; a cut from the top lane down into them.
+	layout.carve_cells2(Rect2i(14, 10, 15, 1))
+	layout.carve_cells2(Rect2i(18, 6, 1, 4))
+	layout.carve_cells2(Rect2i(55, 8, 10, 1))
+	layout.window2(Vector2i(24, 10), Vector2i(1, 0))
 	layout.mark_breaches(2)  # C6: rammable shortcuts
+	layout.cut_passages(4)  # C7: small passages, vault windows, ledges
+	layout.cut_windows(2)
+	layout.add_ledges(6)
+	PhysProp.scatter(self, layout, 36, [Faultprint.ORANGE, Faultprint.SLATE, Faultprint.BONE, Faultprint.DEEP_TEAL])  # C7: loose things
 	layout.build_walls(self, OUTER_H, func(size: Vector3, at: Vector3) -> void:
 		var b := Geo.block(self, size, at, colors[n[0] % colors.size()], Vector3.ZERO, {"bevel": 0.1, "print": {"wear": 0.45}})
 		b.collision_layer = Geo.WORLD | Geo.RUNNABLE

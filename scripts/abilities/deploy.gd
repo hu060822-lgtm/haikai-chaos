@@ -118,6 +118,9 @@ static func blow(at: Vector3, radius: float) -> void:
 
 ## Explosions and slams blow smoke apart for a moment (here only).
 static func blast(at: Vector3, radius: float) -> void:
+	var loop := Engine.get_main_loop()
+	if loop is SceneTree:
+		PhysicsFx.blast(loop as SceneTree, at, radius)
 	for n in _objects.values():
 		if is_instance_valid(n) and n is SmokeCloud:
 			n.blow(at, radius)

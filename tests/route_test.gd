@@ -265,9 +265,12 @@ func _route_c() -> void:
 					phase = "kick"
 					continue
 			"kick":
+				# C7: every wall can be run on; let go of the keys so this is a kick, not a run.
 				player.rotation.y = 0.0
+				press("move_forward", false)
 				if player.wall_info.get("side", 0) == 1 and p.z > -22.6 and player.velocity.y < 3.0:
 					await tap("jump")
+					press("move_forward")
 					phase = "ledge"
 					continue
 			"ledge":

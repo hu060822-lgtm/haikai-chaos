@@ -29,9 +29,11 @@ func _draw() -> void:
 	if player == null or CameraFx.intensity() <= 0.0:
 		return
 	var v := player.velocity.length()
-	var k := clampf((v - player.tune.sprint_speed * 1.05) / 12.0, 0.0, 1.0) * CameraFx.intensity() * lerpf(1.0, 0.3, player._aim)
+	# C7: they start at a run, not past a sprint, and grow faster.
+	var k := clampf((v - player.tune.run_speed * 1.15) / 11.0, 0.0, 1.0) * CameraFx.intensity() * lerpf(1.0, 0.3, player._aim)
 	if k <= 0.01:
 		return
+	_vignette(k)
 	var c := size / 2.0
 	# Lines stream from where you're heading: shift the centre toward the velocity on screen.
 	var local := player.camera.global_basis.inverse() * player.velocity
@@ -46,3 +48,17 @@ func _draw() -> void:
 		var a := c + dir * r0
 		var col := Color(Faultprint.ui_ink, 0.55 * k * sin(phase * PI))
 		draw_line(a, a + dir * length, col, 1.5 + 2.5 * k)
+
+
+## The edges of the view close in a little at speed (C7): a soft dark band all round.
+func _vignette(k: float) -> void:
+	var w := size.x
+	var h := size.y
+	var band := minf(w, h) * (0.08 + 0.1 * k)
+	var dark := Color(0, 0, 0, 0.34 * k)
+	var clear := Color(0, 0, 0, 0.0)
+	var outer := [Vector2(0, 0), Vector2(w, 0), Vector2(w, h), Vector2(0, h)]
+	var inner := [Vector2(band, band), Vector2(w - band, band), Vector2(w - band, h - band), Vector2(band, h - band)]
+	for i in 4:
+		var j := (i + 1) % 4
+		draw_polygon(PackedVector2Array([outer[i], outer[j], inner[j], inner[i]]), PackedColorArray([dark, dark, clear, clear]))

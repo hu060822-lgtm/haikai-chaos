@@ -134,6 +134,9 @@ static func _assemble(build: Dictionary) -> Node3D:
 		"glass_revolver": GunFrames.glass_revolver(r)
 		"tuning_fork": GunFrames.tuning_fork(r)
 		"anchor_gun": GunFrames.anchor_gun(r)
+		"vector_smg": GunFrames.vector_smg(r)
+		"scout_rifle": GunFrames.scout_rifle(r)
+		"silent_rifle": GunFrames.silent_rifle(r)
 		_: GunFrames.revolver(r)
 	_settle_anchors(r)
 	var bare_muzzle := r.muzzle
@@ -726,7 +729,8 @@ static func _barrel(r: Rig, start: Vector3, length: float, radius: float, m: Mat
 			sight = false
 	if sight:
 		_box(r.root, Vector3(0.004, 0.014, 0.008), start + Vector3(0, rad + 0.006, -len + 0.012), mat("panel", DARK))
-	if id != "" and not Arsenal.is_organ(id):
+	# Energy coils go on the end of any barrel (_barrel_part draws them after).
+	if id != "" and not Arsenal.is_organ(id) and not id in ["coil_barrel", "cooling_coil"]:
 		r.done["barrel"] = true
 		if not id in ["long_barrel", "short_barrel", "heavy_barrel", "fluted_barrel", "match_barrel", "polygonal_barrel",
 				"threaded_barrel", "integral_suppressor", "bbl_338", "rifled_slug_barrel", "nail_guide", "corkscrew_barrel",
@@ -976,6 +980,8 @@ static func _slot_points(r: Rig, bare_muzzle: Vector3) -> Dictionary:
 		"grip": r.grip_top + _grip_down(r.grip_rake) * r.grip_size.y * 0.5, "trigger": r.trig, "bolt": r.bolt,
 		"charging": r.charging, "magazine": r.mag + Vector3(0, -0.03, 0), "ammo": r.side,
 		"stock": r.stock + Vector3(0, -0.02, 0.08), "buttpad": butt.lerp(comb, 0.15), "gadget": r.gadget + Vector3(0, -0.04, 0.01),
+		"tactical": GunPartsC7.tactical_point(r) + Vector3(0, 0.02, 0), "spring": r.stock, "magwell": r.mag,
+		"cheek": GunPartsC7.cheek_point(r), "sling": GunPartsC7.sling_point(r),
 	}
 
 
@@ -1011,6 +1017,7 @@ static func _attach_parts(r: Rig) -> void:
 			"stock": _stock(r, id)
 			"buttpad": _buttpad(r, id)
 			"gadget": _gadget(r, id)
+			"tactical", "spring", "magwell", "cheek", "sling": GunPartsC7.draw(r, slot, id)
 			_: _generic(r, r.recv, id)
 	# Ammo last, so every visible round (even ones a part added) takes its colour.
 	if p.has("ammo"):
@@ -1052,7 +1059,22 @@ static func _barrel_part(r: Rig, id: String) -> void:
 				_turn(r.root, [Vector2(-0.003, r.barrel_r * 1.25), Vector2(0.003, r.barrel_r * 1.25)], Vector3(r.muzzle.x, r.barrel_start.y, z),
 						fin("rust", Color(0.9, 0.18, 0.02) * hot * 1.4), 14)
 		_:
-			_generic(r, r.barrel_start.lerp(r.muzzle, 0.5) + Vector3(0, r.barrel_r + 0.008, 0), id)
+			_barrel_sleeve(r, id)
+
+
+## A barrel part on a frame that doesn't draw a plain barrel (C7, everything fits): a
+## sleeve clamped over the front of whatever it shoots from, as long as the part says.
+static func _barrel_sleeve(r: Rig, id: String) -> void:
+	var length: float = {"long_barrel": 0.12, "short_barrel": 0.025, "heavy_barrel": 0.07, "integral_suppressor": 0.14,
+		"telescoping_barrel": 0.16, "bbl_338": 0.1}.get(id, 0.06)
+	var rad := r.barrel_r * 1.1 + (0.012 if id == "integral_suppressor" else 0.004)
+	var finish := "black" if id in ["integral_suppressor", "heavy_barrel"] else ("glass" if id == "glass_barrel" else "steel")
+	var start := r.muzzle
+	_rod(r.root, rad, rad, length, start + Vector3(0, 0, -length / 2.0), fin(finish), 10)
+	_rod(r.root, rad + 0.003, rad + 0.003, 0.01, start + Vector3(0, 0, -0.004), fin("oxide"), 10)
+	if id == "twin_linked":
+		_rod(r.root, rad, rad, length, start + Vector3(rad * 2.2, 0, -length / 2.0), fin(finish), 10)
+	r.muzzle = start + Vector3(0, 0, -length)
 
 
 static func _coil_barrel(r: Rig) -> void:
@@ -1901,7 +1923,13 @@ static func _bolt_part(r: Rig, id: String) -> void:
 				_lever(r, 1.45)
 				_box(r.root, Vector3(0.012, 0.006, 0.03), Vector3(0, -0.038, 0.06), mat("panel", TAPE), Vector3(-20, 0, 0), 0.002)
 			else:
-				_generic(r, b, id)
+				# Any other gun: a big loop round the trigger guard (C7, everything fits).
+				var t := r.trig + Vector3(0, -0.006, 0.0)
+				var ring := []
+				for i in 13:
+					var a := TAU * i / 12.0
+					ring.append(t + Vector3(0, -0.012 + sin(a) * 0.024, cos(a) * 0.032))
+				_tube(r.root, ring, 0.0028, fin("black"), 8)
 		"eject_bolt":
 			# A stiff spring showing through the port, the bolt face in oxide.
 			var points := []
@@ -1987,6 +2015,16 @@ static func _magazine(r: Rig, id: String) -> void:
 
 static func _magazine_draw(r: Rig, id: String) -> void:
 	var t := r.mag
+	# C7: feeds from other kinds of guns hang where any magazine goes.
+	if id == "big_tank" and r.mag_style != "tank":
+		_tank(r, t + Vector3(0, -0.04, 0.0), 0.04, 0.16, mat("panel", RED))
+		return
+	if id == "capacitor" and r.mag_style != "cell":
+		_cells(r, t, 2, 0.013, 0.08, mat("panel", Color(0.95, 0.75, 0.2)))
+		return
+	if id == "nail_coil" and r.mag_style != "coil":
+		_nail_coil(r, t + Vector3(0, -0.02, 0), 0.045, true)
+		return
 	match r.mag_style:
 		"tank":
 			if id == "big_tank":
@@ -1994,14 +2032,14 @@ static func _magazine_draw(r: Rig, id: String) -> void:
 				_box(r.root, Vector3(0.13, 0.012, 0.016), t + Vector3(0, -0.012, -0.06), mat("panel", BLACK), Vector3.ZERO, 0.002)
 			else:
 				_tank(r, t, 0.045, 0.2, mat("panel", OLIVE))
-				_generic(r, t + Vector3(0, -0.05, 0), id)
+				_mag_pouch(r, id)
 			return
 		"cell":
 			if id == "capacitor":
 				_cells(r, t, 3 if r.frame != "bubble_gun" else 2, 0.016, 0.11, mat("panel", Color(0.95, 0.75, 0.2)))
 			else:
 				_cells(r, t, 2, 0.016, 0.1, mat("panel", Color(0.5, 0.55, 0.6)))
-				_generic(r, t + Vector3(0, -0.035, 0.0), id)
+				_mag_pouch(r, id)
 			return
 		"hopper":
 			var size := 0.09 if id == "extended_mag" else 0.06
@@ -2019,7 +2057,7 @@ static func _magazine_draw(r: Rig, id: String) -> void:
 		"coil":
 			_nail_coil(r, t, 0.058 if id == "nail_coil" else 0.04, id == "nail_coil")
 			if id != "nail_coil":
-				_generic(r, t + Vector3(0, -0.04, 0.0), id)
+				_mag_pouch(r, id)
 			return
 		"top":
 			match id:
@@ -2035,7 +2073,7 @@ static func _magazine_draw(r: Rig, id: String) -> void:
 					_tube(r.root, [r.mag + Vector3(0, 0.026, 0.15), r.mag + Vector3(0, 0.04, 0.17), r.mag + Vector3(0, 0.026, 0.18)], 0.004, mat("panel", ORANGE), 4)
 				_:
 					_top_mag(r, r.mag_len, mat("panel", SMOKE))
-					_generic(r, r.mag + Vector3(0.03, 0.012, 0.1), id)
+					_mag_pouch(r, id)
 			return
 		"tube":
 			if id in ["tube_extension", "extended_mag"]:
@@ -2062,10 +2100,7 @@ static func _magazine_draw(r: Rig, id: String) -> void:
 			_round(r, _rod(r.root, 0.005, 0.005, 0.03, at + Vector3(cos(a) * 0.012, -0.018, sin(a) * 0.012), mat("brass"), 5, Vector3.ZERO))
 		return
 	if r.mag_style == "none":
-		if id in ["parkour_feed", "pain_feed", "bomb_mag"]:
-			_mag_pouch(r, id)
-		else:
-			_generic(r, t, id)
+		_mag_pouch(r, id)
 		return
 	_box_magazine(r, id)
 

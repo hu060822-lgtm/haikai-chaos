@@ -100,6 +100,10 @@ func _build() -> void:
 	var walls := [Counterform.BONE_CONCRETE, Counterform.CONCRETE_MID, Counterform.BONE_CONCRETE, Counterform.CONCRETE_DARK]
 	var n := [0]
 	layout.mark_breaches(2)  # C6: rammable shortcuts
+	layout.cut_passages(4)  # C7: small passages, vault windows, ledges
+	layout.cut_windows(2)
+	layout.add_ledges(6)
+	PhysProp.scatter(self, layout, 36, [Faultprint.ORANGE, Faultprint.SLATE, Color("#6F7656"), Color("#3D6FB0")])  # C7: loose things
 	layout.build_walls(self, WALL_H, func(size: Vector3, at: Vector3) -> void:
 		var b := Geo.block(self, size, at, walls[n[0] % walls.size()], Vector3.ZERO, {"bevel": 0.12, "print": {"wear": 0.5}})
 		b.collision_layer = Geo.WORLD | Geo.RUNNABLE
