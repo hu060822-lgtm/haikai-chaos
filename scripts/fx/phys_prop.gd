@@ -179,7 +179,6 @@ class _Scatter extends Node3D:
 					spots.append(Vector2i(c, r))
 		if spots.is_empty():
 			return
-		var mid := layout.rect.get_center()
 		var made := 0
 		var tries := 0
 		while made < count and tries < count * 6:
@@ -190,7 +189,7 @@ class _Scatter extends Node3D:
 			var cluster := 1 + rng.randi() % 3
 			for i in cluster:
 				var off := Vector3(rng.randf_range(-0.7, 0.7), 0, rng.randf_range(-0.7, 0.7))
-				for p in [base + off, Layout.turn(base + off, mid)]:
+				for p in [base + off, layout.twin(base + off)]:
 					if _place(p, kind if i == 0 else PhysProp.KINDS[rng.randi() % PhysProp.KINDS.size()]):
 						made += 1
 

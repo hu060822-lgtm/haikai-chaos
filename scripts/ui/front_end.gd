@@ -13,6 +13,7 @@ const PRACTICE := [
 	["folded", "折疊工廠", "FOLDED WORKS　混凝土模組測試設施：三層大廳當中路，外圍長廊通往 A／B 點"],
 	["dream", "夢核之家", "DREAM HOME　記憶裡太大的房子：粉彩房間、沒有水的泳池、走不完的走廊"],
 	["yard", "斷層貨場", "FAULT YARD　貨櫃場與兩座倉庫：開闊中路、長廊、隧道、工頭辦公室"],
+	["testament", "最後的遺訓", "THE LAST TESTAMENT　被軍方接管的大教堂：中殿、唱詩班迴廊、告解室、祭壇、地下墓室（灰盒）"],
 	["lab", "移動測試場", "MOVEMENT LAB　三條計時路線與自由練習區：滑鏟、牆跑、踢牆、重踩彈跳"],
 ]
 
@@ -217,7 +218,7 @@ func _home() -> Control:
 	var entries := [
 		["開始配對", "找區網裡開著的房間，沒有就開一間等人（空位補機器人）", _quick_match],
 		["自訂房間", "開房分享房間碼、輸入房間碼加入、看看區網裡的房間", func() -> void: show_page("custom")],
-		["練習場", "折疊工廠、夢核之家、移動測試場：陪練機器人與靶場", func() -> void: show_page("practice")],
+		["練習場", "四張對戰地圖和移動測試場：陪練機器人與靶場", func() -> void: show_page("practice")],
 		["設定", "靈敏度、FOV、音量、畫面、按鍵", func() -> void: settings_requested.emit()],
 		["離開遊戲", "", func() -> void: get_tree().quit()],
 	]

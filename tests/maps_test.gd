@@ -15,11 +15,19 @@ func check(ok: bool, what: String) -> void:
 
 func _init() -> void:
 	Engine.time_scale = 4.0
-	for id in ["folded", "dream", "yard"]:
+	for id in ["folded", "dream", "yard", "testament"]:
 		await _map(id)
 	Engine.time_scale = 1.0
 	print("MAPS TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)
+
+
+func _make(id: String) -> Node3D:
+	match id:
+		"dream": return DreamHome.new()
+		"yard": return FaultYard.new()
+		"testament": return LastTestament.new()
+	return FoldedWorks.new()
 
 
 func _length(points: Array, from: Vector3) -> float:
@@ -33,7 +41,7 @@ func _length(points: Array, from: Vector3) -> float:
 
 func _map(id: String) -> void:
 	print(id)
-	var map: Node3D = DreamHome.new() if id == "dream" else (FaultYard.new() if id == "yard" else FoldedWorks.new())
+	var map: Node3D = _make(id)
 	root.add_child(map)
 	var guard := MapGuard.new(map)
 	root.add_child(guard)
@@ -65,7 +73,7 @@ func _map(id: String) -> void:
 	# A bot walks from blue's spawn to site A on its own.
 	map.queue_free()
 	await process_frame
-	map = DreamHome.new() if id == "dream" else (FaultYard.new() if id == "yard" else FoldedWorks.new())
+	map = _make(id)
 	root.add_child(map)
 	guard.map = map
 	await process_frame

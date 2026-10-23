@@ -32,6 +32,21 @@ const VIEWS := {
 		"office": [Vector3(-30, 1.7, 39), Vector3(-41, 1.5, 29)],
 		"tunnel": [Vector3(20, 1.7, 49), Vector3(54, 1.5, 49)],
 	},
+	"testament": {
+		"plan": [Vector3(0, 190, 0.01), Vector3(0, 0, 0)],
+		"spawn": [Vector3(0, 1.7, 45), Vector3(-8, 1.5, 32)],
+		"confessionals": [Vector3(24, 1.7, 23), Vector3(-24, 1.5, 23)],
+		"nave": [Vector3(-34, 1.7, -2), Vector3(40, 2.5, 0)],
+		"from_dais": [Vector3(66, 2.9, 0), Vector3(-30, 2.5, 0)],
+		"aisle": [Vector3(38, 1.7, 14), Vector3(-40, 2.5, 14)],
+		"gallery": [Vector3(27, 6.7, 18), Vector3(-40, 5.5, 15)],
+		"loft": [Vector3(-46, 6.7, 12), Vector3(30, 2.0, -4)],
+		"organ_room": [Vector3(-53, 1.7, 13), Vector3(-70, 3.0, -4)],
+		"trench": [Vector3(-34, 1.9, 0), Vector3(-50, -3.0, 0)],
+		"crypt": [Vector3(-50, -2.8, 1), Vector3(-72, -3.5, -6)],
+		"lane_ramp": [Vector3(-61, 1.7, 42), Vector3(-61, -3.0, 16)],
+		"site_a": [Vector3(46, 1.7, 13), Vector3(66, 1.0, 0)],
+	},
 }
 
 
@@ -43,6 +58,8 @@ func _init() -> void:
 	match id:
 		"dream": map = DreamHome.new()
 		_: map = FoldedWorks.new()
+	if id == "testament":
+		map = LastTestament.new()
 	if id == "yard":
 		map = load("res://scripts/maps/fault_yard.gd").new()
 	root.add_child(map)
