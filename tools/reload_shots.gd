@@ -12,6 +12,12 @@ const GUNS := [
 	["pistol", {"frame": "service_pistol", "parts": {}, "tune": {}}],
 	["shotgun", {"frame": "shotgun", "parts": {}, "tune": {}}],
 	["revolver", {"frame": "revolver", "parts": {}, "tune": {}}],
+	["double_barrel", {"frame": "double_barrel", "parts": {}, "tune": {}}],
+	["lmg", {"frame": "lmg", "parts": {}, "tune": {}}],
+	["tesla", {"frame": "tesla", "parts": {}, "tune": {}}],
+	["crossbow", {"frame": "crossbow", "parts": {}, "tune": {}}],
+	["harpoon", {"frame": "harpoon", "parts": {}, "tune": {}}],
+	["rifle", {"frame": "rifle", "parts": {}, "tune": {}}],
 ]
 const STEPS := [0.08, 0.24, 0.36, 0.55, 0.66, 0.82]
 
@@ -31,8 +37,11 @@ func _init() -> void:
 	main.hud.show_hint("", 0.0)
 	var p := main.player
 	var only := OS.get_environment("ONLY")
+	var guns := OS.get_environment("GUNS").split(",", false)
 	if only == "" or only == "reload":
 		for g in GUNS:
+			if not guns.is_empty() and not g[0] in guns:
+				continue
 			p.equip(g[1])
 			main.lab.restart("C")
 			p.rotation.y = deg_to_rad(200)

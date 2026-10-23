@@ -46,6 +46,16 @@ var _foot_world: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
 var _pin := Vector3.INF
 ## Hip joint to ankle, the leg at full stretch.
 const LEG := 0.848
+## Phase 4: the reload and the action between shots, from the same timeline the
+## first-person arms play (ReloadPlan), on the weapon's own clock.
+var _plan: ReloadPlan
+var _reload_left := 0.0
+var _reload_total := 1.0
+var _reload_empty := false
+var _cycle := 0.0
+var _cycle_total := 0.4
+var _prop: MeshInstance3D
+var _prop_kind := ""
 
 static var _mesh: ArrayMesh
 static var _skin: Skin
@@ -129,6 +139,32 @@ func _find_gun() -> void:
 
 
 # --- The pose ------------------------------------------------------------------------------
+
+
+func reload_state(left: float, total: float, empty: bool) -> void:
+	if left <= 0.0:
+		_reload_left = 0.0
+		_plan = null
+		return
+	if _plan == null or not is_equal_approx(total, _reload_total) or empty != _reload_empty:
+		_find_gun()
+		_plan = ReloadPlan.for_gun(_gun, total, empty)
+		_cycle = 0.0
+	_reload_left = left
+	_reload_total = maxf(total, 0.01)
+	_reload_empty = empty
+
+
+func fired(rate: float) -> void:
+	_find_gun()
+	if _plan == null and ReloadPlan.action(_gun) != "":
+		_cycle_total = ReloadPlan.cycle_time(rate)
+		_cycle = _cycle_total
+
+
+## Progress through the reload (1 when not reloading), for tests.
+func reload_progress() -> float:
+	return 1.0 - _reload_left / _reload_total if _plan != null else 1.0
 
 ## The old entry point (bots, decoys, older callers): the move is worked out from the flags.
 func pose(delta: float, vel: Vector3, on_floor: bool, crouch := 0.0, slide := false, wall := 0, pitch := 0.0) -> void:
@@ -303,8 +339,25 @@ func _arms(d: AthleteMotion.Desc) -> void:
 		var chest := _glob[uc] * (AthleteBones.rest_global(uc).affine_inverse() * Vector3(0.12, 1.24, -0.27))
 		var port := Transform3D(Basis(Vector3.UP, 0.35) * Basis(Vector3.RIGHT, 1.2), chest) * Transform3D(Basis.IDENTITY, -grip)
 		mount = mount.interpolate_with(port, clampf(d.port, 0.0, 1.0))
+	# The reload (or working the action) tips the gun about its grip.
+	var rs := {}
+	var cyc := {}
+	var fg_rest: Vector3 = _slots.get("foregrip", Vector3(0, 0.0, -0.2)) + Vector3(0, 0.03, 0)
+	if _plan != null and _gun != null:
+		rs = _plan.sample(1.0 - _reload_left / _reload_total, fg_rest)
+	elif _cycle > 0.0 and _gun != null:
+		cyc = ReloadPlan.cycle_pose(ReloadPlan.action(_gun), 1.0 - _cycle / _cycle_total, _slots)
+	var tip: Vector3 = rs.get("tilt", cyc.get("tilt", Vector3.ZERO))
+	if tip != Vector3.ZERO:
+		var gp := mount * grip
+		var tb := mount.basis.orthonormalized()
+		var turn_t := Basis(tb.y, tip.y) * Basis(tb.x, tip.x) * Basis(tb.z, tip.z)
+		mount = Transform3D(turn_t, gp) * Transform3D(Basis.IDENTITY, -gp) * mount
 	gun_hand.transform = mount
 	var gb := mount.basis.orthonormalized()
+	var mag := _gun.get_node_or_null("Magazine") as Node3D if _gun != null else null
+	if mag != null:
+		mag.position = rs.get("mag", Vector3.ZERO)
 	# Head: down onto the stock for a long gun, square behind a pistol; looking with the pitch.
 	var back := BLADE * d.blade if not _pistol else 0.0
 	_euler("neck", Vector3(p * 0.12 - (0.06 if not _pistol else 0.03), back * 0.45, 0.0) + d.neck * 0.5)
@@ -314,7 +367,7 @@ func _arms(d: AthleteMotion.Desc) -> void:
 	_fk()
 	# Right hand round the grip: the back of the hand out to the right, the knuckles
 	# forward across the grip, the index finger at the trigger.
-	var grip_at := mount * grip
+	var grip_at := mount * (grip + (rs.get("right", cyc.get("right", Vector3.ZERO)) as Vector3))
 	var yr := (gb * Vector3(-0.28, -0.3, -0.91)).normalized()
 	var xr := gb.x
 	xr = (xr - yr * xr.dot(yr)).normalized()
@@ -350,6 +403,14 @@ func _arms(d: AthleteMotion.Desc) -> void:
 			var disc := along * along - (rel.length_squared() - reach * reach)
 			var t := (-along + sqrt(disc)) if disc >= 0.0 else -along
 			wrist_l += gb.z * clampf(t, 0.0, 0.3)
+	if not rs.is_empty():
+		# Reloading: the palm goes where the plan says, turned the way that job needs.
+		var ha := _grip_basis(rs.grip_a, gb, hl)
+		var hb := _grip_basis(rs.grip_b, gb, hl)
+		hl = ha.slerp(hb, rs.grip_k)
+		wrist_l = mount * (rs.at as Vector3) - hl.y * 0.05
+	elif not cyc.is_empty():
+		wrist_l += gb * (cyc.support as Vector3)
 	var free := clampf(d.free_l, 0.0, 1.0)
 	if free > 0.01:
 		# Off the gun: reaching for a wall, a ledge, the rope; palm forward and down.
@@ -363,6 +424,51 @@ func _arms(d: AthleteMotion.Desc) -> void:
 	_turn("fingers_r", Vector3.BACK, FINGER_CURL)
 	_turn("fingers_l", Vector3.BACK, -FINGER_CURL * lerpf(1.1, 0.35, free))
 	_fk()
+	_carry(rs.get("prop", ""))
+
+
+## The left hand's basis for a named reload grip (gun basis `gb`; `rest` is the hold).
+func _grip_basis(g: String, gb: Basis, rest: Basis) -> Basis:
+	var y := Vector3.ZERO
+	var x := Vector3.ZERO
+	match g:
+		"cup", "slap":
+			y = gb * Vector3(0.55, 0.0, -0.83)
+			x = gb * Vector3(0.0, 1.0, 0.0)
+		"pinch":
+			y = gb * Vector3(0.3, -0.55, -0.78)
+			x = gb * Vector3(1.0, 0.0, 0.0)
+		"rack":
+			y = gb * Vector3(0.25, 0.35, -0.9)
+			x = gb * Vector3(0.95, 0.0, 0.3)
+		"carry":
+			y = gb * Vector3(0.4, 0.2, -0.9)
+			x = gb * Vector3(0.6, 0.8, 0.0)
+		_:
+			return rest
+	y = y.normalized()
+	x = (x - y * x.dot(y)).normalized()
+	return Basis(x, y, x.cross(y))
+
+
+## What the left hand carries in a reload (a fresh magazine for a gun without one, shells,
+## a speedloader, a bolt...), in the palm.
+func _carry(what: String) -> void:
+	if what == "" or what == "mag" and _gun != null and _gun.get_node_or_null("Magazine") != null:
+		if _prop != null:
+			_prop.visible = false
+		return
+	if _prop == null:
+		_prop = MeshInstance3D.new()
+		_prop.name = "ReloadProp"
+		_prop.material_override = Counterform.material("bare", Color("#B8925A"), false)
+		skel.add_child(_prop)
+	if what != _prop_kind:
+		_prop.mesh = ReloadPlan.prop_mesh(what)
+		_prop_kind = what
+	var h := _glob[b("hand_l")]
+	_prop.transform = Transform3D(h.basis.orthonormalized(), h.origin + h.basis.y * 0.07 + h.basis.x * 0.03)
+	_prop.visible = true
 
 
 func _relaxed_arms() -> void:
@@ -650,6 +756,7 @@ func _drive() -> void:
 
 
 func _process(delta: float) -> void:
+	_cycle = maxf(_cycle - delta, 0.0)
 	if _flash_left > 0.0:
 		_flash_left -= delta
 		if _flash_left <= 0.0:

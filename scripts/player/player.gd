@@ -1530,7 +1530,7 @@ func _camera_frame(delta: float) -> void:
 	var fov := (base_fov + _cam.fov) / lerpf(1.0, maxf(zoom, 1.0), _aim)
 	camera.fov = lerpf(camera.fov, fov, 1.0 - exp(-14.0 * delta))
 	view.update_pose(delta, {"aim": _aim, "speed": flat_speed(), "move": move, "floor": is_on_floor(),
-		"roll": _cam.roll, "vy": velocity.y, "reloading": weapon.is_reloading(),
+		"roll": _cam.roll, "vy": velocity.y, "reloading": weapon.is_reloading(), "reload_left": weapon.reload_left,
 		"sprint": _want("sprint") and move == Move.GROUND and flat_speed() > tune.run_speed * mobility})
 
 

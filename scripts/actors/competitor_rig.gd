@@ -122,6 +122,17 @@ func _rest_of(j: Node3D) -> Transform3D:
 ## One frame of motion. `vel` is the body's velocity in world space, `floor` whether it
 ## stands on something, `crouch` 0..1, `slide` and `wall` (-1/0/1 side) for those moves,
 ## `pitch` the look pitch in radians.
+## The weapon's reload clock (seconds left, the whole reload, run dry), every frame; the
+## skinned athlete plays it (AthleteRig), the rigid FAULTPRINT figure ignores it.
+func reload_state(_left: float, _total: float, _empty: bool) -> void:
+	pass
+
+
+## A shot left the gun (`rate` shots a second): bolt, pump and lever guns are worked.
+func fired(_rate: float) -> void:
+	pass
+
+
 func pose(delta: float, vel: Vector3, on_floor: bool, crouch := 0.0, slide := false, wall := 0, pitch := 0.0) -> void:
 	if dead or hips == null:
 		return

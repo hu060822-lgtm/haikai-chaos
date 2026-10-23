@@ -65,6 +65,18 @@ func _init() -> void:
 		for m in line:
 			m.queue_free()
 		a.visible = true
+	if "reloads" in only:
+		# Phase 4: third-person reloads, frozen through each gun's template (not in the
+		# default set: ask for it by name).
+		for frame in ["carbine", "service_pistol", "revolver", "shotgun", "double_barrel", "lmg", "tesla", "crossbow", "harpoon", "rifle"]:
+			a.hold(GunModels.build({"frame": frame, "parts": {}, "tune": {}}))
+			await _frames(2)
+			for t: float in [0.1, 0.25, 0.45, 0.62, 0.75, 0.9]:
+				a.reload_state(2.5 * (1.0 - t), 2.5, true)
+				a.animate(0.0, {"vel": Vector3.ZERO, "floor": true, "move": AthleteMotion.GROUND, "pitch": -0.15})
+				await _shot(Vector3(-0.9, 1.55, -1.3), Vector3(0.05, 1.2, -0.25), "reload3p_%s_%02d" % [frame, roundi(t * 100)])
+			a.reload_state(0.0, 2.5, true)
+		a.hold(GunModels.build(build))
 	if only.is_empty() or "moves" in only:
 		# The moves, side by side after a second of the same input: stand, run, sprint
 		# strafe, crouch, slide, airborne.

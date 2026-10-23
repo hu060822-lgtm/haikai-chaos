@@ -310,6 +310,7 @@ func _physics_process(delta: float) -> void:
 			var to := target.global_position - global_position
 			pitch = atan2(to.y, Vector2(to.x, to.z).length())
 		_model.pose(delta, velocity, is_on_floor(), 0.0, false, 0, pitch)
+		_model.reload_state(weapon.reload_left, weapon.reload_time(), weapon.ammo == 0)
 		var marker := _model.get_node_or_null("Marker")
 		if marker:
 			marker.rotate_y(delta * 2.0)
@@ -450,6 +451,8 @@ func _try_shoot() -> void:
 	var saved: float = weapon.stats.damage
 	weapon.stats.damage = float(saved) * damage_mult
 	var results := weapon.fire(self, eye, aim, spread, context)
+	if _model != null:
+		_model.fired(weapon.rate)
 	weapon.stats.damage = saved
 	var world := get_tree().current_scene
 	var muzzle := _gun.to_global(_gun.get_meta("muzzle")) if _gun else eye
