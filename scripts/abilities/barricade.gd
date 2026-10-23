@@ -7,12 +7,12 @@ extends StaticBody3D
 ## (no pushing a wall up a lane), it shows its damage, and a RAM charge goes through it.
 ## Shots on it travel as Deploy events ("hit"), so it breaks on every machine together.
 
-const WIDTH := 2.2
-const TALL := 1.9
+const WIDTH := 4.0
+const TALL := 2.8
 const THICK := 0.16
 const RISE := 0.5
-const LIFE := 7.0
-const HP := 350.0
+const LIFE := 8.0
+const HP := 500.0
 
 var uid := ""
 var owner_id := ""
@@ -153,8 +153,8 @@ func _break(smashed: bool) -> void:
 		Sfx.play(self, "shield_break", -2.0)
 		PrintFx.explosion(get_tree().current_scene, global_position + Vector3(0, TALL / 2.0, 0), 1.2)
 		# C7: the plate comes apart in real pieces, thrown back from its face.
-		PhysicsFx.shards(get_tree().current_scene, global_position + Vector3(0, TALL / 2.0, 0), Vector3(0.55, 0.45, THICK),
-			_plate.material_override if _plate != null else null, 9, -global_basis.z * 3.0)
+		PhysicsFx.shards(get_tree().current_scene, global_position + Vector3(0, TALL / 2.0, 0), Vector3(0.7, 0.6, THICK),
+			_plate.material_override if _plate != null else null, 14, -global_basis.z * 3.0)
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3(1.0, 0.02, 1.0), 0.18 if smashed else 0.4)
 	tw.tween_callback(queue_free)

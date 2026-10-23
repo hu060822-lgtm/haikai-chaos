@@ -1,16 +1,16 @@
 class_name BulwarkDeploy
 extends Ability
 ## BULWARK's ability (C6): stands a Barricade up DISTANCE ahead, square to where you look.
-## It needs floor there (not in the air, not on a wall).
+## It needs floor there (not in the air, not on a wall). C8: two charges, a bigger wall.
 
-const DISTANCE := 2.0
+const DISTANCE := 2.4
 
 
 func press() -> void:
 	if not alive():
 		return
 	if charges < 1.0:
-		say("護盾板還在冷卻")
+		say("護盾牆還在冷卻")
 		return
 	var fwd := -aim().basis.z
 	fwd.y = 0.0
@@ -25,7 +25,7 @@ func press() -> void:
 		reach = maxf(chest.distance_to(hit.position) - 0.4, 0.8)
 	var ground := floor_below(user.global_position + fwd * reach + Vector3(0, 1.0, 0), 3.0)
 	if ground == Vector3.INF:
-		say("那裡沒有地板，護盾板立不起來")
+		say("那裡沒有地板，護盾牆立不起來")
 		return
 	spend()
 	Deploy.spawn("barricade", user, {"at": ground, "yaw": atan2(fwd.x, fwd.z)})

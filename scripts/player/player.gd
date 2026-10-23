@@ -50,7 +50,7 @@ const RUSH := 1.15
 ## Movement state, for the HUD, the view model and the kill feed's move tags.
 ## GRAPPLE and CHARGE (C6) belong to the class abilities (Anchor, Ram), which drive them.
 enum Move { GROUND, AIR, SLIDE, WALLRUN, CLIMB, MANTLE, DASH, SLAM, GRAPPLE, CHARGE }
-const MOVE_NAMES := ["地面", "空中", "滑鏟", "牆跑", "攀牆", "翻越", "衝刺", "重踩", "勾索", "肩撞"]
+const MOVE_NAMES := ["地面", "空中", "滑鏟", "牆跑", "攀牆", "翻越", "衝刺", "重踩", "勾索", "衝撞"]
 ## A RAM hit: for this long the cone opens wide and the scope drops (never a stun).
 const STAGGER_SPREAD := 3.0
 const STEP_EVERY := 2.3
@@ -870,7 +870,7 @@ func _wallrun_block(wall: Dictionary, wish: Vector3) -> String:
 	if wall.side == 0:
 		return "正面撞牆：牆跑要沿著牆跑"
 	if not wall.runnable:
-		return "這不是牆（會動的東西、護盾板）"
+		return "這不是牆（會動的東西、護盾牆）"
 	if wall.collider == _wall_ban:
 		return "剛離開這面牆（落地或換一面牆後重置）"
 	var h := _flat()

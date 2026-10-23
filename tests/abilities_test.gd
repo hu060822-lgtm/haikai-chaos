@@ -31,6 +31,7 @@ func _init() -> void:
 	await _veil(m)
 	await _ram(m)
 	await _panels(m)
+	await _c8(m)
 	print("ABILITY TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)
 
@@ -117,7 +118,7 @@ func _anchor(m: Main) -> void:
 	await _wait(0.05)
 	check(p.move == Player.Move.AIR and a.state == Anchor.State.IDLE, "ANCHOR: letting go of F drops the line")
 	check(p.velocity.length() > speed * 0.8 and speed > 8.0, "ANCHOR: the speed carries on after the line (%.1f → %.1f m/s)" % [speed, p.velocity.length()])
-	check(a.charges < 1.0, "ANCHOR: the line is on cooldown")
+	check(is_equal_approx(a.cooldown(), 0.5), "ANCHOR: a 0.5 s cooldown (%.2f)" % a.cooldown())
 	# A miss: into the sky. Most of the charge comes back.
 	a.refill()
 	_place(p, Vector3(0, Y + 0.1, 0), PI, 60.0)
@@ -127,8 +128,8 @@ func _anchor(m: Main) -> void:
 	check(a.charges >= Anchor.MISS_REFUND - 0.05 and p.move != Player.Move.GRAPPLE, "ANCHOR: a miss refunds most of the charge (%.2f)" % a.charges)
 
 
-## A tap hooks with the rope at full length: a pendulum, the rope never stretches, and a
-## jump lets go with a hop.
+## A tap is fire and forget (C8): the line pulls all the way in by itself, the sideways
+## speed we came in with stays (a swing round the hook), and a jump lets go with a hop.
 func _swing(m: Main) -> void:
 	var p := m.player
 	var a := p.ability as Anchor
@@ -139,21 +140,19 @@ func _swing(m: Main) -> void:
 	await _wait(0.1)
 	await _press(0.02)
 	var hooked := await _until(func() -> bool: return p.move == Player.Move.GRAPPLE, 1.0)
-	check(hooked and not a.reeling, "ANCHOR: a tap hooks without reeling (a swing)")
-	var max_d := 0.0
-	var vx_signs := {}
-	for i in 40:
-		await physics_frame
-		if p.move != Player.Move.GRAPPLE:
-			break
-		max_d = maxf(max_d, a._centre(p).distance_to(a.point))
-		vx_signs[signf(p.velocity.x)] = true
-	check(max_d <= a.rope + 0.25, "ANCHOR: the rope holds its length (%.2f ≤ %.2f m)" % [max_d, a.rope])
+	check(hooked and a.tapped and not a.held, "ANCHOR: a tap hooks and keeps pulling with F up")
+	var d0 := a._centre(p).distance_to(a.point)
+	await _wait(0.15)
+	var d1 := a._centre(p).distance_to(a.point)
+	check(p.move == Player.Move.GRAPPLE and d1 < d0 - 1.0, "ANCHOR: it pulls us in on its own (%.1f → %.1f m)" % [d0, d1])
 	var vy_before := p.velocity.y
 	Input.action_press("jump")
 	await _wait(0.05)
 	Input.action_release("jump")
 	check(p.move != Player.Move.GRAPPLE and p.velocity.y > vy_before, "ANCHOR: jump lets go with a hop (vy %.1f → %.1f)" % [vy_before, p.velocity.y])
+	# The cooldown is short: hook to hook.
+	await _wait(float(Kit.info("anchor").cooldown) + 0.05)
+	check(a.charges >= 1.0, "ANCHOR: ready again after %.1f s" % float(Kit.info("anchor").cooldown))
 
 
 # --- DECOY -----------------------------------------------------------------------------
@@ -319,7 +318,7 @@ func _ram(m: Main) -> void:
 	var charged := await _until(func() -> bool: return p.move == Player.Move.CHARGE, 0.5)
 	check(charged, "RAM: a wind-up, then the charge")
 	await _wait(0.5)
-	check(bot.health == Bot.MAX_HEALTH - Ram.DAMAGE, "RAM: the shoulder hits for %.0f (bot %.0f)" % [Ram.DAMAGE, bot.health])
+	check(bot.health <= Bot.MAX_HEALTH - Ram.DAMAGE and bot.health > Bot.MAX_HEALTH - Ram.DAMAGE - 10.0, "RAM: the charge hits for %.0f+ (bot %.0f)" % [Ram.DAMAGE, bot.health])
 	check(p.move != Player.Move.CHARGE and p.global_position.z > 25.0, "RAM: the charge stops on them")
 	bot.frozen = true
 	_park(bot)
@@ -366,3 +365,57 @@ func _panels(m: Main) -> void:
 	check((p.global_position - start).dot(through) > 3.5, "PANELS: and goes on through (%.1f m)" % (p.global_position - start).dot(through))
 	Deploy.reset_round()
 	check(not w.broken and layout.at(w.cell.x, w.cell.y) == "w", "PANELS: a new round puts it back")
+
+
+# --- C8 tweaks -------------------------------------------------------------------------
+
+func _c8(m: Main) -> void:
+	var p := m.player
+	# ANCHOR: a tap at the wall pulls all the way there and pops us up at the end.
+	p.set_kit("anchor")
+	var a := p.ability as Anchor
+	_place(p, Vector3(0, Y + 0.1, 0), 0.0, 14.0)
+	await _wait(0.2)
+	await _press(0.03)
+	await _until(func() -> bool: return p.move == Player.Move.GRAPPLE, 1.0)
+	var arrived := await _until(func() -> bool: return p.move != Player.Move.GRAPPLE, Anchor.MAX_TIME + 0.5)
+	check(arrived and p.global_position.z < -24.0 and p.velocity.y > 2.0,
+		"ANCHOR: a tap pulls us all the way to the wall and pops us up (z %.1f, vy %.1f)" % [p.global_position.z, p.velocity.y])
+	# RAM: no top speed, it turns with us, and F again stops it.
+	p.set_kit("ram")
+	var r := p.ability as Ram
+	_place(p, Vector3(-50, Y + 0.1, 55), 0.0)
+	await _wait(0.2)
+	await _press()
+	await _wait(2.4)
+	check(p.move == Player.Move.CHARGE and r.speed > Ram.SPEED + Ram.ACCEL * 2.0,
+		"RAM: still going after 2.4 s, faster and faster (%.1f m/s)" % r.speed)
+	var d0 := r.dir
+	p.rotation.y += PI / 2.0
+	await _wait(0.5)
+	check(r.dir.angle_to(d0) > 0.4 and r.dir.x < -0.3, "RAM: it turns toward where we face (%.0f°)" % rad_to_deg(r.dir.angle_to(d0)))
+	await _press()
+	await _wait(0.05)
+	check(p.move != Player.Move.CHARGE and r.state == Ram.State.IDLE, "RAM: F again ends it")
+	# ... and a wall stops it dead.
+	r.refill()
+	_place(p, Vector3(0, Y + 0.1, 5), 0.0)
+	await _wait(0.2)
+	await _press()
+	var stopped := await _until(func() -> bool: return r.state == Ram.State.IDLE, 4.0)
+	check(stopped and p.global_position.z < -27.0, "RAM: it runs until the wall stops it (z %.1f)" % p.global_position.z)
+	# BULWARK: two walls in a row, each bigger than before.
+	p.set_kit("bulwark")
+	p.ability.refill()
+	for b in get_nodes_in_group("barricades"):
+		b.queue_free()
+	_place(p, Vector3(20, Y + 0.1, 20), 0.0)
+	await _wait(0.2)
+	await _press()
+	await _wait(0.1)
+	p.rotation.y += PI / 2.0
+	await _wait(0.1)
+	await _press()
+	await _wait(0.1)
+	check(get_nodes_in_group("barricades").size() == 2, "BULWARK: two charges, two walls (%d)" % get_nodes_in_group("barricades").size())
+	check(Barricade.WIDTH >= 3.5 and Barricade.TALL >= 2.5, "BULWARK: the wall is %.1f × %.1f m" % [Barricade.WIDTH, Barricade.TALL])

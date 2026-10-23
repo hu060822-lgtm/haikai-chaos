@@ -228,5 +228,31 @@ func _test_maps(scene: Node3D) -> void:
 		var spawns := l.rects("s")
 		var path: Array[Vector3] = l.path(Vector3(spawns[0].get_center().x, 0, spawns[0].get_center().y), Vector3(spawns[-1].get_center().x, 0, spawns[-1].get_center().y))
 		check(not path.is_empty(), "%s: spawn to spawn still has a way" % m.name)
+		check(_holes(m) == 0, "%s: no hole in the floor anywhere you can stand (C8)" % m.name)
 		m.queue_free()
 		await frames(2)
+
+
+## Columns 0.5 m apart over the play area with standing room just above floor level and
+## nothing under it (see tools/hole_probe.gd).
+func _holes(m: Node3D) -> int:
+	var area: Rect2 = m.get("play_area")
+	var low := float(m.get("lowest_floor"))
+	var space := m.get_world_3d().direct_space_state
+	var n := 0
+	var x := area.position.x + 0.25
+	while x < area.end.x:
+		var z := area.position.y + 0.25
+		while z < area.end.y:
+			var pq := PhysicsPointQueryParameters3D.new()
+			pq.position = Vector3(x, 0.3, z)
+			pq.collision_mask = Geo.WORLD
+			if space.intersect_point(pq, 1).is_empty():
+				var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(Vector3(x, 0.3, z), Vector3(x, low - 8.0, z), Geo.WORLD))
+				if hit.is_empty() or hit.position.y < low - 0.5:
+					n += 1
+			z += 0.5
+		x += 0.5
+	if n > 0:
+		print("    %d hole columns" % n)
+	return n

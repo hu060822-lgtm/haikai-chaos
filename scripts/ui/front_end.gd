@@ -8,7 +8,7 @@ extends Control
 signal practice_chosen(map_id: String)
 signal settings_requested()
 
-const VERSION := "C7 原型"
+const VERSION := "C8 原型"
 const PRACTICE := [
 	["folded", "折疊工廠", "FOLDED WORKS　混凝土模組測試設施：三層大廳當中路，外圍長廊通往 A／B 點"],
 	["dream", "夢核之家", "DREAM HOME　記憶裡太大的房子：粉彩房間、沒有水的泳池、走不完的走廊"],

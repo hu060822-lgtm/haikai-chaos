@@ -188,7 +188,7 @@ func _use_ability() -> void:
 			if sees and d > 8.0 and (health < 60.0 or weapon.is_reloading()) and rng.randf() < 0.5:
 				ability.press()
 		"ram":
-			if sees and d < 6.5 and rng.randf() < 0.6:
+			if sees and d < 14.0 and rng.randf() < 0.5:
 				ability.press()
 
 
