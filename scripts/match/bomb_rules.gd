@@ -232,6 +232,7 @@ func _bomb_defused(by: String, new_money: Dictionary) -> void:
 @rpc("authority", "call_local", "reliable")
 func _detonate() -> void:
 	PrintFx.explosion(tm.main, bomb_at + Vector3(0, 0.5, 0), BLAST)
+	Deploy.blast(bomb_at, BLAST)
 	planted = false
 	_show_bomb(false)
 

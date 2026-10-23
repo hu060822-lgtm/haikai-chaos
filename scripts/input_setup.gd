@@ -6,7 +6,7 @@ class_name InputSetup
 const KEYS := {
 	"move_forward": [KEY_W], "move_back": [KEY_S], "move_left": [KEY_A], "move_right": [KEY_D],
 	"jump": [KEY_SPACE], "sprint": [KEY_SHIFT], "crouch": [KEY_CTRL, KEY_C], "dash": [KEY_Q],
-	"reload": [KEY_R], "fire_mode": [KEY_B], "bench": [KEY_TAB], "copy_gun": [KEY_F],
+	"reload": [KEY_R], "fire_mode": [KEY_B], "bench": [KEY_TAB], "copy_gun": [KEY_G], "ability": [KEY_F],
 	"respawn": [KEY_ENTER], "help": [KEY_F1], "info_colors": [KEY_F2], "bot_toggle": [KEY_F3],
 	"pause": [KEY_ESCAPE], "move_debug": [KEY_F4], "camera_fx": [KEY_F5], "tick_rate": [KEY_F7],
 	"route_reset": [KEY_T], "interact": [KEY_E],
@@ -17,7 +17,7 @@ const MOUSE := {"fire": MOUSE_BUTTON_LEFT, "aim": MOUSE_BUTTON_RIGHT}
 const BINDABLE := [
 	["move_forward", "前進"], ["move_back", "後退"], ["move_left", "左移"], ["move_right", "右移"],
 	["jump", "跳 / 蹬牆跳"], ["crouch", "蹲 / 滑鏟"], ["sprint", "衝刺跑"], ["dash", "衝刺閃避"],
-	["fire", "開火"], ["aim", "瞄準"], ["reload", "換彈"], ["fire_mode", "射擊模式"],
+	["ability", "職業技能"], ["fire", "開火"], ["aim", "瞄準"], ["reload", "換彈"], ["fire_mode", "射擊模式"],
 	["bench", "改槍工作台"], ["interact", "安裝／拆除炸彈"], ["copy_gun", "複製對手的槍"], ["route_reset", "回到路線起點"],
 	["move_debug", "移動除錯面板"], ["camera_fx", "鏡頭效果"], ["help", "操作說明"],
 ]

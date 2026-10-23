@@ -228,6 +228,7 @@ const SITE_COVER := [
 func _wings() -> void:
 	var colors := [Faultprint.CONCRETE, Faultprint.SLATE, Faultprint.BONE]
 	var n := [0]
+	layout.mark_breaches(2)  # C6: rammable shortcuts
 	layout.build_walls(self, OUTER_H, func(size: Vector3, at: Vector3) -> void:
 		var b := Geo.block(self, size, at, colors[n[0] % colors.size()], Vector3.ZERO, {"bevel": 0.1, "print": {"wear": 0.45}})
 		b.collision_layer = Geo.WORLD | Geo.RUNNABLE

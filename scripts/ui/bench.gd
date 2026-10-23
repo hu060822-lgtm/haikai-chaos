@@ -9,6 +9,8 @@ extends Control
 ## you shoot.
 
 signal closed(build: Dictionary, gun_name: String)
+## A class picked on the bench (C6). Only at home: out in the field the row is locked.
+signal kit_chosen(id: String)
 
 ## Numbers shown, and which way is better (+1 higher, -1 lower).
 const STAT_ROWS := [
@@ -41,6 +43,11 @@ var _status: Label
 var field := false
 ## 預算戰: (owned build, this build) -> the money line shown on top; empty = no shop.
 var budget_text: Callable
+## The class shown as picked, and whether it may be changed now.
+var kit := Kit.DEFAULT
+var kit_locked := false
+var _kit_buttons := {}
+var _kit_desc: Label
 ## The build the bench opened on (what you own).
 var opened_on := {}
 var _rng := RandomNumberGenerator.new()
@@ -87,6 +94,21 @@ func _ready() -> void:
 	left.custom_minimum_size = Vector2(300, 0)
 	left.add_theme_constant_override("separation", 6)
 	root.add_child(left)
+	left.add_child(FpUi.label("職業（技能鍵 F）", 14, Faultprint.SLATE, FpUi.bold()))
+	var kit_row := HBoxContainer.new()
+	kit_row.add_theme_constant_override("separation", 3)
+	left.add_child(kit_row)
+	for id in Kit.IDS:
+		var kb := FpUi.button(Kit.info(id).name, 13)
+		kb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		kb.tooltip_text = "%s｜%s：%s" % [Kit.info(id).name, Kit.info(id).tag, Kit.info(id).pitch]
+		kb.pressed.connect(func() -> void: _on_kit(id))
+		kit_row.add_child(kb)
+		_kit_buttons[id] = kb
+	_kit_desc = FpUi.label("", 12, Faultprint.ui_ink, FpUi.body())
+	_kit_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_kit_desc.custom_minimum_size = Vector2(300, 0)
+	left.add_child(_kit_desc)
 	var frame_btn := FpUi.button("換槍身…", 16)
 	frame_btn.pressed.connect(_show_frames)
 	left.add_child(frame_btn)
@@ -192,7 +214,29 @@ func open(current: Dictionary, current_name: String, in_field := false) -> void:
 	_pending = ""
 	_frame_mode = false
 	visible = true
+	_refresh_kit()
 	_refresh()
+
+
+func _on_kit(id: String) -> void:
+	if kit_locked:
+		_warn.text = "只能在重生區換職業"
+		return
+	kit = id
+	_refresh_kit()
+	kit_chosen.emit(id)
+
+
+func _refresh_kit() -> void:
+	for id in _kit_buttons:
+		var b: Button = _kit_buttons[id]
+		var on: bool = id == kit
+		var c: Color = Kit.info(id).color
+		b.add_theme_stylebox_override("normal", FpUi.panel(c if on else Faultprint.ui_paper, Faultprint.ui_ink, 4, 3 if on else 2))
+		b.disabled = kit_locked and not on
+	var i := Kit.info(kit)
+	_kit_desc.text = "%s %s｜%s\n%s\n反制：%s%s" % [i.name, i.tag, i.ability, i.use, i.counter,
+		"\n（在野外：回重生區才能換職業）" if kit_locked else ""]
 
 
 func close() -> void:
@@ -451,7 +495,7 @@ func _fill_blueprints() -> void:
 	_clear(_blueprints)
 	var list := Blueprints.load_all()
 	if list.is_empty():
-		_blueprints.add_child(FpUi.label("（還沒有。死亡畫面按 F 可以抄別人的槍）", 13, Faultprint.SLATE, FpUi.bold()))
+		_blueprints.add_child(FpUi.label("（還沒有。死亡畫面按 G 可以抄別人的槍）", 13, Faultprint.SLATE, FpUi.bold()))
 	for i in list.size():
 		var bp: Dictionary = list[i]
 		var row := HBoxContainer.new()

@@ -539,7 +539,7 @@ func _test_rebind() -> void:
 	f.physical_keycode = KEY_F
 	InputSetup.rebind("jump", f)
 	check(InputSetup.describe("jump") == InputSetup.event_name(f), "jump is now %s" % InputSetup.describe("jump"))
-	check(not InputMap.action_has_event("copy_gun", f), "and F is no longer copy-gun")
+	check(not InputMap.action_has_event("ability", f), "and F is no longer the class ability")
 	var press := InputEventKey.new()
 	press.physical_keycode = KEY_F
 	press.pressed = true
@@ -551,4 +551,4 @@ func _test_rebind() -> void:
 	Input.parse_input_event(release)
 	Input.flush_buffered_events()
 	InputSetup.reset()
-	check(InputMap.action_has_event("copy_gun", f), "reset: F is copy-gun again (jump is %s)" % InputSetup.describe("jump"))
+	check(InputMap.action_has_event("ability", f), "reset: F is the class ability again (jump is %s)" % InputSetup.describe("jump"))

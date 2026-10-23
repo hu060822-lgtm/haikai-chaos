@@ -39,6 +39,8 @@ var _fx: ScreenFx
 var _numbers: DamageNumbers
 var _callouts: VBoxContainer
 var _last_hp := 100.0
+var _badge: AbilityBadge
+var _smoke: ColorRect
 
 
 func _init() -> void:
@@ -59,6 +61,12 @@ func _ready() -> void:
 	_lines = SpeedLines.new()
 	_lines.player = player
 	add_child(_lines)
+	# Inside smoke (C6): grey, for everyone the same.
+	_smoke = ColorRect.new()
+	_smoke.set_anchors_preset(PRESET_FULL_RECT)
+	_smoke.color = Color(0.72, 0.74, 0.76, 0.0)
+	_smoke.mouse_filter = MOUSE_FILTER_IGNORE
+	add_child(_smoke)
 	_fx = ScreenFx.new()
 	_fx.set_anchors_preset(PRESET_FULL_RECT)
 	add_child(_fx)
@@ -119,6 +127,19 @@ func _ready() -> void:
 	_wall.color = Counterform.SULFUR
 	_wall.segments = 1
 	left.add_child(_wall)
+	# Bottom middle: the class ability (C6).
+	_badge = AbilityBadge.new()
+	_badge.player = player
+	_badge.anchor_left = 0.5
+	_badge.anchor_right = 0.5
+	_badge.anchor_top = 1.0
+	_badge.anchor_bottom = 1.0
+	_badge.offset_left = -110
+	_badge.offset_right = 110
+	_badge.offset_top = -96
+	_badge.offset_bottom = -24
+	_badge.mouse_filter = MOUSE_FILTER_IGNORE
+	add_child(_badge)
 	# Bottom right: the gun.
 	var right := VBoxContainer.new()
 	right.anchor_left = 1.0
@@ -209,6 +230,7 @@ Ctrl / C 蹲；跑動中按下 = 滑鏟，下坡越滑越快
 空中貼任何牆 Space = 踢牆；面對牆按住 Space = 攀牆
 Q 衝刺閃避（衝刺中跳 = 衝刺跳）　空中低頭看地面按蹲 = 重踩，落地瞬間跳 = 彈跳
 左鍵 開火　右鍵 瞄準　R 換彈　B 射擊模式
+F 職業技能（工作台左上選職業）　G 死亡畫面抄槍
 Tab 輕按 = 改槍工作台，按住 = 記分板
 F2 敵我顏色　F3 機器人開火　F4 移動除錯　F5 鏡頭效果
 Esc 設定：靈敏度、FOV、音量、自訂按鍵
@@ -283,6 +305,9 @@ func _process(delta: float) -> void:
 		_fx.hurt((_last_hp - hp) / Player.MAX_HEALTH)
 	_last_hp = hp
 	_fx.low = clampf(1.0 - hp / 40.0, 0.0, 1.0) if player.alive else 0.0
+	var smoke := Deploy.smoke_at(player.camera.global_position) if player.alive else 0.0
+	_smoke.color.a = lerpf(_smoke.color.a, 0.94 * smoke, 1.0 - exp(-14.0 * delta))
+	_badge.queue_redraw()
 	_hp.text = "%d" % ceili(hp)
 	_hp.add_theme_color_override("font_color", Counterform.DUST_WHITE if hp > 35 else FpUi.enemy_color())
 	_hp_bar.set_value(hp / Player.MAX_HEALTH)
@@ -644,3 +669,34 @@ class Marks:
 			draw_circle(p, 2.5, Counterform.SULFUR)
 			var left := float(t.marked)
 			draw_line(p + Vector2(-r, r + 5), p + Vector2(-r + 2.0 * r * clampf(left / 6.0, 0.0, 1.0), r + 5), Counterform.SULFUR, 2.0)
+
+
+## The class ability (C6): its name and key, a ring that fills while a charge comes back,
+## a pip per charge, lit while it's in use.
+class AbilityBadge:
+	extends Control
+	var player: Player
+
+	func _draw() -> void:
+		if player == null or player.ability == null or not player.alive:
+			return
+		var a := player.ability
+		var info := Kit.info(a.kit)
+		var c: Color = info.color
+		var centre := Vector2(size.x / 2.0, 30)
+		var r := 24.0
+		var up := a.charges >= 1.0
+		draw_circle(centre, r + 3, Color(Counterform.GRAPHITE_DEEP, 0.7))
+		draw_arc(centre, r, -PI / 2.0, -PI / 2.0 + TAU * (1.0 if up else a.refill_progress()), 40,
+			c if up else Color(c, 0.45), 4.0, true)
+		if a.busy:
+			draw_circle(centre, r - 5, Color(c, 0.85))
+		var font := FpUi.bold()
+		draw_string(font, centre + Vector2(-8, 7), "F", HORIZONTAL_ALIGNMENT_LEFT, -1, 20,
+			Counterform.GRAPHITE_DEEP if a.busy else (Counterform.DUST_WHITE if up else Color(Counterform.DUST_WHITE, 0.5)))
+		var label := "%s · %s" % [info.ability, info.name]
+		draw_string(font, Vector2(0, 70), label, HORIZONTAL_ALIGNMENT_CENTER, size.x, 14, Color(Counterform.DUST_WHITE, 0.9))
+		var n := int(a.max_charges())
+		for i in n:
+			var p := centre + Vector2(r + 14 + i * 12, -10)
+			draw_rect(Rect2(p, Vector2(8, 8)), c if a.charges >= i + 1.0 else Color(c, 0.25))

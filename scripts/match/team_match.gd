@@ -102,6 +102,8 @@ func _ready() -> void:
 		rules.tm = self
 		add_child(rules)
 	record = MatchLog.new(mode, str(NetSession.config.get("map", "")), net.is_host())
+	Deploy.net = self
+	Deploy.viewer_team = player.team
 	SafeZone.clear()
 	SafeZone.repel = true
 	for t in 2:
@@ -222,6 +224,10 @@ func _go(bot_list: Array, seconds: float) -> void:
 	player.input_enabled = not main.bench.visible and not main.settings_menu.visible
 	if player.input_enabled:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	announce_kit()
+	if net.is_host():
+		for b in bots():
+			_kit.rpc(b.id, b.kit_id)
 	if rules != null:
 		rules.start()
 		return
@@ -694,6 +700,74 @@ func _end(winner: int, final: Array) -> void:
 
 func _exit_tree() -> void:
 	_write_log(-1, scores)
+	if Deploy.net == self:
+		Deploy.net = null
+
+
+# --- Classes and what their abilities put in the world (C6, see Deploy) ----------------
+
+func announce_kit() -> void:
+	if running:
+		_kit.rpc(my_id, player.kit_id)
+
+
+@rpc("any_peer", "reliable")
+func _kit(id: String, kit: String) -> void:
+	if owner_of(id) != multiplayer.get_remote_sender_id():
+		return
+	var a = entities.get(id)
+	if a is Avatar:
+		a.kit_id = Kit.valid(kit)
+
+
+func deploy_out(kind: String, uid: String, who: String, data: Dictionary) -> void:
+	_deploy.rpc(kind, uid, who, data)
+
+
+## Everyone (the sender too) builds the same object. Only the machine that owns the user
+## may deploy for it.
+@rpc("any_peer", "call_local", "reliable")
+func _deploy(kind: String, uid: String, who: String, data: Dictionary) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != multiplayer.get_unique_id() and owner_of(who) != sender:
+		return
+	if not uid.begins_with(who + ":"):
+		return
+	Deploy.create(main, kind, uid, who, data)
+
+
+func deploy_event_out(uid: String, what: String, amount: float) -> void:
+	_deploy_event.rpc(uid, what, amount)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _deploy_event(uid: String, what: String, amount: float) -> void:
+	if what not in ["hit", "break", "pop"] or amount < 0.0 or amount > MAX_HIT:
+		return
+	Deploy.apply(uid, what, amount)
+
+
+func blow_out(at: Vector3, radius: float) -> void:
+	_blow.rpc(at, minf(radius, 16.0))
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _blow(at: Vector3, radius: float) -> void:
+	Deploy.blast(at, minf(radius, 16.0))
+
+
+func ability_fx_out(who: String, what: String, data: Dictionary) -> void:
+	if running:
+		_ability_fx.rpc(who, what, data)
+
+
+@rpc("any_peer", "reliable")
+func _ability_fx(who: String, what: String, data: Dictionary) -> void:
+	if owner_of(who) != multiplayer.get_remote_sender_id():
+		return
+	var a = entities.get(who)
+	if a is Avatar:
+		a.ability_fx(what, data)
 
 
 func _write_log(winner: int, final: Array) -> void:

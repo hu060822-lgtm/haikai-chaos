@@ -156,6 +156,7 @@ class Replay:
 			rng.seed = int(k)
 			var ally: bool = int(keys[k]) == int(data.my_team)
 			var model := CompetitorModel.build(FpUi.ally_color() if ally else FpUi.enemy_color(), not ally, rng)
+			model.steps = false
 			var build: Variant = data.builds.get(k)
 			if build is Dictionary and not (build as Dictionary).is_empty() and model.find_child("GunHand", true, false):
 				model.find_child("GunHand", true, false).add_child(GunModels.build(build))
@@ -178,6 +179,7 @@ class Replay:
 				rng.seed = int(k)
 				var ally: bool = int(g.get_meta("team", 0)) == int(data.my_team)
 				var fresh := CompetitorModel.build(FpUi.ally_color() if ally else FpUi.enemy_color(), not ally, rng)
+				fresh.steps = false
 				var build: Variant = data.builds.get(k)
 				if build is Dictionary and not (build as Dictionary).is_empty():
 					fresh.find_child("GunHand", true, false).add_child(GunModels.build(build))

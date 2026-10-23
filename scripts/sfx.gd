@@ -62,6 +62,20 @@ static func _stream(id: String) -> AudioStreamWAV:
 		"head": w = _make(0.1, 0.05, 2600.0, 2400.0, 34.0)
 		"kill": w = _make(0.25, 0.1, 900.0, 1500.0, 12.0)
 		"tick": w = _make(0.03, 0.3, 1800.0, 1400.0, 120.0)
+		# Footsteps and the class abilities (C6).
+		"step": w = _make(0.07, 0.85, 110.0, 70.0, 55.0, 0.5)
+		"hook_fire": w = _make(0.28, 0.6, 700.0, 1400.0, 10.0, 0.1)
+		"hook_hit": w = _make(0.14, 0.4, 1500.0, 600.0, 30.0, 0.3)
+		"hook_reel": w = _make(0.4, 0.8, 380.0, 520.0, 6.0, 0.2)
+		"smoke_throw": w = _make(0.15, 0.6, 500.0, 300.0, 25.0)
+		"smoke_pop": w = _make(1.1, 0.97, 160.0, 90.0, 2.6, 0.0)
+		"shield_up": w = _make(0.45, 0.5, 120.0, 320.0, 7.0, 0.4)
+		"shield_hit": w = _make(0.08, 0.5, 900.0, 700.0, 45.0, 0.6)
+		"shield_break": w = _make(0.6, 0.8, 260.0, 60.0, 7.0, 0.9)
+		"ram_wind": w = _make(0.14, 0.7, 90.0, 160.0, 18.0, 0.5)
+		"ram": w = _make(0.3, 0.75, 85.0, 40.0, 11.0, 0.9)
+		"panel_break": w = _make(0.7, 0.85, 200.0, 50.0, 6.0, 1.0)
+		"decoy_pop": w = _make(0.3, 0.3, 1200.0, 300.0, 14.0, 0.2)
 		_: w = _make(0.1, 0.5, 300.0, 200.0, 30.0)
 	_cache[id] = w
 	return w
@@ -92,18 +106,25 @@ static func wind() -> AudioStreamWAV:
 	return w
 
 
-static func play(at: Node3D, id: String, volume_db := -8.0) -> void:
+static func play(at: Node3D, id: String, volume_db := -8.0, reach := 80.0) -> void:
 	if not at.is_inside_tree():
 		return
 	var p := AudioStreamPlayer3D.new()
 	p.stream = _stream(id)
 	p.volume_db = volume_db
-	p.max_distance = 80.0
+	p.max_distance = reach
 	p.bus = "SFX"
-	at.get_tree().current_scene.add_child(p)
+	var root: Node = at.get_tree().current_scene
+	(root if root != null else at.get_tree().root).add_child(p)
 	p.global_position = at.global_position
 	p.play()
 	p.finished.connect(p.queue_free)
+
+
+## A footstep: louder the faster you go, heard up to 32 m (so a decoy's steps sound like
+## anyone else's).
+static func step(at: Node3D, speed: float) -> void:
+	play(at, "step", lerpf(-22.0, -9.0, clampf(speed / 11.0, 0.0, 1.0)), 32.0)
 
 
 static func shot(at: Node3D, klass: String, quiet := false) -> void:

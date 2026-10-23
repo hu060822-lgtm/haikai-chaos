@@ -32,6 +32,9 @@ var arms: Node3D
 var thighs: Array[Node3D] = []
 var shins: Array[Node3D] = []
 var dead := false
+## Footsteps (C6): every stride makes a sound, so a decoy's steps are worth believing.
+## Kill-replay ghosts turn them off.
+var steps := true
 
 var _phase := 0.0
 var _breath := 0.0
@@ -47,6 +50,7 @@ var _flinch_v := Vector3.ZERO
 var _die_t := 0.0
 var _fall_back := true
 var _fall_twist := 0.0
+var _step_n := 0
 
 
 ## Sorts the meshes built straight onto this node onto joints, by where each one sits.
@@ -132,6 +136,11 @@ func pose(delta: float, vel: Vector3, on_floor: bool, crouch := 0.0, slide := fa
 	var run := clampf(_speed / 7.0, 0.0, 1.6)
 	if on_floor and not slide:
 		_phase += delta * (_speed / (1.1 + 0.35 * run)) * PI
+		var n := int(_phase / PI)
+		if n != _step_n:
+			_step_n = n
+			if steps and _speed > 2.5:
+				Sfx.step(self, _speed)
 	var swing := 0.62 * minf(run, 1.2) * (1.0 - _air) * (1.0 - _crouch * 0.5)
 	var back := -1.0 if forward < -0.5 else 1.0      # backpedalling swings the other way
 	for i in 2:
