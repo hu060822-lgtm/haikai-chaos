@@ -102,6 +102,8 @@ func _host() -> void:
 		f.close()
 	else:
 		check(m.net.host(port) == OK, "opened a room on port %d" % port)
+	if _map_arg() != "":
+		m.net.set_config("map", _map_arg())
 	var joined := await _until(func() -> bool: return NetSession.roster.size() == 2, 15.0)
 	check(joined, "the client joined the lobby (roster %s)" % str(NetSession.roster))
 	if not joined:
@@ -126,7 +128,8 @@ func _host() -> void:
 	var cid := "p%d" % client_peer
 	var avatar: Avatar = tm.entities.get(cid)
 	check(avatar != null, "the client's player is here as an avatar")
-	var moved := await _until(func() -> bool: return avatar.alive and avatar.global_position.distance_to(Vector3(0, 0, -46)) < 4.0, 6.0)
+	var red_spawn: Vector3 = m.map.team_spawns[1][0] if m.map.get("team_spawns") != null else Vector3(0, 0, -46)
+	var moved := await _until(func() -> bool: return avatar.alive and avatar.global_position.distance_to(red_spawn) < 4.0, 6.0)
 	check(moved, "the client's avatar stands at the red spawn (%s)" % str(avatar.global_position))
 	var me := m.player
 	check(me.is_on_floor() and absf(me.global_position.y) < 0.3, "the host's player stands on the floor at its spawn (%s)" % str(me.global_position))
@@ -199,7 +202,8 @@ func _client() -> void:
 		if str(id).begins_with("b") and tm.entities[id] is Avatar:
 			bots += 1
 	check(bots == 2, "the host's bots are here as avatars (%d)" % bots)
-	var seen := await _until(func() -> bool: return host_avatar.alive and host_avatar.global_position.distance_to(Vector3(0, 0, 46)) < 4.0, 6.0)
+	var blue_spawn: Vector3 = m.map.team_spawns[0][0] if m.map.get("team_spawns") != null else Vector3(0, 0, 46)
+	var seen := await _until(func() -> bool: return host_avatar.alive and host_avatar.global_position.distance_to(blue_spawn) < 4.0, 6.0)
 	check(seen, "the host's avatar stands at the blue spawn (%s)" % str(host_avatar.global_position))
 	check(me.is_on_floor() and absf(me.global_position.y) < 0.3, "the client's player stands on the floor at its spawn (%s)" % str(me.global_position))
 	check(SafeZone.is_safe(me.global_position, 1), "the client spawned inside red's safe zone")

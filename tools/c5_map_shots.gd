@@ -46,6 +46,18 @@ const VIEWS := {
 		"crypt": [Vector3(-50, -2.8, 1), Vector3(-72, -3.5, -6)],
 		"lane_ramp": [Vector3(-61, 1.7, 42), Vector3(-61, -3.0, 16)],
 		"site_a": [Vector3(46, 1.7, 13), Vector3(66, 1.0, 0)],
+		# Phase 5: the words and the eggs, close up.
+		"tablet": [Vector3(66, 2.9, 1.5), Vector3(73, 4.5, 0)],
+		"tablet_back": [Vector3(73.5, 1.7, 5.5), Vector3(72.8, 2.4, 0)],
+		"slogan": [Vector3(-8, 1.7, 23.5), Vector3(-8, 2.2, 21)],
+		"egg_a": [Vector3(-40, 1.7, 43), Vector3(-52, 1.2, 38)],
+		"egg_b": [Vector3(-1.2, 1.7, 26.4), Vector3(-0.2, 1.0, 27.4)],
+		"egg_c": [Vector3(-46.3, 6.6, 18.4), Vector3(-48, 6.2, 19.2)],
+		"egg_d": [Vector3(-14.2, 5.6, 16.2), Vector3(-14.6, 5.2, 19.4)],
+		"egg_e": [Vector3(-69.6, -2.5, 0.8), Vector3(-70.3, -3.9, 3.0)],
+		"egg_f_front": [Vector3(1, 6.5, 2), Vector3(1, 9.8, 11.7)],
+		"egg_f_side": [Vector3(-3.5, 9.6, 10.2), Vector3(1, 9.8, 11.7)],
+		"signs": [Vector3(30, 1.7, 15), Vector3(36, 3.8, 20)],
 	},
 }
 

@@ -29,6 +29,7 @@ run --path . --script res://tests/testament_test.gd
 run --path . --script res://tests/bomb_test.gd -- 24697 --map=testament
 run --path . --script res://tests/rounds_test.gd -- 24698 --map=testament
 run --path . --script res://tests/net_test.gd -- solo 24699 --map=testament
+"$(dirname "$0")/net_test.sh" "$GODOT" 24701 direct --map=testament || status=1
 xvfb-run -a "$GODOT" --path . --script res://tests/mouse_test.gd 2>&1 | grep -E "^  (ok|FAIL)|TESTS"
 [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
 for hz in 60 120 240; do
