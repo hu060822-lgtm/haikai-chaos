@@ -42,6 +42,9 @@ var _pending_build := {}
 var _pending_name := ""
 var _bots_passive := false
 var _seed := 1
+## Whether play resumes when the Esc menu closes: what the player had when it opened, or set
+## by a match that started (or a respawn) while it was open.
+var input_after_menu := false
 
 
 func _ready() -> void:
@@ -347,11 +350,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_bench()
 	elif event.is_action_pressed("pause") and not bench.visible and not death.visible and not settings_menu.visible:
 		settings_menu.in_game = not _title.visible and not lobby.visible
+		input_after_menu = player.input_enabled
 		player.input_enabled = false
 		settings_menu.open()
 		get_viewport().set_input_as_handled()
-	elif event is InputEventMouseButton and event.pressed and player.input_enabled and not settings_menu.visible:
+	elif event is InputEventMouseButton and event.pressed and player.input_enabled and not mouse_free():
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+## Any screen the player clicks through needs the cursor: the front end, the lobby, a menu,
+## the bench, the death screen or the results.
+func mouse_free() -> bool:
+	return _title.visible or lobby.visible or settings_menu.visible or bench.visible or death.visible \
+		or results != null or not player.alive
+
+
+## Back to playing (a respawn, a match or round starting): unless a menu is open, in which
+## case play resumes when it closes.
+func resume_play() -> void:
+	if settings_menu.visible or bench.visible:
+		input_after_menu = true
+		return
+	player.input_enabled = true
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _try_bench() -> void:
@@ -388,10 +409,11 @@ func _on_kit_chosen(id: String) -> void:
 
 
 func _on_settings_closed() -> void:
-	if _title.visible:
+	# The menu over the lobby (or the front end) leaves the cursor where it was: visible.
+	if _title.visible or lobby.visible:
 		return
-	player.input_enabled = player.alive
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	player.input_enabled = input_after_menu and player.alive and results == null
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if mouse_free() else Input.MOUSE_MODE_CAPTURED
 
 
 func _on_bench_closed(build: Dictionary, gun_name: String) -> void:
@@ -509,5 +531,4 @@ func _respawn() -> void:
 		team_match.respawn_local()
 	else:
 		player.spawn_at(map.player_spawn)
-	player.input_enabled = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	resume_play()

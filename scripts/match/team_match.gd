@@ -221,9 +221,7 @@ func _go(bot_list: Array, seconds: float) -> void:
 			a.set_build(b[3], b[4])
 			a.respawn(b[5], 0.0 if int(b[1]) == 0 else PI)
 		versions[id] = Weapon.version_of(b[3])
-	player.input_enabled = not main.bench.visible and not main.settings_menu.visible
-	if player.input_enabled:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	main.resume_play()
 	announce_kit()
 	if net.is_host():
 		for b in bots():
