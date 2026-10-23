@@ -122,6 +122,8 @@ func _tag_live() -> void:
 
 
 static func _set_layers(n: Node, mask: int) -> void:
+	if n is ViewModel:
+		return   # the first-person gun keeps its own layer
 	if n is VisualInstance3D:
 		(n as VisualInstance3D).layers = mask
 	for child in n.get_children():
@@ -155,16 +157,35 @@ class Replay:
 			var ally: bool = int(keys[k]) == int(data.my_team)
 			var model := CompetitorModel.build(FpUi.ally_color() if ally else FpUi.enemy_color(), not ally, rng)
 			var build: Variant = data.builds.get(k)
-			if build is Dictionary and not (build as Dictionary).is_empty() and model.get_node_or_null("GunHand"):
-				model.get_node("GunHand").add_child(GunModels.build(build))
+			if build is Dictionary and not (build as Dictionary).is_empty() and model.find_child("GunHand", true, false):
+				model.find_child("GunHand", true, false).add_child(GunModels.build(build))
 			KillCam._set_layers(model, KillCam.GHOST_LAYER)
 			for m in model.find_children("*", "GeometryInstance3D", true, false):
 				(m as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			model.visible = false
+			model.set_meta("team", keys[k])
 			_root.add_child(model)
 			_ghosts[k] = model
 		kill_cam.replaying += 1
 		_place(0.0)
+
+	## Ghosts back on their feet for the next pass.
+	func _revive() -> void:
+		for k in _ghosts:
+			var g = _ghosts[k]
+			if g is CompetitorRig and g.dead:
+				var rng := RandomNumberGenerator.new()
+				rng.seed = int(k)
+				var ally: bool = int(g.get_meta("team", 0)) == int(data.my_team)
+				var fresh := CompetitorModel.build(FpUi.ally_color() if ally else FpUi.enemy_color(), not ally, rng)
+				var build: Variant = data.builds.get(k)
+				if build is Dictionary and not (build as Dictionary).is_empty():
+					fresh.find_child("GunHand", true, false).add_child(GunModels.build(build))
+				KillCam._set_layers(fresh, KillCam.GHOST_LAYER)
+				fresh.set_meta("team", g.get_meta("team", 0))
+				_root.add_child(fresh)
+				g.queue_free()
+				_ghosts[k] = fresh
 
 	func _exit_tree() -> void:
 		if is_instance_valid(_root):
@@ -172,8 +193,8 @@ class Replay:
 		if is_instance_valid(kill_cam):
 			kill_cam.replaying -= 1
 
-	## Seconds into the clip -> everything where it was.
-	func _place(at: float) -> void:
+	## Seconds into the clip -> everything where it was (and moving its legs the way it went).
+	func _place(at: float, delta := 0.0) -> void:
 		var fs: Array = data.frames
 		var t := float(data.t0) + at
 		var i := 0
@@ -190,8 +211,12 @@ class Replay:
 				g.visible = false
 				continue
 			g.visible = true
+			var was := g.global_position
 			g.global_position = (sa[0] as Vector3).lerp(sb[0], w)
 			g.rotation.y = lerp_angle(float(sa[1]), float(sb[1]), w)
+			if g is CompetitorRig and delta > 0.0:
+				var v := (g.global_position - was) / delta if was.distance_to(g.global_position) < 3.0 else Vector3.ZERO
+				g.pose(delta, v, absf(v.y) < 2.0)
 		var killer: Node3D = _ghosts.get(data.killer)
 		var victim: Node3D = _ghosts.get(data.victim)
 		if killer == null or not killer.visible:
@@ -217,13 +242,23 @@ class Replay:
 		var span := float(data.t1) - float(data.t0)
 		var speed := SLOW_SPEED if _clock > span - KillCam.SLOW and _clock < span else 1.0
 		_clock += delta * speed
+		# The victim goes limp where it was hit, at the end of the clip.
+		var victim = _ghosts.get(data.victim)
+		if _clock >= span - 0.02 and victim is CompetitorRig and not victim.dead:
+			var killer: Node3D = _ghosts.get(data.killer)
+			var dir: Vector3 = (victim.global_position - killer.global_position).normalized() if killer != null else Vector3.ZERO
+			victim.visible = true
+			victim.global_position = _last_victim()
+			victim.die(dir)
 		if _clock > span + KillCam.HOLD:
 			_clock = 0.0
 			_shot_i = 0
+			_revive()
 			if not _done:
 				_done = true
 				finished.emit()
-		_place(minf(_clock, span))
+		if _clock < span:
+			_place(_clock, delta * speed)
 		var t := float(data.t0) + _clock
 		var s: Array = data.shots
 		while _shot_i < s.size() and float(s[_shot_i][0]) <= t:

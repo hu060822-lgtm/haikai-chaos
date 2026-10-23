@@ -7,15 +7,15 @@ class_name CompetitorModel
 ## Carbon outline so the silhouette reads at speed.
 ##
 ##   var model := CompetitorModel.build(info_color, is_enemy, rng)
-##   model.get_node("GunHand")   # Node3D where the held gun goes (gun points -Z)
+##   model.find_child("GunHand", true, false)   # Node3D where the held gun goes (gun points -Z)
 
 const CLOTH_COLORS := [Faultprint.CONCRETE, Faultprint.DUST, Faultprint.SLATE, Faultprint.KRAFT]
 
 
-static func build(info: Color, enemy: bool, rng: RandomNumberGenerator) -> Node3D:
+static func build(info: Color, enemy: bool, rng: RandomNumberGenerator) -> CompetitorRig:
 	if Settings.look == Faultprint.COUNTERFORM:
 		return _athlete(info, enemy, rng)
-	var root := Node3D.new()
+	var root := CompetitorRig.new()
 	root.name = "Competitor"
 	var cloth := Faultprint.surface(CLOTH_COLORS[rng.randi() % CLOTH_COLORS.size()], {"slip": null, "pattern": 1, "dot_density": 22.0})
 	var plate := Faultprint.surface(Faultprint.BONE if rng.randf() < 0.6 else Faultprint.TEAL, {"slip": null, "dot_density": 20.0})
@@ -81,6 +81,7 @@ static func build(info: Color, enemy: bool, rng: RandomNumberGenerator) -> Node3
 	hand.name = "GunHand"
 	hand.position = Vector3(0.18, 1.22, -0.32)
 	root.add_child(hand)
+	root.rig()
 	return root
 
 
@@ -91,8 +92,8 @@ static func build(info: Color, enemy: bool, rng: RandomNumberGenerator) -> Node3
 ## graphite suit, painted hard plates on the chest, knees and the left shoulder, a compact
 ## pack, rubber boots and gloves, a rounded helmet with a dark visor and a short fin.
 ## Limbs are tapered turned forms between real joints, posed holding a rifle at the ready.
-static func _athlete(info: Color, enemy: bool, rng: RandomNumberGenerator) -> Node3D:
-	var root := Node3D.new()
+static func _athlete(info: Color, enemy: bool, rng: RandomNumberGenerator) -> CompetitorRig:
+	var root := CompetitorRig.new()
 	root.name = "Competitor"
 	var fabrics := [Color("#4E5450"), Color("#5E5A52"), Color("#3E4245"), Color("#55594F")]
 	var suit := Counterform.material("polymer", fabrics[rng.randi() % fabrics.size()], false)
@@ -191,6 +192,7 @@ static func _athlete(info: Color, enemy: bool, rng: RandomNumberGenerator) -> No
 	hand.name = "GunHand"
 	hand.position = Vector3(0.18, 1.22, -0.32)
 	root.add_child(hand)
+	root.rig()
 	return root
 
 

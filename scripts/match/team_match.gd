@@ -157,6 +157,7 @@ func _make_bots() -> void:
 			bot.team = team
 			bot.tint_ally = team == player.team
 			bot.waypoints = main.map.waypoints
+			bot.nav = main.map.get("layout")
 			bot.damage_mult = BOT_DAMAGE
 			bot.passive = bots_passive
 			main.add_child(bot)
@@ -520,7 +521,7 @@ func _died(victim_id: String, wire: Dictionary) -> void:
 		return
 	var victim = entities.get(victim_id)
 	if victim is Avatar:
-		victim.die()
+		victim.die(wire.get("dir", Vector3.ZERO) if wire.get("dir") is Vector3 else Vector3.ZERO)
 	elif victim == player and player.alive and sender == 1 and not net.is_host():
 		# The host's count says we're dead: we are (no second announcement).
 		_forced_here = true

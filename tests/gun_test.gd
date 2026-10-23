@@ -136,7 +136,8 @@ func _test_push_and_grapple() -> void:
 	player._shoot()
 	check(player.velocity.y - before > 6.0, "a jump shotgun fired at the floor throws you up (+%.1f m/s)" % (player.velocity.y - before))
 	await frames(40)
-	player.spawn_at(Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 18)))
+	# Facing the tower (the hall's north wall has a door straight ahead of x 0 since C5).
+	player.spawn_at(Transform3D(Basis.IDENTITY, Vector3(9, 0.1, 18)))
 	await frames(3)
 	player.equip({"frame": "anchor_gun", "parts": {}, "tune": {}})
 	player._pitch = 0.0

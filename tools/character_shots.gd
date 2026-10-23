@@ -45,7 +45,7 @@ func _init() -> void:
 		m.position = Vector3((i - 1) * 1.1, 0, 0)
 		m.rotation_degrees.y = [20.0, 90.0, 180.0][i]
 		var gun := GunModels.build(GunNames.random_build(rng))
-		m.get_node("GunHand").add_child(gun)
+		m.find_child("GunHand", true, false).add_child(gun)
 	var cam := Camera3D.new()
 	world.add_child(cam)
 	cam.current = true
