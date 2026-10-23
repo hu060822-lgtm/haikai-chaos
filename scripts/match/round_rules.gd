@@ -204,9 +204,7 @@ func _round_start(n: int, new_wins: Array, new_money: Dictionary, new_builds: Di
 		tm.player.equip(mine, GunNames.auto_name(mine, Arsenal.stats(mine)))
 	tm.player.spawn_at(tm.spawn_point(tm.player.team, _slot(tm.my_id)))
 	tm._announce_spawn()
-	tm.player.input_enabled = not main.bench.visible and not main.settings_menu.visible
-	if tm.player.input_enabled:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	main.resume_play()
 	if tm.net.is_host():
 		var i := 0
 		for b in tm.bots():

@@ -22,6 +22,8 @@ run --path . --script res://tests/c7_test.gd
 run --path . --script res://tests/athlete_test.gd
 run --path . --script res://tests/reload_anim_test.gd
 run --path . --script res://tests/net_anim_test.gd
+xvfb-run -a "$GODOT" --path . --script res://tests/mouse_test.gd 2>&1 | grep -E "^  (ok|FAIL)|TESTS"
+[ "${PIPESTATUS[0]}" -eq 0 ] || status=1
 for hz in 60 120 240; do
 	run --fixed-fps $hz --path . --script res://tests/movement_feel_test.gd -- $hz
 	run --fixed-fps $hz --path . --script res://tests/route_test.gd -- $hz
