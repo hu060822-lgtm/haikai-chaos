@@ -84,6 +84,7 @@ func _ready() -> void:
 	_altar()
 	_crypt()
 	_lights()
+	TestamentArt.build(self)
 	waypoints = layout.wander_points(5)
 	bot_spawns = [Vector3(-6, 0.1, 6), Vector3(6, 0.1, -6), Vector3(50, 0.1, 10), Vector3(-62, CRYPT_Y + 0.1, 8), Vector3(0, GALLERY_Y + 0.1, 17)]
 
@@ -131,6 +132,8 @@ func _plan() -> void:
 	g.carve(Rect2(44, -18, 30, 36), "a")
 	g.carve2(Rect2(58, 4, 4, 2), "o")                     # candle stands beside the dais ramp
 	g.carve(Rect2(72, -4, 2, 8), "o")                     # the tablet
+	g.carve(Rect2(68, -2, 2, 4), "o")                     # the giant gun on its stand
+	g.carve(Rect2(-74, -10, 2, 20), "o")                  # the organ's pipe bank
 	g.carve2(Rect2(48, 10, 2, 2), "o")                    # crates
 	g.carve2(Rect2(54, 8, 4, 2), "c")
 	# Heights on the ground floor.
@@ -146,6 +149,7 @@ func _plan() -> void:
 	# The floors above and below.
 	gallery = g.add_deck(GALLERY_Y)
 	g.open_deck2(gallery, GALLERY)
+	g.open_deck2(gallery, Rect2(-30, 18, 16, 2), false)   # the choir stalls
 	g.open_deck(gallery, LOFT)
 	g.open_deck(gallery, PLATFORM)
 	g.open_deck(gallery, BRIDGE)
@@ -195,27 +199,28 @@ func _build() -> void:
 		var b := Geo.block(self, size, at, walls[n[0] % walls.size()], Vector3.ZERO, {"bevel": 0.12, "print": {"wear": 0.4}})
 		b.collision_layer = Geo.WORLD | Geo.RUNNABLE
 		b.add_to_group("runnable")
+		b.set_meta("art", "wall")
 		n[0] += 1)
 	# The ground: solid down to under the crypt, except where it is cut away.
 	var cut := Layout.new(AREA, 2.0)
 	for r in _voids():
 		cut.carve(r, ".")
 	for r in cut.rects("#"):
-		Geo.slab(self, r.position, r.end, 0.0, 6.0, Counterform.CONCRETE_MID, {"print": {"slip": null, "wear": 0.6}})
+		Geo.slab(self, r.position, r.end, 0.0, 6.0, Counterform.CONCRETE_MID, {"print": {"slip": null, "wear": 0.6}}).set_meta("art", "floor")
 	for r in cut.rects("."):
-		Geo.slab(self, r.position, r.end, CRYPT_Y, 1.0, Counterform.CONCRETE_DARK, {"print": {"slip": null, "wear": 0.8}})
+		Geo.slab(self, r.position, r.end, CRYPT_Y, 1.0, Counterform.CONCRETE_DARK, {"print": {"slip": null, "wear": 0.8}}).set_meta("art", "crypt_floor")
 	# The crypt's ceiling is the organ room's floor.
-	Geo.slab(self, CRYPT.position, CRYPT.end, 0.0, 0.5, Counterform.CONCRETE_DARK, {"print": {"slip": null}})
+	Geo.slab(self, CRYPT.position, CRYPT.end, 0.0, 0.5, Counterform.CONCRETE_DARK, {"print": {"slip": null}}).set_meta("art", "crypt_roof")
 	for r in layout.rects("m"):
-		Geo.slab(self, r.position, r.end, 0.03, 0.1, Counterform.CONCRETE_DARK, {"print": {"slip": null, "wear": 0.7}, "bevel": 0.02})
+		Geo.slab(self, r.position, r.end, 0.03, 0.1, Counterform.CONCRETE_DARK, {"print": {"slip": null, "wear": 0.7}, "bevel": 0.02}).set_meta("art", "floor")
 	for r in layout.rects("s"):
 		Geo.slab(self, r.position, r.end, 0.03, 0.1, Counterform.GREEN_GREY, {"print": {"slip": null}, "bevel": 0.02})
 	# Ramps down to the crypt.
 	for z in [25.0, -25.0]:
 		var a := Vector3(-61, CRYPT_Y, 20.0 * signf(z))
 		var b := Vector3(-61, 0.0, 30.0 * signf(z))
-		Geo.ramp(self, a, b, 6.0, Counterform.CONCRETE_MID)
-	Geo.ramp(self, Vector3(-48, CRYPT_Y, 0), Vector3(-38, 0, 0), 4.0, Counterform.CONCRETE_MID)
+		Geo.ramp(self, a, b, 6.0, Counterform.CONCRETE_MID).set_meta("art", "ramp")
+	Geo.ramp(self, Vector3(-48, CRYPT_Y, 0), Vector3(-38, 0, 0), 4.0, Counterform.CONCRETE_MID).set_meta("art", "ramp")
 	for z in [3.0, -3.0]:
 		_rail(Vector3(-43, 0, 2.25 * signf(z)), Vector3(10, 1.1, 0.4))
 
@@ -232,20 +237,22 @@ func _voids() -> Array:
 func _nave() -> void:
 	for x in PEWS:
 		for z in [7.0, -7.0]:
-			Geo.block(self, Vector3(0.8, 0.9, 5.6), Vector3(x + 1.0, 0.45, z), Counterform.POLYMER_TAN, Vector3.ZERO, {"bevel": 0.04})
+			Geo.block(self, Vector3(0.8, 0.9, 5.6), Vector3(x + 1.0, 0.45, z), Counterform.POLYMER_TAN, Vector3.ZERO, {"bevel": 0.04}).set_meta("art", "pew")
 	for x in ARCADE:
 		for z in [13.0, -13.0]:
 			var p := Geo.block(self, Vector3(1.6, WALL_H, 1.6), Vector3(x + 1.0, WALL_H / 2.0, z), Counterform.BONE_CONCRETE, Vector3.ZERO, {"bevel": 0.1})
 			p.collision_layer = Geo.WORLD | Geo.RUNNABLE
 			p.add_to_group("runnable")
+			p.set_meta("art", "pier")
 	for z in [4.0, -4.0]:
 		var p := Geo.block(self, Vector3(3.6, WALL_H, 3.6), Vector3(GREAT_PILLAR.get_center().x, WALL_H / 2.0, z), Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.15})
 		p.collision_layer = Geo.WORLD | Geo.RUNNABLE
 		p.add_to_group("runnable")
-		Geo.block(self, Vector3(1.8, 2.2, 1.8), Vector3(5, 1.1, 13.0 * signf(z)), Counterform.OXIDE_RUST, Vector3.ZERO, {"bevel": 0.06})
+		p.set_meta("art", "pier")
+		Geo.block(self, Vector3(1.8, 2.2, 1.8), Vector3(5, 1.1, 13.0 * signf(z)), Counterform.OXIDE_RUST, Vector3.ZERO, {"bevel": 0.06}).set_meta("art", "pulpit")
 		# Its sounding board, hung under the gallery's edge: a face to climb up by.
-		Geo.block(self, Vector3(1.8, 2.4, 0.4), Vector3(5, 3.4, 14.2 * signf(z)), Counterform.OXIDE_RUST, Vector3.ZERO, {"bevel": 0.04})
-	Geo.block(self, Vector3(3.4, 2.6, 3.4), Vector3(18, 1.3, 0), Counterform.STEEL, Vector3.ZERO, {"bevel": 0.1})
+		Geo.block(self, Vector3(1.8, 2.4, 0.4), Vector3(5, 3.4, 14.2 * signf(z)), Counterform.OXIDE_RUST, Vector3.ZERO, {"bevel": 0.04}).set_meta("art", "pulpit")
+	Geo.block(self, Vector3(3.4, 2.6, 3.4), Vector3(18, 1.3, 0), Counterform.STEEL, Vector3.ZERO, {"bevel": 0.1}).set_meta("art", "font")
 
 
 ## The choir galleries, the organ loft and their railings, the ramps up.
@@ -254,7 +261,7 @@ func _galleries() -> void:
 		var t := func(r: Rect2) -> Rect2: return layout.turned(r) if flip else r
 		var s := -1.0 if flip else 1.0
 		var deck: Rect2 = t.call(GALLERY)
-		Geo.slab(self, deck.position, deck.end, GALLERY_Y, 0.4, Counterform.CONCRETE_DARK, {"bevel": 0.03})
+		Geo.slab(self, deck.position, deck.end, GALLERY_Y, 0.4, Counterform.CONCRETE_DARK, {"bevel": 0.03}).set_meta("art", "deck")
 		# The railing along the nave side, with gaps to drop through.
 		var x0 := -38.0
 		for gap in RAIL_GAPS + [Vector2(28, 28)]:
@@ -262,17 +269,17 @@ func _galleries() -> void:
 				_rail(Vector3((x0 + gap.x) / 2.0, GALLERY_Y, 14.15 * s), Vector3(gap.x - x0, 1.1, 0.3))
 			x0 = gap.y
 		# The ramp up at the east end, solid underneath.
-		Geo.ramp(self, Vector3(38, 0, 18 * s), Vector3(28, GALLERY_Y, 18 * s), 4.0, Counterform.CONCRETE_MID)
-		Geo.wedge(self, Vector3(10, GALLERY_Y - 0.05, 4), Vector3(33, 0, 18 * s), Counterform.CONCRETE_MID, 180.0)
+		Geo.ramp(self, Vector3(38, 0, 18 * s), Vector3(28, GALLERY_Y, 18 * s), 4.0, Counterform.CONCRETE_MID).set_meta("art", "ramp")
+		Geo.wedge(self, Vector3(10, GALLERY_Y - 0.05, 4), Vector3(33, 0, 18 * s), Counterform.CONCRETE_MID, 180.0).set_meta("art", "ramp")
 		# A low wall along the ramp's open side.
 		_rail(Vector3(33, 0, 16.15 * s), Vector3(10, 1.1, 0.3))
-	Geo.slab(self, LOFT.position, LOFT.end, GALLERY_Y, 0.4, Counterform.CONCRETE_DARK, {"bevel": 0.03})
+	Geo.slab(self, LOFT.position, LOFT.end, GALLERY_Y, 0.4, Counterform.CONCRETE_DARK, {"bevel": 0.03}).set_meta("art", "deck")
 	# The organ platform, its ramps, and the wall round the opening to the loft.
-	Geo.slab(self, PLATFORM.position, PLATFORM.end, GALLERY_Y, 0.4, Counterform.STEEL, {"bevel": 0.03})
-	Geo.slab(self, BRIDGE.position, BRIDGE.end, GALLERY_Y, 0.4, Counterform.STEEL, {"bevel": 0.03})
+	Geo.slab(self, PLATFORM.position, PLATFORM.end, GALLERY_Y, 0.4, Counterform.STEEL, {"bevel": 0.03}).set_meta("art", "platform")
+	Geo.slab(self, BRIDGE.position, BRIDGE.end, GALLERY_Y, 0.4, Counterform.STEEL, {"bevel": 0.03}).set_meta("art", "platform")
 	for s in [1.0, -1.0]:
-		Geo.ramp(self, Vector3(-58, 0, 16 * s), Vector3(-58, GALLERY_Y, 6 * s), 4.0, Counterform.CONCRETE_MID)
-		Geo.wedge(self, Vector3(10, GALLERY_Y - 0.05, 4), Vector3(-58, 0, 11 * s), Counterform.CONCRETE_MID, 90.0 * s)
+		Geo.ramp(self, Vector3(-58, 0, 16 * s), Vector3(-58, GALLERY_Y, 6 * s), 4.0, Counterform.CONCRETE_MID).set_meta("art", "ramp")
+		Geo.wedge(self, Vector3(10, GALLERY_Y - 0.05, 4), Vector3(-58, 0, 11 * s), Counterform.CONCRETE_MID, 90.0 * s).set_meta("art", "ramp")
 		_rail(Vector3(-54, GALLERY_Y, 5.85 * s), Vector3(4, 1.1, 0.3))
 	_rail(Vector3(-59.85, GALLERY_Y, 0), Vector3(0.3, 1.1, 12))
 	var wall := BRIDGE.get_center()
@@ -281,6 +288,7 @@ func _galleries() -> void:
 			Counterform.BONE_CONCRETE, Vector3.ZERO, {"bevel": 0.12})
 		b.collision_layer = Geo.WORLD | Geo.RUNNABLE
 		b.add_to_group("runnable")
+		b.set_meta("art", "wall")
 	Layout.barrier(self, Vector3(BRIDGE.size.x, Layout.CEILING - WALL_H, BRIDGE.size.y), Vector3(wall.x, (Layout.CEILING + WALL_H) / 2.0, wall.y))
 	var z0 := -14.0
 	var gaps := [Vector2(-8, -6)] + LOFT_GAPS + [Vector2(14, 14)]
@@ -290,21 +298,27 @@ func _galleries() -> void:
 		z0 = gap.y
 	# Columns under the loft.
 	for z in [-10.0, 10.0]:
-		Geo.block(self, Vector3(1.0, GALLERY_Y, 1.0), Vector3(-38.6, GALLERY_Y / 2.0, z), Counterform.CONCRETE_MID)
+		Geo.block(self, Vector3(1.0, GALLERY_Y, 1.0), Vector3(-38.6, GALLERY_Y / 2.0, z), Counterform.CONCRETE_MID).set_meta("art", "column")
+	# The choir stalls against the gallery's back wall (seats and high backs; the deck
+	# cells under them are closed to bots).
+	for s in [1.0, -1.0]:
+		Geo.block(self, Vector3(16, 1.6, 1.0), Vector3(-22, GALLERY_Y + 0.8, 19.5 * s), Counterform.POLYMER_TAN).set_meta("art", "stall")
 
 
 func _rail(centre: Vector3, size: Vector3) -> void:
-	Geo.block(self, size, centre + Vector3(0, size.y / 2.0, 0), Counterform.GRAPHITE, Vector3.ZERO, {"bevel": 0.04})
+	Geo.block(self, size, centre + Vector3(0, size.y / 2.0, 0), Counterform.GRAPHITE, Vector3.ZERO, {"bevel": 0.04}).set_meta("art", "rail")
 
 
 ## Site A: the dais up its ramp, the tablet behind it, the candle stands and crates.
 func _altar() -> void:
 	Geo.block(self, Vector3(DAIS.size.x, DAIS_Y, DAIS.size.y), Vector3(DAIS.get_center().x, DAIS_Y / 2.0, DAIS.get_center().y),
-		Counterform.BONE_CONCRETE, Vector3.ZERO, {"bevel": 0.06})
-	Geo.ramp(self, Vector3(56, 0, 0), Vector3(62, DAIS_Y, 0), 8.0, Counterform.CONCRETE_MID, 0.4)
-	Geo.block(self, Vector3(1.6, 6.0, 7.6), Vector3(73, 3.0, 0), Counterform.CONCRETE_DARK, Vector3.ZERO, {"bevel": 0.08})
+		Counterform.BONE_CONCRETE, Vector3.ZERO, {"bevel": 0.06}).set_meta("art", "dais")
+	Geo.ramp(self, Vector3(56, 0, 0), Vector3(62, DAIS_Y, 0), 8.0, Counterform.CONCRETE_MID, 0.4).set_meta("art", "ramp")
+	Geo.block(self, Vector3(1.6, 6.0, 7.6), Vector3(73, 3.0, 0), Counterform.CONCRETE_DARK, Vector3.ZERO, {"bevel": 0.08}).set_meta("art", "tablet")
+	# The display stand for the giant gun (the gun's own collision comes with the art).
+	Geo.block(self, Vector3(1.6, 0.4, 3.6), Vector3(69, DAIS_Y + 0.2, 0), Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.06}).set_meta("art", "gun_stand")
 	for z in [1.0, -1.0]:
-		Geo.block(self, Vector3(3.6, 1.6, 1.6), Vector3(60, 0.8, 5.0 * z), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.05})
+		Geo.block(self, Vector3(3.6, 1.6, 1.6), Vector3(60, 0.8, 5.0 * z), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.05}).set_meta("art", "stand")
 		Geo.block(self, Vector3(1.8, 1.6, 1.8), Vector3(49, 0.8, 11.0 * z), Counterform.POLYMER_TAN, Vector3(0, 10, 0), {"bevel": 0.05})
 		Geo.block(self, Vector3(3.6, 1.0, 1.6), Vector3(56, 0.5, 9.0 * z), Counterform.GREEN_GREY, Vector3.ZERO, {"bevel": 0.05})
 	_site_label("A", Vector3(73.9 - 1.0, 7.5, 0), -90.0)
@@ -319,13 +333,14 @@ func _crypt() -> void:
 			h = -CRYPT_Y - 0.5
 		var shrink := 0.3 if h < 4.0 else 0.2
 		var q := rect.grow(-shrink)
-		Geo.block(self, Vector3(q.size.x, h, q.size.y), Vector3(q.get_center().x, CRYPT_Y + h / 2.0, q.get_center().y),
+		var body := Geo.block(self, Vector3(q.size.x, h, q.size.y), Vector3(q.get_center().x, CRYPT_Y + h / 2.0, q.get_center().y),
 			Counterform.STEEL if h > 2.0 and h < 3.0 else Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.05})
+		body.set_meta("art", "crypt_pillar" if h >= 4.0 else ("cabinet" if h > 2.0 else "tomb"))
 	_site_label("B", Vector3(-73.9, CRYPT_Y + 2.4, 0), 90.0)
-	# The organ above: pipes on the organ room's west wall (scenery for now).
-	for k in 9:
-		var h := 6.0 + 4.0 * absf(sin(k * 0.9))
-		Geo.block(self, Vector3(0.8, h, 0.8), Vector3(-73.4, h / 2.0, -8.0 + k * 2.0), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.1})
+	# The organ above: one solid bank against the organ room's west wall (the pipes are art).
+	Geo.block(self, Vector3(1.4, 14.5, 20.0), Vector3(-73.3, 7.25, 0), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.1}).set_meta("art", "organ")
+	# Its façade high on the loft's west wall, above the bridge opening.
+	Geo.block(self, Vector3(0.8, 9.5, 17.0), Vector3(-47.6, 8.25 + 4.75, 0), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.05}).set_meta("art", "organ")
 
 
 func _site_label(text: String, pos: Vector3, yaw: float) -> void:
