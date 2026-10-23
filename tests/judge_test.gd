@@ -62,5 +62,24 @@ func _init() -> void:
 	# A respawn wipes the old trail.
 	j2.record("b0", Vector3(0, 0, 25), now + 13.0)
 	check(j2.judge("p2", 2, "b0", _hit(eye, Vector3(0, 1, -20)), gun, now + 13.0, open_air) != "", "after a respawn, hits on the old spot are thrown out")
+	# The health ledger.
+	var l := HitJudge.new()
+	l.spawned("p3")
+	for i in 3:
+		l.took("p3", 30.0, {}, {"damage": 30.0}, now)
+	check(not l.overdue("p3", now + 5.0), "90 damage: still alive by the ledger")
+	l.took("p3", 30.0, {}, {"damage": 30.0}, now)
+	check(not l.overdue("p3", now + 1.0), "120 damage: not overdue yet (grace %.0f s)" % HitJudge.OVERDUE)
+	check(l.overdue("p3", now + HitJudge.OVERDUE + 0.1), "120 damage and still alive after the grace: overdue")
+	l.spawned("p3")
+	check(not l.overdue("p3", now + 10.0), "a respawn clears it")
+	for i in 4:
+		l.took("p3", 30.0, {"guard": 0.5}, {"damage": 30.0}, now)
+	check(not l.overdue("p3", now + 10.0), "a guard part is counted at its best (120 hits, 60 counted)")
+	l.spawned("p4")
+	for i in 4:
+		l.took("p4", 30.0, {}, {"damage": 30.0}, now)
+	l.healed("p4", 40.0)
+	check(not l.overdue("p4", now + 10.0), "a heal back above zero clears it")
 	print("JUDGE TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)

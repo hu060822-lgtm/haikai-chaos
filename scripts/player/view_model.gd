@@ -6,13 +6,19 @@ extends Node3D
 ## it and racks the action when the gun ran dry; tube guns and revolvers get loaded a
 ## round at a time), a lowered gun while sprinting, tilted on slides and wall runs,
 ## and aiming that puts the build's own sight in the middle of the screen.
-## Drawn small and close (SCALE) so it looks full size but almost never pokes into walls.
+##
+## C5: drawn by its own camera (WeaponCam) on its own layer with its own field of view,
+## like every mainstream shooter: the gun sits big in the lower right whatever the
+## player's FOV is, and never pokes into walls (the world isn't in that picture).
 
-const SCALE := 0.46
-const HIP := Vector3(0.13, -0.15, -0.29)
+const SCALE := 0.5
+## The render layer only the weapon camera draws, and that camera's field of view.
+const LAYER := 1 << 12
+const FOV := 64.0
+const HIP := Vector3(0.135, -0.155, -0.30)
 ## Long guns are drawn a little smaller so a 1.4 m rifle doesn't fill half the screen.
 const REF_LENGTH := 0.75
-const AIM_DEPTH := 0.31
+const AIM_DEPTH := 0.34
 const SIGHT_LIFT := 0.028
 
 var _rig: Node3D
@@ -48,6 +54,9 @@ var _scale := SCALE
 var _jolt := Vector3.ZERO
 var _jolt_speed := Vector3.ZERO
 var _air_lag := 0.0
+## The weapon camera (set by the player) and the world camera it rides on.
+var weapon_cam: Camera3D
+var world_cam: Camera3D
 
 
 func _ready() -> void:
@@ -251,11 +260,32 @@ func muzzle_local() -> Vector3:
 	return _muzzle + Vector3(0, 0, -0.01)
 
 
-## Where shots leave the barrel, in world space (for tracers).
+## Where shots leave the barrel, in world space (for tracers). With the weapon camera on,
+## that's the world point behind where the muzzle is drawn on screen.
 func muzzle_global() -> Vector3:
 	if _gun == null or not is_inside_tree():
 		return global_position
-	return _gun.to_global(_muzzle)
+	var p := _gun.to_global(_muzzle)
+	if weapon_cam == null or world_cam == null or not weapon_cam.is_inside_tree():
+		return p
+	var depth := -(world_cam.global_transform.affine_inverse() * p).z
+	if depth < 0.02:
+		return p
+	return world_cam.project_position(weapon_cam.unproject_position(p), depth)
+
+
+## Everything under `n` onto the weapon camera's layer (muzzle flashes too, which are added
+## to the gun as it fires).
+static func tag(n: Node) -> void:
+	if n is VisualInstance3D:
+		(n as VisualInstance3D).layers = LAYER
+	for c in n.get_children():
+		tag(c)
+
+
+func _process(_delta: float) -> void:
+	if weapon_cam != null:
+		tag(self)
 
 
 func kick(recoil: float, _flash := 1.0) -> void:

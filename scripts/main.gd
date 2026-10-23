@@ -58,9 +58,12 @@ func _ready() -> void:
 		map = lab
 	elif map_id == "dream":
 		map = DreamHome.new()
+	elif map_id == "yard":
+		map = FaultYard.new()
 	else:
 		map = FoldedWorks.new()
 	add_child(map)
+	add_child(MapGuard.new(map))
 	SafeZone.clear()
 	SafeZone.repel = false
 	if not lab and not tdm:
@@ -86,6 +89,7 @@ func _ready() -> void:
 		var bot := Bot.new()
 		bot.target = player
 		bot.waypoints = map.waypoints
+		bot.nav = map.get("layout")
 		add_child(bot)
 		bot.spawn(map.bot_spawns[i % map.bot_spawns.size()], _next_seed())
 		bot.died.connect(_on_bot_died)

@@ -30,6 +30,16 @@ var target: Node3D
 var passive := false
 ## Holds still and doesn't shoot (預算戰's build phase).
 var frozen := false
+## Where it wants to be when it has no one to fight (爆破: a bomb site, the bomb), or INF.
+var objective := Vector3.INF
+var _stuck := 0.0
+var _hurt_at := -100.0
+var _detour := 0.0
+## The map's floor plan (big maps, Layout): bots then walk real paths round corners.
+var nav: Layout
+var _path: Array[Vector3] = []
+var _path_to := Vector3.INF
+var _path_t := 0.0
 var marked := 0.0
 ## Netplay id ("b3") and how hard it hits (sparring bots hit softer than team-match ones).
 var id := ""
@@ -38,7 +48,7 @@ var damage_mult := DAMAGE_MULT
 var tint_ally := false
 var move := 0
 
-var _model: Node3D
+var _model: CompetitorRig
 var _gun: Node3D
 var _hitboxes: Array[Area3D] = []
 var _goal := Vector3.ZERO
@@ -60,7 +70,7 @@ func _ready() -> void:
 	add_to_group("bots")
 	add_to_group("combatants")
 	collision_layer = Geo.BODIES
-	collision_mask = Geo.WORLD | Geo.BODIES
+	collision_mask = Geo.WORLD | Geo.BODIES | Geo.BOUNDS
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = 0.36
@@ -97,7 +107,7 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	_model = CompetitorModel.build(FpUi.ally_color() if tint_ally else Faultprint.INFO_ENEMY, not tint_ally, rng)
 	add_child(_model)
 	_gun = GunModels.build(weapon.build)
-	_model.get_node("GunHand").add_child(_gun)
+	_model.find_child("GunHand", true, false).add_child(_gun)
 	global_position = at
 	rotation = Vector3(0, rng.randf() * TAU, 0)
 	velocity = Vector3.ZERO
@@ -114,10 +124,12 @@ func spawn(at: Vector3, seed_value: int) -> void:
 ## Hands it a given gun (預算戰: what it bought) in place of the random one spawn() gave it.
 func arm(build: Dictionary) -> void:
 	weapon = Weapon.new(build)
+	if _model == null:
+		return
 	if _gun != null:
 		_gun.queue_free()
 	_gun = GunModels.build(weapon.build)
-	_model.get_node("GunHand").add_child(_gun)
+	_model.find_child("GunHand", true, false).add_child(_gun)
 
 
 func exclusions() -> Array:
@@ -140,6 +152,8 @@ func _physics_process(delta: float) -> void:
 	if frozen:
 		velocity = Vector3(0, velocity.y - GRAVITY * delta, 0)
 		move_and_slide()
+		if _model != null:
+			_model.pose(delta, velocity, is_on_floor())
 		return
 	weapon.tick(delta)
 	_slow = maxf(_slow - delta, 0.0)
@@ -172,15 +186,33 @@ func _physics_process(delta: float) -> void:
 			flat += -global_basis.z * speed * 0.6
 		if _reaction <= 0.0 and not passive:
 			_try_shoot()
+	elif nav != null:
+		flat = _nav_move(delta, speed)
 	else:
 		var to_goal := _goal - global_position
 		to_goal.y = 0
-		if _last_seen != Vector3.INF:
+		_detour = maxf(_detour - delta, 0.0)
+		if objective != Vector3.INF and _detour <= 0.0:
+			to_goal = objective - global_position
+			to_goal.y = 0
+			if to_goal.length() < 0.8:
+				to_goal = Vector3.ZERO
+			# Walking into a wall on the way: go round by a random waypoint for a bit.
+			_stuck = _stuck + delta if to_goal.length() > 1.5 and flat_speed() < 0.6 else 0.0
+			if _stuck > 1.2:
+				_stuck = 0.0
+				_detour = 2.5
+				_pick_goal()
+		elif _last_seen != Vector3.INF:
 			to_goal = _last_seen - global_position
 			to_goal.y = 0
 			if to_goal.length() < 1.5:
 				_last_seen = Vector3.INF
-		if to_goal.length() < 1.2:
+		if objective != Vector3.INF and _detour <= 0.0:
+			if to_goal.length() > 0.01:
+				_face(global_position + to_goal, delta, 5.0)
+				flat = to_goal.normalized() * speed * 0.8
+		elif to_goal.length() < 1.2:
 			_pick_goal()
 		elif to_goal.length() > 0.01:
 			_face(global_position + to_goal, delta, 5.0)
@@ -189,14 +221,55 @@ func _physics_process(delta: float) -> void:
 	velocity.z = lerpf(velocity.z, flat.z, 1.0 - exp(-8.0 * delta))
 	velocity.y -= GRAVITY * delta
 	move_and_slide()
-	if is_on_wall() and is_on_floor() and not _see:
+	if is_on_wall() and is_on_floor() and not _see and nav == null:
 		velocity.y = 6.8
 		if rng.randf() < 0.3:
 			_pick_goal()
 	if _model != null:
+		var pitch := 0.0
+		if _see and target != null and is_instance_valid(target):
+			var to := target.global_position - global_position
+			pitch = atan2(to.y, Vector2(to.x, to.z).length())
+		_model.pose(delta, velocity, is_on_floor(), 0.0, false, 0, pitch)
 		var marker := _model.get_node_or_null("Marker")
 		if marker:
 			marker.rotate_y(delta * 2.0)
+
+
+## Walking the floor plan to where it wants to be: the bomb site, where it last saw
+## someone, or a random spot. Re-plans every couple of seconds or when the goal moves.
+func _nav_move(delta: float, speed: float) -> Vector3:
+	if _last_seen != Vector3.INF and _flat_to(_last_seen) < 1.5:
+		_last_seen = Vector3.INF
+	var dest := objective if objective != Vector3.INF else (_last_seen if _last_seen != Vector3.INF else _goal)
+	if objective == Vector3.INF and _last_seen == Vector3.INF and _flat_to(_goal) < 1.5:
+		_pick_goal()
+		dest = _goal
+	_path_t -= delta
+	if _path_t <= 0.0 or _path_to.distance_to(dest) > 2.0:
+		_path = nav.path(global_position, dest)
+		_path_to = dest
+		_path_t = 2.0 + rng.randf() * 0.5
+		if _path.is_empty() and objective == Vector3.INF:
+			_pick_goal()
+	while not _path.is_empty() and _flat_to(_path[0]) < (0.6 if _path.size() == 1 else 1.1):
+		_path.pop_front()
+	if _path.is_empty():
+		return Vector3.ZERO
+	var to := _path[0] - global_position
+	to.y = 0.0
+	_stuck = _stuck + delta if flat_speed() < 0.6 else 0.0
+	if _stuck > 1.0:
+		_stuck = 0.0
+		_path_t = 0.0
+		if is_on_floor():
+			velocity.y = 6.8
+	_face(global_position + to, delta, 6.0)
+	return to.normalized() * speed * 0.85
+
+
+func _flat_to(p: Vector3) -> float:
+	return Vector2(p.x - global_position.x, p.z - global_position.z).length()
 
 
 func _face(point: Vector3, delta: float, rate: float) -> void:
@@ -210,6 +283,16 @@ func _face(point: Vector3, delta: float, rate: float) -> void:
 
 func _eye() -> Vector3:
 	return global_position + Vector3(0, 1.6, 0)
+
+
+## In a fight right now (sees a target).
+func fighting() -> bool:
+	return _see and target != null
+
+
+## Shot at in the last `seconds`.
+func hurt_within(seconds: float) -> bool:
+	return Time.get_ticks_msec() / 1000.0 - _hurt_at < seconds
 
 
 func flat_speed() -> float:
@@ -316,6 +399,9 @@ func take_hit(info: Dictionary) -> bool:
 		_burn_info = info
 	if e.has("mark"):
 		marked = maxf(marked, float(e.mark))
+	_hurt_at = Time.get_ticks_msec() / 1000.0
+	if _model != null and info.get("dir") is Vector3:
+		_model.flinch(info.dir, clampf(float(info.get("damage", 20.0)) / 30.0, 0.3, 1.5))
 	# Being shot turns it around (toward whoever did it).
 	var by = info.get("attacker")
 	if by is Node3D and is_instance_valid(by) and by != self and by.get("alive") and by.get("team") != null and int(by.team) != team:
@@ -339,5 +425,10 @@ func _die(info: Dictionary) -> void:
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", 0)
 	PrintFx.takedown(get_tree().current_scene, global_position, Faultprint.INFO_ENEMY)
+	# The body stays where it fell, gone limp (CompetitorRig); the bot itself hides until
+	# it spawns again with a new one.
+	CompetitorRig.leave_corpse(_model, info.get("dir", Vector3.ZERO) if info.get("dir") is Vector3 else Vector3.ZERO)
+	_model = null
+	_gun = null
 	visible = false
 	died.emit(self, info)

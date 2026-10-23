@@ -18,14 +18,29 @@ extends Node3D
 ##                        floating toy blocks that step up to each beam, two giant
 ##                        playground slides from the walkways down to the deck
 ##
-## Gameplay space is the same size as FOLDED WORKS (68 × 52 m). Everything here builds
-## its own materials (clean pastel paint, carpet, tile, checker), not the concrete kit.
+## Everything here builds its own materials (clean pastel paint, carpet, tile, checker),
+## not the concrete kit.
+##
+## C5: the house is now the middle of a map about 145 × 100 m. Doors in its walls lead
+## out into the dream around it, built from a floor plan (Layout) turned half round:
+##   spawns         blue in the sunroom south of the house, red in the one north of it
+##   site A (west)  the poolrooms: white tile, shallow water-blue floor, tiled pillars
+##   site B (east)  the same turned round
+##   corridors      the yellow backrooms between: long, humming, more than one way
 
 const HALF := Vector2(34, 26)
 const POOL := Rect2(-10, -7, 20, 14)
 const POOL_DEPTH := 1.6
 const UP := 4.5
 const WALL_H := 9.0
+const AREA := Rect2(-80, -52, 160, 104)
+const OUTER_H := 7.0
+const DOOR_W := 6.0
+const DOOR_H := 3.4
+## Doors through the house's walls: south at these x (north at the same turned round),
+## east at SIDE_DOOR_Z, west at -SIDE_DOOR_Z.
+const DOOR_X := [-8.0, 18.0]
+const SIDE_DOOR_Z := 21.0
 
 ## Palette: pastel, slightly sun-bleached.
 const SKY_BLUE := Color("#8EC5F0")
@@ -45,13 +60,18 @@ var bot_spawns: Array[Vector3] = []
 var waypoints: Array[Vector3] = []
 var range_targets: Array[Transform3D] = []
 ## Team match: each team's spawn zone centre and spawn points (blue south, red north).
-var team_zones: Array[Vector3] = [Vector3(0, 0, 21.5), Vector3(0, 0, -21.5)]
+var team_zones: Array[Vector3] = [Vector3(0, 0, 44), Vector3(0, 0, -44)]
 ## 預算戰's overclock zone: the bottom of the empty pool.
 var mid_zone := Vector3(0, -POOL_DEPTH, 0)
+## 爆破's bomb sites: A in the west poolrooms, B in the east ones.
+var bomb_sites: Array = [Vector3(-60, 0, -2), Vector3(60, 0, 2)]
 var team_spawns: Array = [
-	[Vector3(0, 0.1, 21.5), Vector3(-3, 0.1, 21.5), Vector3(3, 0.1, 21.5), Vector3(-1.5, 0.1, 23.5), Vector3(1.5, 0.1, 23.5)],
-	[Vector3(0, 0.1, -21.5), Vector3(-3, 0.1, -21.5), Vector3(3, 0.1, -21.5), Vector3(-1.5, 0.1, -23.5), Vector3(1.5, 0.1, -23.5)],
+	[Vector3(0, 0.1, 44), Vector3(-3, 0.1, 44), Vector3(3, 0.1, 44), Vector3(-1.5, 0.1, 46.5), Vector3(1.5, 0.1, 46.5)],
+	[Vector3(0, 0.1, -44), Vector3(-3, 0.1, -44), Vector3(3, 0.1, -44), Vector3(-1.5, 0.1, -46.5), Vector3(1.5, 0.1, -46.5)],
 ]
+var layout: Layout
+var play_area := AREA
+var lowest_floor := -POOL_DEPTH
 
 static var _tex := {}
 static var _mats := {}
@@ -60,9 +80,11 @@ static var _mats := {}
 func _ready() -> void:
 	name = "DreamHome"
 	_environment()
+	_plan()
 	_floors()
 	_pool()
 	_outer_walls()
+	_wings()
 	_nursery()
 	_living_room()
 	_hallway()
@@ -72,9 +94,7 @@ func _ready() -> void:
 	_dream_sky()
 	_movement()
 	bot_spawns = [Vector3(-14, 0.1, 12), Vector3(14, 0.1, -12), Vector3(0, -1.5, 0), Vector3(-28, 0.1, 0), Vector3(22, 0.1, 10)]
-	waypoints = [Vector3(-14, 0, 12), Vector3(14, 0, 12), Vector3(-14, 0, -12), Vector3(14, 0, -12),
-		Vector3(-8, 0, 0), Vector3(8, 0, 0), Vector3(0, -POOL_DEPTH, 0), Vector3(-28, 0, -10), Vector3(-28, 0, 10),
-		Vector3(16, 0, 0), Vector3(30, 0, 14), Vector3(30, 0, -14), Vector3(0, 0, 12), Vector3(0, 0, -12)]
+	waypoints = layout.wander_points(5)
 
 
 # --- Materials -------------------------------------------------------------------------
@@ -393,11 +413,29 @@ func _duck(at: Vector3) -> void:
 func _outer_walls() -> void:
 	var paper := mat("stripes", CREAM, Color("#F7E3EA"))
 	# North and south walls carry their rooms' colours; east and west are long and runnable
-	# above the walkway level.
-	box(Vector3(HALF.x * 2 + 1, WALL_H, 1.0), Vector3(0, WALL_H / 2.0, -HALF.y - 0.5), mat("stripes", BABY_PINK, Color("#F9D7E2")))
-	box(Vector3(HALF.x * 2 + 1, WALL_H, 1.0), Vector3(0, WALL_H / 2.0, HALF.y + 0.5), mat("clouds", SKY_BLUE))
+	# above the walkway level. Doors (C5) lead out to the rest of the dream.
+	for z in [-HALF.y - 0.5, HALF.y + 0.5]:
+		var m := mat("stripes", BABY_PINK, Color("#F9D7E2")) if z < 0.0 else mat("clouds", SKY_BLUE)
+		var doors: Array = DOOR_X.map(func(x: float) -> float: return x if z > 0.0 else -x)
+		doors.sort()
+		var x0 := -HALF.x - 1.0
+		for d in doors:
+			box(Vector3(d - DOOR_W / 2.0 - x0, WALL_H, 1.0), Vector3((x0 + d - DOOR_W / 2.0) / 2.0, WALL_H / 2.0, z), m)
+			box(Vector3(DOOR_W, WALL_H - DOOR_H, 1.0), Vector3(d, (WALL_H + DOOR_H) / 2.0, z), m)
+			_door_frame(Vector3(d, 0, z), true)
+			x0 = d + DOOR_W / 2.0
+		box(Vector3(HALF.x + 1.0 - x0, WALL_H, 1.0), Vector3((x0 + HALF.x + 1.0) / 2.0, WALL_H / 2.0, z), m)
 	for x in [-HALF.x - 0.5, HALF.x + 0.5]:
-		wall(Vector2(x, -HALF.y), Vector2(x, HALF.y), WALL_H, paper, 1.0, 0.0, true)
+		var dz := SIDE_DOOR_Z * signf(x)
+		wall(Vector2(x, -HALF.y), Vector2(x, dz - DOOR_W / 2.0), WALL_H, paper, 1.0, 0.0, true)
+		wall(Vector2(x, dz + DOOR_W / 2.0), Vector2(x, HALF.y), WALL_H, paper, 1.0, 0.0, true)
+		box(Vector3(1.0, WALL_H - DOOR_H, DOOR_W), Vector3(x, (WALL_H + DOOR_H) / 2.0, dz), paper)
+		_door_frame(Vector3(x, 0, dz), false)
+	# Nothing gets over the house's walls.
+	for z in [-HALF.y - 0.5, HALF.y + 0.5]:
+		Layout.barrier(self, Vector3(HALF.x * 2 + 2, Layout.CEILING - WALL_H, 1.0), Vector3(0, (Layout.CEILING + WALL_H) / 2.0, z))
+	for x in [-HALF.x - 0.5, HALF.x + 0.5]:
+		Layout.barrier(self, Vector3(1.0, Layout.CEILING - WALL_H, HALF.y * 2 + 2), Vector3(x, (Layout.CEILING + WALL_H) / 2.0, 0))
 	# Baseboards.
 	for z in [-HALF.y + 0.05, HALF.y - 0.05]:
 		deco(LowPoly.chamfer_box(Vector3(HALF.x * 2, 0.25, 0.1), 0.01), LowPoly.at(Vector3(0, 0.125, z)), mat("paint", DOOR_WHITE))
@@ -408,6 +446,123 @@ func _outer_walls() -> void:
 			var w := deco(QuadMesh.new(), Transform3D(Basis(Vector3.UP, PI / 2.0 if x < 0 else -PI / 2.0).scaled(Vector3(2.4, 3.0, 1)),
 				Vector3(x, 6.6, z)), mat("glow", Color("#CFEAFF"), Color.WHITE, 0.35), false)
 			w.name = "SkyWindow"
+
+
+## A white door frame round a doorway in an outer wall.
+func _door_frame(at: Vector3, across_x: bool) -> void:
+	var white := mat("paint", DOOR_WHITE)
+	for side in [-1.0, 1.0]:
+		var off := Vector3(side * (DOOR_W / 2.0 + 0.1), 0, 0) if across_x else Vector3(0, 0, side * (DOOR_W / 2.0 + 0.1))
+		deco(LowPoly.chamfer_box(Vector3(0.2, DOOR_H, 1.3) if across_x else Vector3(1.3, DOOR_H, 0.2), 0.02),
+			LowPoly.at(at + off + Vector3(0, DOOR_H / 2.0, 0)), white)
+	deco(LowPoly.chamfer_box(Vector3(DOOR_W + 0.4, 0.25, 1.3) if across_x else Vector3(1.3, 0.25, DOOR_W + 0.4), 0.02),
+		LowPoly.at(at + Vector3(0, DOOR_H + 0.12, 0)), white)
+
+
+## The floor plan (see FoldedWorks._plan): the house in the middle ('x'), its walls ('o')
+## with doors, the dream around it carved out of solid wall, turned half round.
+func _plan() -> void:
+	var g := Layout.new(AREA, 2.0)
+	layout = g
+	g.carve(Rect2(-HALF.x - 2, -HALF.y - 2, HALF.x * 2 + 4, HALF.y * 2 + 4), "x")
+	for r in [Rect2(-HALF.x - 2, -HALF.y - 2, HALF.x * 2 + 4, 2), Rect2(-HALF.x - 2, HALF.y, HALF.x * 2 + 4, 2),
+			Rect2(-HALF.x - 2, -HALF.y - 2, 2, HALF.y * 2 + 4), Rect2(HALF.x, -HALF.y - 2, 2, HALF.y * 2 + 4)]:
+		g.carve(r, "o")
+	for x in DOOR_X:
+		g.carve2(Rect2(x - DOOR_W / 2.0, HALF.y, DOOR_W, 2))
+	g.carve2(Rect2(HALF.x, SIDE_DOOR_Z - DOOR_W / 2.0, 2, DOOR_W))
+	# Inside the house, what bots must walk round: the pool's long sides are steps (fine),
+	# the hallway's inner wall, the crib, the TV, the table's legs, the bookshelves.
+	g.carve(Rect2(-25.4, -18, 0.8, 8.4), "o")
+	g.carve(Rect2(-25.4, 9.6, 0.8, 8.4), "o")
+	g.carve(Rect2(-17.6, 19, 6.2, 4), "o")
+	g.carve(Rect2(-7, -HALF.y, 14, 2.2), "o")
+	for z in [-12.0, 0.0, 12.0]:
+		g.carve(Rect2(24.2, z - 1.6, 2.0, 3.2), "o")
+	# The dream outside.
+	g.carve2(Rect2(-14, 38, 28, 12), "s")
+	g.carve2(Rect2(-11, 28, 6, 10))                    # sunroom -> house (south door, x -8)
+	g.carve2(Rect2(15, 28, 6, 14))                     # house's other south door -> east corridor
+	g.carve2(Rect2(14, 42, 44, 6))                     # sunroom -> east, toward B
+	g.carve2(Rect2(52, 18, 6, 30))                     # ... north into B
+	g.carve2(Rect2(-48, 42, 34, 6))                    # sunroom -> west, toward A
+	g.carve2(Rect2(-48, 16, 6, 32))                    # ... north into A
+	g.carve2(Rect2(-44, -SIDE_DOOR_Z - DOOR_W / 2.0, 8, DOOR_W))   # house's west door -> A
+	# A side room on each corridor: a short cut between the two lanes behind the spawn.
+	g.carve2(Rect2(-34, 30, 12, 12))
+	g.carve2(Rect2(-30, 28, 4, 2))
+	var site := Rect2(-72, -24, 28, 40)
+	g.carve(site, "a")
+	g.carve(g.turned(site), "b")
+	for c in POOLROOM_PILLARS:
+		g.carve2(Rect2(c.x - 1.0, c.y - 1.0, 2.0, 2.0), "c")
+
+
+## Tiled pillars in poolroom A (B has them turned round).
+const POOLROOM_PILLARS := [Vector2(-66, -16), Vector2(-66, -2), Vector2(-66, 10), Vector2(-54, -12), Vector2(-52, 6),
+	Vector2(-60, 12)]
+
+
+## The dream around the house: yellow corridors, two poolrooms, the sunrooms.
+func _wings() -> void:
+	var backrooms := mat("stripes", Color("#E8D9A0"), Color("#DCCB8A"))
+	var tile_wall := mat("tile", Color("#EEF4F2"))
+	var n := [0]
+	layout.build_walls(self, OUTER_H, func(size: Vector3, at: Vector3) -> void:
+		var near_site := absf(at.x) > 40.0 and absf(at.z) < 28.0
+		box(size, at, tile_wall if near_site else backrooms, 0.0, true)
+		n[0] += 1)
+	# Floors: a base under everything (and the pool's hole cut out of it by the house's own
+	# floors sitting on top), then each area's own.
+	floor_at(AREA.position, Vector2(AREA.end.x, -HALF.y - 1.0), -0.02, mat("carpet", Color("#CDBB86")))
+	floor_at(Vector2(AREA.position.x, HALF.y + 1.0), AREA.end, -0.02, mat("carpet", Color("#CDBB86")))
+	floor_at(Vector2(AREA.position.x, -HALF.y - 1.0), Vector2(-HALF.x - 1.0, HALF.y + 1.0), -0.02, mat("carpet", Color("#CDBB86")))
+	floor_at(Vector2(HALF.x + 1.0, -HALF.y - 1.0), Vector2(AREA.end.x, HALF.y + 1.0), -0.02, mat("carpet", Color("#CDBB86")))
+	for r in layout.rects("ab"):
+		floor_at(r.position, r.end, 0.02, mat("tile", TILE_AQUA), 0.1)
+	for r in layout.rects("s"):
+		floor_at(r.position, r.end, 0.02, mat("checker", CREAM, Color("#BFD9F0"), 1.0), 0.1)
+	# The door strips through the house's walls (the house's floor stops at its walls).
+	for r in layout.rects("."):
+		var inside_wall := Rect2(-HALF.x - 2, -HALF.y - 2, HALF.x * 2 + 4, HALF.y * 2 + 4).encloses(r)
+		if inside_wall:
+			floor_at(r.position, r.end, 0.0, mat("carpet", CARPET))
+	for c in POOLROOM_PILLARS:
+		for p in [Vector3(c.x, 0, c.y), Layout.turn(Vector3(c.x, 0, c.y))]:
+			box(Vector3(2.0, OUTER_H, 2.0), p + Vector3(0, OUTER_H / 2.0, 0), tile_wall)
+	# Poolrooms: a shallow step down, a lifeguard chair to hold from, a ladder of light.
+	for flip in [false, true]:
+		var chair := Vector3(-70, 0, 4) if not flip else Layout.turn(Vector3(-70, 0, 4))
+		box(Vector3(3.0, 2.6, 3.0), chair + Vector3(0, 1.3, 0), mat("paint", Color.WHITE))
+		var way := Vector3(-1, 0, 0) if not flip else Vector3(1, 0, 0)
+		stairs(chair - way * 5.3, way, 2.6, 1.6, mat("paint", DOOR_WHITE))
+		for k in 6:
+			var z := -20.0 + k * 7.0
+			var p := Vector3(-58, OUTER_H - 0.05, z) if not flip else Layout.turn(Vector3(-58, OUTER_H - 0.05, z))
+			deco(LowPoly.chamfer_box(Vector3(2.4, 0.06, 1.0), 0.01), LowPoly.at(p), mat("glow", Color("#E8FFFF"), Color.WHITE, 1.0), false)
+	# Corridor cover: laundry baskets, a vending machine that hums, a lost armchair.
+	for p in [Vector3(-45, 0, 30), Vector3(-30, 0, 45), Vector3(36, 0, 45), Vector3(55, 0, 30), Vector3(-28, 0, 36)]:
+		for q in [p, Layout.turn(p)]:
+			box(Vector3(1.8, 1.3, 1.8), q + Vector3(0, 0.65, 0), mat("paint", PEACH if int(absf(q.x)) % 2 == 0 else LILAC), 25.0)
+	var hum := Color("#FFF6C8")
+	for p in [Vector3(-45, 5.5, 44), Vector3(36, 5.5, 45), Vector3(0, 5.5, 44), Vector3(-60, 6.0, 0)]:
+		for q in [p, Layout.turn(p)]:
+			var l := OmniLight3D.new()
+			l.position = q
+			l.light_color = hum if absf(q.x) < 40.0 else Color("#DFFFFF")
+			l.light_energy = 0.8
+			l.omni_range = 20.0
+			add_child(l)
+	for i in 2:
+		var l := Label3D.new()
+		l.text = "AB"[i]
+		l.font_size = 900
+		l.pixel_size = 0.009
+		l.modulate = Color("#F08A8A") if i == 0 else Color("#8EC5F0")
+		l.position = Vector3(-71.9, 4.2, -4) if i == 0 else Vector3(71.9, 4.2, 4)
+		l.rotation_degrees = Vector3(0, 90 if i == 0 else -90, 0)
+		l.shaded = false
+		add_child(l)
 
 
 func _nursery() -> void:
@@ -593,7 +748,7 @@ func _dream_sky() -> void:
 	rng.seed = 404
 	for i in 22:
 		var a := TAU * i / 22.0 + rng.randf_range(-0.1, 0.1)
-		var r := rng.randf_range(55.0, 110.0)
+		var r := rng.randf_range(100.0, 170.0)
 		var c := Vector3(cos(a) * r, rng.randf_range(14.0, 42.0), sin(a) * r)
 		for k in 5:
 			deco(LowPoly.blob(rng.randf_range(4.0, 8.0), Vector3(1.6, 0.8, 1.2), 1, 0.2, i * 7 + k),

@@ -8,10 +8,11 @@ extends Control
 signal practice_chosen(map_id: String)
 signal settings_requested()
 
-const VERSION := "C3 原型"
+const VERSION := "C5 原型"
 const PRACTICE := [
-	["folded", "折疊工廠", "FOLDED WORKS　巨大混凝土模組的測試設施：三層高度、滑鏟坡、牆跑環廊、靶場"],
+	["folded", "折疊工廠", "FOLDED WORKS　混凝土模組測試設施：三層大廳當中路，外圍長廊通往 A／B 點"],
 	["dream", "夢核之家", "DREAM HOME　記憶裡太大的房子：粉彩房間、沒有水的泳池、走不完的走廊"],
+	["yard", "斷層貨場", "FAULT YARD　貨櫃場與兩座倉庫：開闊中路、長廊、隧道、工頭辦公室"],
 	["lab", "移動測試場", "MOVEMENT LAB　三條計時路線與自由練習區：滑鏟、牆跑、踢牆、重踩彈跳"],
 ]
 

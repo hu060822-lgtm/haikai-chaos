@@ -161,6 +161,13 @@ func _general() -> Control:
 		Settings.relay_url = t.strip_edges()
 		Settings.save())
 	box.add_child(relay)
+	var report := FpUi.button("匯出平衡報表（槍身／零件／對戰紀錄）", 16)
+	report.pressed.connect(func() -> void:
+		var path := Balance.export()
+		if path != "":
+			report.text = "已寫到 " + ProjectSettings.globalize_path(path).get_file() + "（資料夾已開啟）"
+			OS.shell_open(ProjectSettings.globalize_path("user://")))
+	box.add_child(report)
 	_refresh_labels()
 	return box
 

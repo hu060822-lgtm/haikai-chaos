@@ -144,7 +144,7 @@ func _ready() -> void:
 	add_to_group("player")
 	add_to_group("combatants")
 	collision_layer = Geo.BODIES
-	collision_mask = Geo.WORLD
+	collision_mask = Geo.WORLD | Geo.BOUNDS
 	floor_snap_length = 0.35
 	floor_max_angle = deg_to_rad(48)
 	var cs := CollisionShape3D.new()
@@ -169,6 +169,7 @@ func _ready() -> void:
 	Faultprint.post(camera)
 	view = ViewModel.new()
 	camera.add_child(view)
+	_weapon_view()
 	_wind = AudioStreamPlayer.new()
 	_wind.stream = Sfx.wind()
 	_wind.volume_db = -60.0
@@ -1001,7 +1002,7 @@ func _try_mantle(climbing: bool) -> bool:
 	cap.radius = RADIUS * 0.9
 	cap.height = CROUCH_HEIGHT
 	params.shape = cap
-	params.collision_mask = Geo.WORLD
+	params.collision_mask = Geo.WORLD | Geo.BOUNDS   # no pulling up onto a map's outer wall
 	params.transform = Transform3D(Basis.IDENTITY, top.position + Vector3(0, CROUCH_HEIGHT / 2.0 + 0.05, 0))
 	if not space.intersect_shape(params, 1).is_empty():
 		_fail("邊緣上方空間不足，不能翻越")
@@ -1292,6 +1293,53 @@ func _shoot() -> void:
 func _process(_delta: float) -> void:
 	if alive:
 		_place_head(_render_prev.lerp(_render_curr, Engine.get_physics_interpolation_fraction()))
+	if _weapon_cam != null:
+		_weapon_cam.global_transform = camera.global_transform
+		_weapon_layer.visible = camera.current and view.is_visible_in_tree()
+
+
+var _weapon_cam: Camera3D
+var _weapon_layer: CanvasLayer
+
+
+## The first-person gun's own picture (see ViewModel): a transparent viewport over the
+## world, its camera on the world camera with ViewModel.FOV, drawing only the gun's layer.
+func _weapon_view() -> void:
+	camera.cull_mask &= ~ViewModel.LAYER
+	_weapon_layer = CanvasLayer.new()
+	_weapon_layer.layer = 0
+	add_child(_weapon_layer)
+	var box := SubViewportContainer.new()
+	box.stretch = true
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_weapon_layer.add_child(box)
+	var vp := SubViewport.new()
+	vp.transparent_bg = true
+	vp.msaa_3d = Viewport.MSAA_4X
+	vp.handle_input_locally = false
+	vp.gui_disable_input = true
+	box.add_child(vp)
+	_weapon_cam = Camera3D.new()
+	_weapon_cam.cull_mask = ViewModel.LAYER
+	_weapon_cam.fov = ViewModel.FOV
+	_weapon_cam.near = 0.01
+	_weapon_cam.far = 4.0
+	vp.add_child(_weapon_cam)
+	_weapon_cam.current = true
+	view.weapon_cam = _weapon_cam
+	view.world_cam = camera
+	# The world's light and tone, minus its sky and fog (the gun is drawn over the world).
+	var we := get_parent().find_children("*", "WorldEnvironment", true, false) if get_parent() != null else []
+	if not we.is_empty() and (we[0] as WorldEnvironment).environment != null:
+		var env := (we[0] as WorldEnvironment).environment.duplicate() as Environment
+		env.background_mode = Environment.BG_CLEAR_COLOR
+		env.fog_enabled = false
+		env.volumetric_fog_enabled = false
+		env.ssao_enabled = false
+		env.ssr_enabled = false
+		env.sdfgi_enabled = false
+		_weapon_cam.environment = env
 
 
 ## The view: body yaw (turned straight from the mouse), pitch, recoil and feel effects,

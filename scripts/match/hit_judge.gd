@@ -16,6 +16,13 @@ extends RefCounted
 ##
 ## Only what passes is passed on to the victim's owner. Plain data and math here so the
 ## rules can be tested on their own; TeamMatch feeds it positions and pings.
+##
+## The health ledger (C5): the victim's machine still applies its own damage, so a
+## hacked client could ignore it. The host keeps its own count of everyone's health from
+## the hits it passed on, on the low side (a guard part is taken as always up, glass and
+## burning are left out, leech and kill heals as their best case), so an honest player is
+## always dead by the time the ledger says so. Someone still alive OVERDUE seconds after
+## their ledger went under -LEDGER_SLACK is declared dead by the host.
 
 const KEEP := 1.2
 const WINDOW := 0.25
@@ -31,6 +38,8 @@ const ORIGIN_SLACK := 3.5
 const EYE := 1.5
 ## A jump this long between two samples is a respawn, not movement.
 const TELEPORT := 12.0
+const LEDGER_SLACK := 5.0
+const OVERDUE := 2.0
 
 ## id -> [[t, Vector3], ...] oldest first
 var history := {}
@@ -41,6 +50,11 @@ var _buckets := {}
 ## Why the last hit was thrown out ("" = it passed); for tests and the debug panel.
 var last_reason := ""
 var rejected := 0
+## id -> the host's count of its health; id -> when it went under (s); id -> the last hit passed on
+var ledger := {}
+var _under := {}
+var last_hit := {}
+var forced := 0
 
 
 func record(id: String, pos: Vector3, now: float) -> void:
@@ -88,6 +102,35 @@ static func _to_line(p: Vector3, base: Vector3) -> float:
 	var ab := b - a
 	var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
 	return p.distance_to(a + ab * t)
+
+
+func spawned(id: String) -> void:
+	ledger[id] = 100.0
+	_under.erase(id)
+	last_hit.erase(id)
+
+
+## A hit passed on to `id`: `amount` as dealt, `effects` of the victim's own gun.
+func took(id: String, amount: float, victim_effects: Dictionary, wire: Dictionary, now: float) -> void:
+	var low := amount
+	if victim_effects.has("guard"):
+		low *= 1.0 - float(victim_effects.guard)
+	ledger[id] = float(ledger.get(id, 100.0)) - maxf(low, 0.0)
+	last_hit[id] = wire
+	if float(ledger[id]) < -LEDGER_SLACK and not _under.has(id):
+		_under[id] = now
+
+
+func healed(id: String, amount: float) -> void:
+	if ledger.has(id):
+		ledger[id] = minf(float(ledger[id]) + amount, 100.0)
+		if float(ledger[id]) >= -LEDGER_SLACK:
+			_under.erase(id)
+
+
+## True when `id`, still alive, should have been dead for OVERDUE seconds.
+func overdue(id: String, now: float) -> bool:
+	return _under.has(id) and now - float(_under[id]) >= OVERDUE
 
 
 ## The judgement on one hit. `shooter_peer` is the machine that fired, `build` the gun the

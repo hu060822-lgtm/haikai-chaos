@@ -117,7 +117,7 @@ func _host() -> void:
 	var cid := "p%d" % client_peer
 	var avatar: Avatar = tm.entities.get(cid)
 	check(avatar != null, "the client's player is here as an avatar")
-	var moved := await _until(func() -> bool: return avatar.alive and avatar.global_position.distance_to(Vector3(0, 0, -22.5)) < 4.0, 6.0)
+	var moved := await _until(func() -> bool: return avatar.alive and avatar.global_position.distance_to(Vector3(0, 0, -46)) < 4.0, 6.0)
 	check(moved, "the client's avatar stands at the red spawn (%s)" % str(avatar.global_position))
 	var me := m.player
 	check(me.is_on_floor() and absf(me.global_position.y) < 0.3, "the host's player stands on the floor at its spawn (%s)" % str(me.global_position))
@@ -144,6 +144,12 @@ func _host() -> void:
 	var back := await _until(func() -> bool: return avatar.alive, 12.0)
 	check(back, "the client respawned")
 	check(tm.judge.rejected >= 1, "the host threw out the client's impossible hit (%d thrown out: %s)" % [tm.judge.rejected, tm.judge.last_reason])
+	# The client now plays "god mode" (ignores damage): the host's ledger overrules it.
+	var out_again := await _until(func() -> bool: return avatar.alive and avatar.global_position.z > -14.0, 8.0)
+	check(out_again, "the client came out again")
+	tm.send_hit(cid, info)
+	var overruled := await _until(func() -> bool: return not avatar.alive, HitJudge.OVERDUE + 4.0)
+	check(overruled and tm.judge.forced >= 1, "a client that won't die is declared dead by the host (forced %d)" % tm.judge.forced)
 	await _wait(1.5)
 	tm._end.rpc(me.team, tm.scores)
 	await _wait(0.5)
@@ -184,7 +190,7 @@ func _client() -> void:
 		if str(id).begins_with("b") and tm.entities[id] is Avatar:
 			bots += 1
 	check(bots == 2, "the host's bots are here as avatars (%d)" % bots)
-	var seen := await _until(func() -> bool: return host_avatar.alive and host_avatar.global_position.distance_to(Vector3(0, 0, 22.5)) < 4.0, 6.0)
+	var seen := await _until(func() -> bool: return host_avatar.alive and host_avatar.global_position.distance_to(Vector3(0, 0, 46)) < 4.0, 6.0)
 	check(seen, "the host's avatar stands at the blue spawn (%s)" % str(host_avatar.global_position))
 	check(me.is_on_floor() and absf(me.global_position.y) < 0.3, "the client's player stands on the floor at its spawn (%s)" % str(me.global_position))
 	check(SafeZone.is_safe(me.global_position, 1), "the client spawned inside red's safe zone")
@@ -207,6 +213,12 @@ func _client() -> void:
 	var back := await _until(func() -> bool: return me.alive, TeamMatch.AUTO_RESPAWN + 2.0)
 	check(back, "respawned by itself after the wait")
 	check(SafeZone.is_safe(me.global_position, 1), "respawned in red's safe zone")
+	# Cheat: step out and refuse to die.
+	await _wait(1.0)
+	me.global_position = Vector3(0, 0.1, -10.0)
+	me.health = 1.0e9
+	var forced := await _until(func() -> bool: return not me.alive, 12.0)
+	check(forced, "the god-mode client was declared dead by the host")
 	var ended := await _until(func() -> bool: return tm.over, 15.0)
 	check(ended, "the match ended on the client")
 	var lobby := await _until(func() -> bool: return main() != null and main() != m and main().lobby.visible, 12.0)

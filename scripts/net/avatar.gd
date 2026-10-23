@@ -23,7 +23,10 @@ var match_node: Node
 
 var _states: Array = []   # [time, pos, yaw, pitch, move, vel]
 var _vel := Vector3.ZERO
-var _model: Node3D
+var _model: CompetitorRig
+var _prev_pos := Vector3.ZERO
+var _seen_vel := Vector3.ZERO
+var _pitch := 0.0
 var _gun: Node3D
 var _hitboxes: Array[Area3D] = []
 var _ally := false
@@ -62,8 +65,13 @@ func _ready() -> void:
 		area.add_child(cs)
 		add_child(area)
 		_hitboxes.append(area)
+	_new_model()
+
+
+func _new_model() -> void:
 	_model = CompetitorModel.build(FpUi.ally_color() if _ally else Faultprint.INFO_ENEMY, not _ally, _rng)
 	add_child(_model)
+	_gun = null
 	if not build.is_empty():
 		set_build(build, gun_name)
 
@@ -76,7 +84,7 @@ func set_build(new_build: Dictionary, new_name: String) -> void:
 	if _gun != null:
 		_gun.queue_free()
 	_gun = GunModels.build(build)
-	_model.get_node("GunHand").add_child(_gun)
+	_model.find_child("GunHand", true, false).add_child(_gun)
 
 
 ## A state from the owner (20 times a second).
@@ -115,6 +123,16 @@ func _process(delta: float) -> void:
 	else:
 		global_position = (a[1] as Vector3).lerp(b[1], k)
 		rotation.y = lerp_angle(float(a[2]), float(b[2]), k)
+	# The body moves the way it was seen to move (what's drawn, not the raw packets).
+	if delta > 0.0:
+		_seen_vel = _seen_vel.lerp((global_position - _prev_pos) / delta, 1.0 - exp(-15.0 * delta))
+	_prev_pos = global_position
+	_pitch = lerpf(float(a[3]), float(b[3]), k)
+	if _model != null:
+		var m: int = int(b[4])
+		_model.pose(delta, _seen_vel, m != Player.Move.AIR and m != Player.Move.WALLRUN,
+			0.0, m == Player.Move.SLIDE,
+			0 if m != Player.Move.WALLRUN else 1, _pitch)
 
 
 func flat_speed() -> float:
@@ -149,10 +167,16 @@ func take_hit(info: Dictionary) -> bool:
 	var e: Dictionary = info.get("effects", {})
 	if e.has("mark"):
 		marked = maxf(marked, float(e.mark))
+	if _model != null and info.get("dir") is Vector3:
+		_model.flinch(info.dir, clampf(float(info.get("damage", 20.0)) / 30.0, 0.3, 1.5))
 	return float(info.get("damage", 0.0)) >= health
 
 
-func die() -> void:
+func die(dir := Vector3.ZERO) -> void:
+	if alive and visible and _model != null and not _states.is_empty():
+		CompetitorRig.leave_corpse(_model, dir)
+		_model = null
+		_gun = null
 	alive = false
 	visible = false
 	_states.clear()
@@ -161,8 +185,11 @@ func die() -> void:
 
 
 func respawn(pos: Vector3, yaw: float) -> void:
+	if _model == null:
+		_new_model()
 	alive = true
 	visible = true
+	_prev_pos = pos
 	health = 100.0
 	_states.clear()
 	global_position = pos

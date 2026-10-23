@@ -13,6 +13,8 @@ const WORLD := 1
 const RUNNABLE := 2
 const BODIES := 4
 const HITBOX := 8
+## Invisible map bounds (Layout): bodies collide with them, shots and wall probes don't.
+const BOUNDS := 16
 
 ## Width of the orange band that marks a runnable wall (metres). Narrow on purpose: the
 ## brief asks for a hint, not a painted wall.
