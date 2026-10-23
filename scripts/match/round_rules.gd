@@ -21,6 +21,9 @@ extends Node
 ## The host owns the money and the guns (who has what): a client checks the price
 ## itself, equips, and asks; the host takes the money or sends the old gun back.
 ## Node path /root/Main/Match/Rounds on every machine.
+##
+## 爆破 (BombRules, C5) builds on this: the same rounds and money, other ways to win. The
+## hooks it overrides are marked "(hook)".
 
 const BUILD_TIME := 15.0
 const ROUND_TIME := 100.0
@@ -150,6 +153,7 @@ func start() -> void:
 
 func _next_round() -> void:
 	round_no += 1
+	_before_round()
 	for id in tm.entities:
 		if not money.has(id):
 			money[id] = START_MONEY
@@ -213,7 +217,56 @@ func _round_start(n: int, new_wins: Array, new_money: Dictionary, new_builds: Di
 			tm._spawned.rpc(b.id, xf.origin, b.rotation.y, b.weapon.build, b.weapon.name)
 			i += 1
 	main.hud.show_hint("第 %d 回合　備戰 %d 秒：Tab 打開工作台買零件（資金 $%d）" % [n, int(BUILD_TIME), my_money()], 5.0)
+	_round_began()
 	tm.score_changed.emit()
+
+
+## (hook) Host, before a round's money and guns go out.
+func _before_round() -> void:
+	pass
+
+
+## (hook) Every machine, once a round's start has been applied.
+func _round_began() -> void:
+	pass
+
+
+## (hook) Every machine, every tick of a running round (after the clock).
+func _local_tick(_delta: float) -> void:
+	pass
+
+
+## (hook) Host, every tick of the fight: the overclock zone and the time limit.
+func _fight_tick(delta: float) -> void:
+	if not zone_open and phase_left <= ZONE_OPENS:
+		_phase.rpc("fight", phase_left, true)
+	if zone_open:
+		_zone_tick(delta)
+	if phase_left <= 0.0:
+		var hp := [0.0, 0.0]
+		for id in tm.entities:
+			var e = tm.entities[id]
+			if e != null and is_instance_valid(e) and e.alive:
+				hp[int(e.team)] += float(e.health)
+		var w := -1 if absf(hp[0] - hp[1]) < 0.5 else (0 if hp[0] > hp[1] else 1)
+		_round_over(w, "時間到：剩下的血量比較多" if w >= 0 else "時間到：平手")
+
+
+## (hook) Host, after a death in the fight: `alive` is the living count per team.
+func _after_death(victim_team: int, alive: Array) -> void:
+	if alive[victim_team] == 0:
+		var w := 1 - victim_team
+		_round_over(w if alive[w] > 0 else -1, "%s 全滅" % NetSession.TEAM_NAMES[victim_team])
+
+
+## (hook) Every machine, when a round has been decided.
+func _round_ended() -> void:
+	pass
+
+
+## (hook) Extra words for the HUD line.
+func _note(_parts: Array) -> void:
+	pass
 
 
 ## A stable spawn slot per player so a team doesn't stack on one point.
@@ -233,6 +286,7 @@ func _physics_process(delta: float) -> void:
 		var bench: Bench = tm.main.bench
 		if bench.visible and phase_left < 0.4:
 			bench.close()
+	_local_tick(delta)
 	if not tm.net.is_host():
 		return
 	match phase:
@@ -241,18 +295,7 @@ func _physics_process(delta: float) -> void:
 				_phase.rpc("fight", ROUND_TIME, false)
 		"fight":
 			_fight_t += delta
-			if not zone_open and phase_left <= ZONE_OPENS:
-				_phase.rpc("fight", phase_left, true)
-			if zone_open:
-				_zone_tick(delta)
-			if phase_left <= 0.0:
-				var hp := [0.0, 0.0]
-				for id in tm.entities:
-					var e = tm.entities[id]
-					if e != null and is_instance_valid(e) and e.alive:
-						hp[int(e.team)] += float(e.health)
-				var w := -1 if absf(hp[0] - hp[1]) < 0.5 else (0 if hp[0] > hp[1] else 1)
-				_round_over(w, "時間到：剩下的血量比較多" if w >= 0 else "時間到：平手")
+			_fight_tick(delta)
 		"end":
 			if phase_left <= 0.0:
 				if wins[0] >= target() or wins[1] >= target():
@@ -353,9 +396,7 @@ func on_death(victim_id: String, wire: Dictionary) -> void:
 		var e = tm.entities[id]
 		if e != null and is_instance_valid(e) and e.alive:
 			alive[int(e.team)] += 1
-	if alive[victim_team] == 0:
-		var w := 1 - victim_team
-		_round_over(w if alive[w] > 0 else -1, "%s 全滅" % NetSession.TEAM_NAMES[victim_team])
+	_after_death(victim_team, alive)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -397,6 +438,7 @@ func _round_end(winner: int, why: String, new_wins: Array, new_money: Dictionary
 	tm.scores = wins.duplicate()
 	zone_open = false
 	_show_ring(false)
+	_round_ended()
 	var mine := tm.player.team
 	var head := "平手" if winner < 0 else ("拿下這回合" if winner == mine else "輸掉這回合")
 	last_result = why
@@ -512,6 +554,7 @@ func bar_note() -> String:
 			parts.append("備戰")
 		"end":
 			parts.append(last_result)
+	_note(parts)
 	parts.append("$%d" % my_money())
 	if zone_open and int(hold[0]) >= 0 and float(hold[1]) > 0.0:
 		parts.append("超頻區 %s %.0f/%d" % [NetSession.TEAM_NAMES[int(hold[0])], float(hold[1]), int(ZONE_HOLD)])

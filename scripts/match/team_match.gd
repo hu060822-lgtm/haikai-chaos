@@ -93,8 +93,9 @@ func _ready() -> void:
 	player.team = net.my_team()
 	player.display_name = str(NetSession.roster.get(net.my_id(), {}).get("name", NetSession.my_name))
 	time_left = float(NetSession.config.get("minutes", 8)) * 60.0
-	if str(NetSession.config.get("mode", "patch")) == "rounds":
-		rules = RoundRules.new()
+	var mode := str(NetSession.config.get("mode", "patch"))
+	if mode == "rounds" or mode == "bomb":
+		rules = BombRules.new() if mode == "bomb" else RoundRules.new()
 		rules.tm = self
 		add_child(rules)
 	SafeZone.clear()

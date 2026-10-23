@@ -48,6 +48,8 @@ var range_targets: Array[Transform3D] = []
 var team_zones: Array[Vector3] = [Vector3(0, 0, 21.5), Vector3(0, 0, -21.5)]
 ## 預算戰's overclock zone: the bottom of the empty pool.
 var mid_zone := Vector3(0, -POOL_DEPTH, 0)
+## 爆破's bomb sites: A in the endless hallway, B beside the giants' dining table.
+var bomb_sites: Array = [Vector3(-18, 0, 0), Vector3(19, 0, 10)]
 var team_spawns: Array = [
 	[Vector3(0, 0.1, 21.5), Vector3(-3, 0.1, 21.5), Vector3(3, 0.1, 21.5), Vector3(-1.5, 0.1, 23.5), Vector3(1.5, 0.1, 23.5)],
 	[Vector3(0, 0.1, -21.5), Vector3(-3, 0.1, -21.5), Vector3(3, 0.1, -21.5), Vector3(-1.5, 0.1, -23.5), Vector3(1.5, 0.1, -23.5)],

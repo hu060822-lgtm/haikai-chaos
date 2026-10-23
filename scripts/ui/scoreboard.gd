@@ -47,7 +47,7 @@ func refresh() -> void:
 	_box.add_child(head)
 	var map_name: String = NetSession.MAPS.get(Main.map_id, Main.map_id)
 	var rounds := tm.rules != null
-	var t := FpUi.label("%s　%s" % ["預算戰" if rounds else "改版死鬥", map_name], 24, Counterform.DUST_WHITE, FpUi.display())
+	var t := FpUi.label("%s　%s" % [NetSession.MODES.get(str(NetSession.config.get("mode", "patch")), "改版死鬥"), map_name], 24, Counterform.DUST_WHITE, FpUi.display())
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(FpUi.label(tm.score_text(), 20, Counterform.DUST_WHITE, FpUi.numerals()))

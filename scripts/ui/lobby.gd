@@ -38,6 +38,11 @@ const RULES_ROUNDS := ("・每回合一條命。開頭 15 秒備戰：工作台�
 	+ "・贏 $1500，輸 $1000 起（連輸會多）。全滅對方、時間到血多，或最後 40 秒單獨佔住中央超頻區 6 秒就贏。")
 
 
+const RULES_BOMB := ("・預算戰的回合與經濟（工作台就是商店，陣亡掉槍）。藍隊先攻，打到一半交換攻守，資金重來。\n"
+	+ "・進攻：在 A 或 B 點按住 E 3.5 秒安裝炸彈，40 秒後引爆就贏；或全滅防守方。\n"
+	+ "・防守：時間到還沒裝、裝之前全滅進攻方、或按住 E 6 秒拆掉炸彈。安裝、拆除各 +$300。")
+
+
 func _init() -> void:
 	set_anchors_preset(PRESET_FULL_RECT)
 	theme = FpUi.theme()
@@ -272,7 +277,8 @@ func _refresh() -> void:
 		var b: Button = _map_buttons[id]
 		b.set_pressed_no_signal(str(cfg.get("map", "folded")) == id)
 		b.disabled = not host
-	var rounds := str(cfg.get("mode", "patch")) == "rounds"
+	var mode := str(cfg.get("mode", "patch"))
+	var rounds := mode != "patch"
 	for id in _mode_buttons:
 		var b: Button = _mode_buttons[id]
 		b.set_pressed_no_signal(str(cfg.get("mode", "patch")) == id)
@@ -281,9 +287,9 @@ func _refresh() -> void:
 	_time_label.get_parent().visible = not rounds
 	_rounds_label.get_parent().visible = rounds
 	_rounds_label.text = "先贏　%d 回合" % int(cfg.get("rounds", 5))
-	_rules.text = RULES_ROUNDS if rounds else RULES_PATCH
-	_title.text = "預算戰" if rounds else "改版死鬥"
-	_subtitle.text = "BUDGET WAR　回合制" if rounds else "PATCH WAR　團隊死鬥"
+	_rules.text = {"rounds": RULES_ROUNDS, "bomb": RULES_BOMB}.get(mode, RULES_PATCH)
+	_title.text = NetSession.MODES.get(mode, "改版死鬥")
+	_subtitle.text = {"rounds": "BUDGET WAR　回合制", "bomb": "DEMOLITION　回合制爆破"}.get(mode, "PATCH WAR　團隊死鬥")
 	_host_box.modulate.a = 1.0 if host else 0.55
 	_bots.disabled = not host
 	_size_label.text = "每隊人數　%d" % int(cfg.get("team_size", 4))

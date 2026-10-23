@@ -30,6 +30,11 @@ var target: Node3D
 var passive := false
 ## Holds still and doesn't shoot (預算戰's build phase).
 var frozen := false
+## Where it wants to be when it has no one to fight (爆破: a bomb site, the bomb), or INF.
+var objective := Vector3.INF
+var _stuck := 0.0
+var _hurt_at := -100.0
+var _detour := 0.0
 var marked := 0.0
 ## Netplay id ("b3") and how hard it hits (sparring bots hit softer than team-match ones).
 var id := ""
@@ -175,12 +180,28 @@ func _physics_process(delta: float) -> void:
 	else:
 		var to_goal := _goal - global_position
 		to_goal.y = 0
-		if _last_seen != Vector3.INF:
+		_detour = maxf(_detour - delta, 0.0)
+		if objective != Vector3.INF and _detour <= 0.0:
+			to_goal = objective - global_position
+			to_goal.y = 0
+			if to_goal.length() < 0.8:
+				to_goal = Vector3.ZERO
+			# Walking into a wall on the way: go round by a random waypoint for a bit.
+			_stuck = _stuck + delta if to_goal.length() > 1.5 and flat_speed() < 0.6 else 0.0
+			if _stuck > 1.2:
+				_stuck = 0.0
+				_detour = 2.5
+				_pick_goal()
+		elif _last_seen != Vector3.INF:
 			to_goal = _last_seen - global_position
 			to_goal.y = 0
 			if to_goal.length() < 1.5:
 				_last_seen = Vector3.INF
-		if to_goal.length() < 1.2:
+		if objective != Vector3.INF and _detour <= 0.0:
+			if to_goal.length() > 0.01:
+				_face(global_position + to_goal, delta, 5.0)
+				flat = to_goal.normalized() * speed * 0.8
+		elif to_goal.length() < 1.2:
 			_pick_goal()
 		elif to_goal.length() > 0.01:
 			_face(global_position + to_goal, delta, 5.0)
@@ -210,6 +231,16 @@ func _face(point: Vector3, delta: float, rate: float) -> void:
 
 func _eye() -> Vector3:
 	return global_position + Vector3(0, 1.6, 0)
+
+
+## In a fight right now (sees a target).
+func fighting() -> bool:
+	return _see and target != null
+
+
+## Shot at in the last `seconds`.
+func hurt_within(seconds: float) -> bool:
+	return Time.get_ticks_msec() / 1000.0 - _hurt_at < seconds
 
 
 func flat_speed() -> float:
@@ -316,6 +347,7 @@ func take_hit(info: Dictionary) -> bool:
 		_burn_info = info
 	if e.has("mark"):
 		marked = maxf(marked, float(e.mark))
+	_hurt_at = Time.get_ticks_msec() / 1000.0
 	# Being shot turns it around (toward whoever did it).
 	var by = info.get("attacker")
 	if by is Node3D and is_instance_valid(by) and by != self and by.get("alive") and by.get("team") != null and int(by.team) != team:
