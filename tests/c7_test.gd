@@ -120,10 +120,12 @@ func _test_free_fit() -> void:
 	for fid in ["revolver", "flamethrower", "bubble_gun", "minigun"]:
 		for pid in Arsenal.PARTS:
 			var p: Dictionary = Arsenal.PARTS[pid]
+			if p.slot == "ammo":
+				continue  # ammo follows the calibre (ammo_test.gd)
 			var slot: String = "rail_l" if p.slot == "rail" else p.slot
 			if not pid in Arsenal.parts_for({"frame": fid, "parts": {}}, slot):
 				misfit += 1
-	check(misfit == 0, "any part goes on a revolver, a flamethrower, a bubble gun or a minigun (%d refused)" % misfit)
+	check(misfit == 0, "any part but ammo goes on a revolver, a flamethrower, a bubble gun or a minigun (%d refused)" % misfit)
 	# A silencer barrel no longer blocks the muzzle.
 	var b := Arsenal.clean({"frame": "carbine", "parts": {"barrel": "integral_suppressor", "muzzle": Arsenal.parts_for("carbine", "muzzle")[0]}})
 	check(b.parts.has("muzzle"), "an integral suppressor still leaves room for a muzzle device")

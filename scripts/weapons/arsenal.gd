@@ -19,6 +19,9 @@ class_name Arsenal
 ## C7: every gun takes every part. All slots are open on every frame, any part fits its
 ## slot whatever the frame, tags or calibre, and nothing blocks a slot (a suppressed barrel
 ## still takes a muzzle device). The old fitting rules stay below for FREE_FIT = false.
+## Ammo is the one exception: rounds still have to fit the chamber, so an ammo part goes
+## only on a build whose calibre (after any conversion part) it names, by calibre id or
+## family ("cal" pins exact calibres). See ammo_fits.
 const FREE_FIT := true
 
 ## Every slot a build can have, parents before the slots they open (clean() walks this
@@ -975,6 +978,25 @@ const PARTS := {
 		"effects": {"speed_bonus": 0.6}, "desc": "你跑多快，子彈就多痛：全速時傷害加六成。"},
 	"cluster_rockets": {"name": "集束火箭", "slot": "ammo", "price": 240, "weight": 0.0, "fits": ["gun"], "cal": ["rocket"],
 		"effects": {"explode": 1.5}, "x": {"damage": 0.7}, "desc": "火箭頭裝了小炸藥：命中會小爆炸。"},
+	# Ammo for the odd calibres, so every gun has something to load.
+	"galvanized_nails": {"name": "鍍鋅長釘", "slot": "ammo", "price": 60, "weight": 0.0, "fits": ["nail"],
+		"x": {"damage": 1.1, "range": 1.2}, "+": {"pen": 15.0, "reliability": 4.0}, "desc": "全新的長釘：飛得直、打得深，不會卡。"},
+	"napalm_gel": {"name": "凝固汽油", "slot": "ammo", "price": 160, "weight": 0.0, "fits": ["fuel"],
+		"x": {"damage": 0.85, "range": 0.85}, "effects": {"burn": 5.0}, "desc": "黏稠的燃料：噴得比較近，黏在身上燒很久。"},
+	"high_octane": {"name": "高辛烷燃料", "slot": "ammo", "price": 140, "weight": 0.0, "fits": ["fuel"],
+		"x": {"damage": 1.2, "range": 1.25, "reserve": 0.8, "flash": 1.3}, "desc": "賽車用的燃料：火焰更猛、噴得更遠，燒得也更快。"},
+	"overcharged_cell": {"name": "超頻電池", "slot": "ammo", "price": 180, "weight": 0.0, "fits": ["cell"],
+		"x": {"damage": 1.2, "heat": 1.4}, "+": {"reliability": -6.0}, "desc": "拆掉保護電路的電池：更痛，也更燙，偶爾斷電。"},
+	"stable_cell": {"name": "穩壓電池", "slot": "ammo", "price": 120, "weight": 0.0, "fits": ["cell"],
+		"x": {"damage": 0.92, "heat": 0.65}, "+": {"reliability": 5.0}, "desc": "軍規穩壓電池：輸出平穩，比較不會過熱。"},
+	"big_duck": {"name": "巨無霸橡皮鴨", "slot": "ammo", "price": 200, "weight": 0.0, "fits": ["duck"],
+		"x": {"damage": 1.3, "reserve": 0.6, "velocity": 0.85}, "effects": {"explode": 5.0}, "desc": "浴缸那麼大的鴨子：爆炸更大，帶不了幾隻。"},
+	"diamond_saw": {"name": "鑽石鋸片", "slot": "ammo", "price": 180, "weight": 0.0, "fits": ["saw"],
+		"x": {"damage": 1.15}, "+": {"pen": 30.0}, "effects": {"bleed": 2.0}, "desc": "刃口鑲工業鑽石：切得更深，傷口會流血。"},
+	"sticky_soap": {"name": "黏膠泡泡水", "slot": "ammo", "price": 90, "weight": 0.0, "fits": ["soap"],
+		"effects": {"slow": 2.0}, "desc": "加了膠水的泡泡：被包住的人出來後還黏黏的，慢兩秒。"},
+	"co2_cartridge": {"name": "二氧化碳鋼瓶", "slot": "ammo", "price": 110, "weight": 0.0, "fits": ["air"],
+		"x": {"damage": 1.15, "recoil": 1.2, "reload": 1.15}, "desc": "高壓鋼瓶取代打氣：戳得更狠，換瓶比較慢。"},
 	"spring_stock": {"name": "彈簧槍托", "slot": "stock", "price": 260, "weight": 0.6, "fits": ["gun", "bolt", "energy", "launcher"],
 		"adds": ["buttpad"], "effects": {"recoil_push": 2.0}, "x": {"recoil": 0.7}, "desc": "槍托裡一根大彈簧：後座不往上跳，改成把你整個人往後彈。"},
 	"counterweight_stock": {"name": "配重槍托", "slot": "stock", "price": 200, "weight": 2.5, "fits": ["gun", "bolt", "energy", "launcher"],
@@ -1187,7 +1209,12 @@ static func fits(frame_id: String, part_id: String) -> bool:
 	if f.is_empty() or p.is_empty():
 		return false
 	if FREE_FIT:
-		return true
+		if p.slot != "ammo":
+			return true
+		for cal in _frame_calibers(frame_id):
+			if ammo_fits(cal, part_id):
+				return true
+		return false
 	if not _frame_ok(frame_id, p):
 		return false
 	return _tags_fit(frame_id, _frame_calibers(frame_id), p)
@@ -1444,12 +1471,35 @@ static func _fits_slot(frame_id: String, cal: String, slot: String, part_id: Str
 	if p.is_empty() or p.slot != slot_type(slot):
 		return false
 	if FREE_FIT:
-		return true
+		return p.slot != "ammo" or ammo_fits(cal, part_id)
 	if not _frame_ok(frame_id, p):
 		return false
 	if p.has("cal") and not cal in p.cal:
 		return false
 	return _tags_fit(frame_id, [cal], p)
+
+
+## Does this ammo load into a gun of this calibre? By exact calibre when the part pins
+## them ("cal"), otherwise by calibre id or family named in "fits" (pistol, rifle, shell,
+## bolt...). Frame tags don't count: a crossbow bolt doesn't fit a pistol.
+static func ammo_fits(cal: String, part_id: String) -> bool:
+	var p := part(part_id)
+	if p.get("slot", "") != "ammo":
+		return false
+	if p.has("cal"):
+		return cal in p.cal
+	if p.fits is String:
+		return true
+	return cal in p.fits or CALIBERS.get(cal, {}).get("family", "") in p.fits
+
+
+## Ammo parts that load into this calibre.
+static func ammo_for(cal: String) -> Array[String]:
+	var result: Array[String] = []
+	for id in PARTS:
+		if PARTS[id].slot == "ammo" and ammo_fits(cal, id):
+			result.append(id)
+	return result
 
 
 static func _frame_ok(frame_id: String, p: Dictionary) -> bool:
@@ -1475,7 +1525,7 @@ static func _frame_calibers(frame_id: String) -> Array:
 	var cals := [str(frame(frame_id).get("cal", DEFAULTS.cal))]
 	for id in PARTS:
 		var p: Dictionary = PARTS[id]
-		if p.has("set_cal") and _frame_ok(frame_id, p) and _tags_fit(frame_id, [], p) and not p.set_cal in cals:
+		if p.has("set_cal") and (FREE_FIT or (_frame_ok(frame_id, p) and _tags_fit(frame_id, [], p))) and not p.set_cal in cals:
 			cals.append(p.set_cal)
 	return cals
 
