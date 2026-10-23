@@ -5,6 +5,20 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 
 目前是 **C4 原型**：兩種連線模式（改版死鬥、回合制「預算戰」）、**中繼伺服器**（五碼房間碼，不同網路直接連）、主機判定＋延遲補償、擊殺回放、重做的第一人稱手臂。三張地圖（灰盒對戰圖 FOLDED WORKS、夢核地圖「夢核之家」、移動測試場 MOVEMENT LAB）、完整的前端（主畫面、快速配對、自訂房間、房間大廳、計分板、結算畫面）、原創配樂（大廳、對戰、結算）、單機練習（陪練機器人、靶場）、**連線團隊模式「改版死鬥 PATCH WAR」**（最多 10 人，空位補機器人）、改槍工作台（223 個零件）、換彈手部動作、擊殺列表、死亡畫面、移動除錯面板。
 
+## C5 新東西
+
+- **爆破 DEMOLITION**（房間大廳選模式）：建在預算戰上的回合制爆破。地圖兩個炸彈點 A／B（地上有圈和大字）。進攻方在點內按住 **E** 3.5 秒安裝炸彈（+$300），引信 40 秒；防守方站在炸彈旁按住 E 6 秒拆除。時間到還沒裝＝防守方贏；裝了之後進攻方全滅回合也不會結束，要拆掉才算數。半場換邊，金錢和槍歸零。機器人會自己去裝、去拆。
+- **大地圖**：三張地圖都改成 CS／VALORANT 尺寸（150–185 m），用平面圖（`Layout`）挖出出生區、中路、A／B 點、外圍長廊、側門和捷徑，地圖轉半圈對稱，兩邊公平。
+  - **折疊工廠**：原本的三層大廳變成中路，牆上開了門；外圍是混凝土模組長廊，A 在西、B 在東，各有三個入口（自家長廊、對面長廊、大廳的側門），點上有掩體和高台。
+  - **夢核之家**：原本的房子變成中路；外面是黃色後室走廊，A／B 是白磁磚泳池房（柱子、救生員高椅）。
+  - **斷層貨場（新）**：貨櫃場中路（中央吊車底座可以站上去）、兩座有屋頂的倉庫當炸彈點、外圍長廊、通往另一點的隧道、連接長廊／中路／出生區的工頭辦公室。
+- **不會跑出地圖**：外牆上方有看不見的牆一路到天花板（子彈和牆跑感測不受影響），不能翻上外牆頂端；就算掉到地板下或跑到牆外，也會被拉回最後站穩的位置。
+- **機器人尋路**：在大地圖上用 A* 沿著走廊走、會轉彎、卡住會重新規劃。
+- **第一人稱槍**：改由獨立的槍械鏡頭繪製（固定 64° 視角，和主流射擊遊戲一樣），槍更大、不受 FOV 設定影響，也不會再插進牆裡。
+- **人物動作**：所有人（玩家、機器人、擊殺回放裡的人）跑步時雙腳會跨步、膝蓋彎曲、身體前傾；空中縮腿、滑鏟前腿伸出、被打中身體往後一震、上下看時上半身跟著轉。**死亡時直接軟掉**：膝蓋先軟、髖部掉下、身體往後（或往前）倒在地上彈一下、手和槍垂下，屍體留 6 秒再沉下去。
+- **主機記錄血量**：主機根據自己轉送的命中幫每個人記血量（取最保守的估計），有人該死了 2 秒還活著，主機直接判死。改血量的作弊沒用了。
+- **對戰紀錄與平衡報表**：每場結束（或中途離開）都會把擊殺（槍身、零件、距離、部位、身法）、購買、回合結果存到 `user://match_logs/`。設定（Esc）→「匯出平衡報表」產生 `balance_report.md`：38 把槍身的擊殺時間（10／20／40 m）、擊殺週期、爆頭幾發、機動，標出偏強／偏弱／便宜又快；223 個零件裝上去的變化；加上所有對戰紀錄的實戰數據（各槍擊殺佔比、爆頭率、平均距離、被買次數）。也能在命令列跑 `godot --headless --path . --script res://tools/balance.gd -- out.md`。
+
 ## C4 新東西
 
 - **中繼伺服器**（`relay/`）：房主和玩家都只連到中繼伺服器，它在同一間房裡轉送封包，所以不同網路的人用 **5 個字的房間碼**（例如 `7AN68`）就能連，不用開埠、不用 Radmin。遊戲內建 `wss://haikai-relay.hu060822.workers.dev`（Cloudflare Workers 免費方案，部署方式見 [`relay/README.md`](relay/README.md)）；設定（Esc）→「中繼伺服器」可以換成別台。自訂房間預設開在中繼伺服器上（另有「只在區網開房」），快速配對也會找中繼伺服器上的房間。舊的 10 字區網房間碼照樣能用。
@@ -19,7 +33,7 @@ HAIKAI 的衍伸作：回合制競技 PvP 射擊（瓦羅蘭 / CS:GO 的骨架�
 - **開始配對**：自動在區網找開著的房間（UDP 24681 廣播），找到就加入人最少的；找不到就直接幫你開一間，之後按「開始配對」的人會自動進來。
 - **自訂房間**：開房會得到一組**房間碼**（例如 `8G2KA-04R3R`，是 IP 和埠編碼成的 10 個字），複製給朋友貼上就能加入；也可以直接輸入 IP。下方列出區網裡所有開著的房間，點一下就加入。
 - **開放網路連線**：房間大廳裡的按鈕會用 UPnP 在路由器上開埠，成功後給你一組外網房間碼；路由器不支援時改用 Radmin / ZeroTier 這類虛擬區網。
-- 房間大廳：兩隊名單、準備狀態、換隊、地圖（折疊工廠／夢核之家／隨機）、房主設定每隊人數（1–5）、目標分數、時間上限、空位補機器人。
+- 房間大廳：兩隊名單、準備狀態、換隊、地圖（折疊工廠／夢核之家／斷層貨場／隨機）、房主設定每隊人數（1–5）、目標分數、時間上限、空位補機器人。
 - 對戰中按住 Tab 看計分板（分數、擊殺、助攻、陣亡、延遲），輕按 Tab 開工作台。結算畫面有勝負、比分、MVP 和完整計分板。
 
 ## 改版死鬥 PATCH WAR（C2）
@@ -107,7 +121,14 @@ C3 調整（參考 ULTRAKILL 和 Apex）：跑速 7.9、衝刺跑 11.0、地面�
 | `scripts/match/team_match.gd` | 改版死鬥：重生、狀態同步、命中與死亡、版本新鮮度計分、版本答案 |
 | `scripts/match/safe_zone.gd` | 重生安全圈與「脫離戰鬥」規則 |
 | `scripts/match/round_rules.gd` | 預算戰：回合、商店價格、金錢、超頻區 |
-| `scripts/match/hit_judge.gd` | 主機的命中判定（倒帶驗證、射速桶） |
+| `scripts/match/hit_judge.gd` | 主機的命中判定（倒帶驗證、射速桶）與血量記帳 |
+| `scripts/match/bomb_rules.gd` | 爆破：炸彈點、安裝／拆除、引信、半場換邊、機器人目標 |
+| `scripts/match/match_log.gd`, `scripts/match/balance.gd` | 對戰紀錄（`user://match_logs/`）與平衡報表 |
+| `scripts/maps/layout.gd` | 大地圖平面圖：挖出房間與走廊、合併成牆、隱形高牆與天花板、A* 尋路 |
+| `scripts/maps/map_guard.gd` | 出界拉回 |
+| `scripts/maps/fault_yard.gd` | 斷層貨場 |
+| `scripts/actors/competitor_rig.gd` | 人物骨架與程序動作（跑步、空中、滑鏟、中彈、死亡軟倒、屍體） |
+| `scripts/player/view_model.gd` | 第一人稱槍與手（獨立槍械鏡頭、換彈、瞄準） |
 | `scripts/fx/kill_cam.gd` | 擊殺回放（錄影、鬼影、肩後鏡頭） |
 | `scripts/net/relay_peer.gd`, `relay/` | 中繼連線（MultiplayerPeer）與中繼伺服器（Node／Cloudflare Worker） |
 | `scripts/ui/lobby.gd` | 房間大廳（房間碼、隊伍、準備、地圖、規則） |
@@ -130,7 +151,12 @@ C3 調整（參考 ULTRAKILL 和 Apex）：跑速 7.9、衝刺跑 11.0、地面�
 tools/run_tests.sh <godot 路徑>    # 全部測試：舊的身法/開槍/TTK、槍與零件、C2 零件與計分、手感 20 項、三條路線（60/120/240 Hz）、連線
 tools/net_test.sh <godot 路徑>     # 連線測試：同一台電腦開房主＋用戶端兩個程序，各自檢查自己那邊（第三個參數 relay＝透過本機中繼伺服器）
 godot --headless --path . --script res://tests/rounds_test.gd   # 預算戰
-godot --headless --path . --script res://tests/judge_test.gd    # 主機命中判定
+godot --headless --path . --script res://tests/judge_test.gd    # 主機命中判定＋血量記帳
+godot --headless --path . --script res://tests/bomb_test.gd     # 爆破
+godot --headless --path . --script res://tests/balance_test.gd  # 平衡報表、對戰紀錄
+godot --headless --path . --script res://tests/maps_test.gd     # 大地圖：尺寸、每個出生區到 A／B／中路的路、第二條路、機器人自己走到 A、出界拉回
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/c5_map_shots.gd -- <資料夾> <folded|dream|yard>   # 大地圖平面圖與各區
+xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/anim_shots.gd -- <資料夾>      # 人物動作（跑步、滑鏟、死亡軟倒）
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/rounds_shots.gd -- <資料夾>   # 預算戰（大廳、備戰、商店、超頻區）
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/killcam_shots.gd -- <資料夾>  # 擊殺回放
 xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/arms_shots.gd -- <資料夾>     # 第一人稱手臂
