@@ -23,6 +23,7 @@ var _size_label: Label
 var _score_label: Label
 var _time_label: Label
 var _bots: CheckButton
+var _bot_level_label: Label
 var _start: Button
 var _ready_btn: Button
 var _swap: Button
@@ -173,6 +174,7 @@ func _ready() -> void:
 	_bots.focus_mode = Control.FOCUS_NONE
 	_bots.toggled.connect(func(on: bool) -> void: net.set_config("bots", on))
 	_host_box.add_child(_bots)
+	_bot_level_label = _stepper("bot_level", 0, 2, 1)
 	_rules = FpUi.label("", 15, Color(Counterform.DUST_WHITE, 0.75), FpUi.body())
 	_rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_rules.size_flags_vertical = SIZE_EXPAND_FILL
@@ -296,6 +298,10 @@ func _refresh() -> void:
 	_score_label.text = "目標分數　%d" % int(cfg.get("score", 50))
 	_time_label.text = "時間上限　%d 分" % int(cfg.get("minutes", 8))
 	_bots.set_pressed_no_signal(bool(cfg.get("bots", true)))
+	_bot_level_label.get_parent().visible = bool(cfg.get("bots", true))
+	_bot_level_label.text = "機器人難度　%s" % BotLevel.label(int(cfg.get("bot_level", 1)))
+	_bot_level_label.tooltip_text = BotLevel.INFO[clampi(int(cfg.get("bot_level", 1)), 0, 2)]
+	_bot_level_label.mouse_filter = Control.MOUSE_FILTER_PASS
 	var in_room := NetSession.active and not NetSession.roster.is_empty()
 	for t in 2:
 		var box := _teams[t]

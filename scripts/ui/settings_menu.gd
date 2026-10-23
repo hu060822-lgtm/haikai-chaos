@@ -150,6 +150,22 @@ func _general() -> Control:
 	box.add_child(_toggle("輔助瞄準（準心靠近敵人時變慢、輕微跟隨）", Settings.aim_assist, func(on: bool) -> void:
 		Settings.aim_assist = on
 		Settings.save()))
+	box.add_child(FpUi.label("練習場機器人難度（差在行為和戰術，槍法一樣）", 16))
+	var bot_row := HBoxContainer.new()
+	box.add_child(bot_row)
+	var bot_buttons: Array[Button] = []
+	for i in BotLevel.NAMES.size():
+		var bb := FpUi.button(BotLevel.NAMES[i], 16)
+		bb.toggle_mode = true
+		bb.button_pressed = Settings.bot_level == i
+		bb.tooltip_text = BotLevel.INFO[i]
+		bot_buttons.append(bb)
+		bot_row.add_child(bb)
+		bb.pressed.connect(func() -> void:
+			Settings.bot_level = i
+			Settings.save()
+			for j in bot_buttons.size():
+				bot_buttons[j].set_pressed_no_signal(j == i))
 	box.add_child(FpUi.label("鏡頭效果（速度 FOV、傾斜、落地晃動、速度線）", 16))
 	var fx_row := HBoxContainer.new()
 	box.add_child(fx_row)

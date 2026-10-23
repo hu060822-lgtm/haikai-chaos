@@ -17,6 +17,7 @@ static var relay_url := ""      # the relay server (wss://…); empty = the buil
 static var kit := "anchor"     # the class (C6), Kit ids
 static var look := 3            # Faultprint.LOOKS: 0-2 the print looks, 3 Counterform (official)
 static var aim_assist := true  # C7: a light aim assist (Player._aim_assist)
+static var bot_level := 1       # C9: practice bots' difficulty (BotLevel: 0 簡單, 1 中等, 2 困難)
 static var _loaded := false
 
 
@@ -38,6 +39,7 @@ static func load_all() -> void:
 		relay_url = str(cfg.get_value("net", "relay", relay_url))
 		kit = Kit.valid(str(cfg.get_value("game", "kit", kit)))
 		aim_assist = bool(cfg.get_value("game", "aim_assist", aim_assist))
+		bot_level = clampi(int(cfg.get_value("game", "bot_level", bot_level)), 0, 2)
 	CameraFx.load_settings()
 	apply_display()
 
@@ -57,6 +59,7 @@ static func save() -> void:
 	cfg.set_value("net", "relay", relay_url)
 	cfg.set_value("game", "kit", kit)
 	cfg.set_value("game", "aim_assist", aim_assist)
+	cfg.set_value("game", "bot_level", bot_level)
 	cfg.save(FILE)
 
 

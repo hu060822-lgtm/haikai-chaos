@@ -162,6 +162,7 @@ func _make_bots() -> void:
 			bot.nav = main.map.get("layout")
 			bot.damage_mult = BOT_DAMAGE
 			bot.passive = bots_passive
+			bot.set_level(int(NetSession.config.get("bot_level", BotLevel.MEDIUM)))
 			main.add_child(bot)
 			_bot_seed += 7919
 			bot.spawn(spawn_point(team, humans[team] + i).origin, _bot_seed)

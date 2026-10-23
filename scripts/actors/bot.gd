@@ -4,6 +4,10 @@ extends CharacterBody3D
 ## you, and carries a random custom gun (so the kill feed and death screen have
 ## something to show). It is deliberately beatable by moving: its aim error grows with
 ## how fast you go, so the movement tech pays off.
+##
+## Difficulty (C9, BotLevel): 簡單 / 中等 / 困難 change how it behaves, never how well it
+## aims: what it notices and hears, where it stands, when it reloads, backs off or takes
+## cover, and (困難) calling out, hunting and flanking with its team.
 
 signal died(bot: Bot, info: Dictionary)
 ## A shot left the gun (for netplay: the other screens draw the tracers).
@@ -75,6 +79,20 @@ var _stagger := 0.0
 var _lunge := Vector3.ZERO
 var _lunge_left := 0.0
 var _ability_think := 0.0
+## Difficulty (BotLevel.EASY / MEDIUM / HARD) and its numbers.
+var level := BotLevel.MEDIUM
+var _p: Dictionary = BotLevel.profile(BotLevel.MEDIUM)
+## When it last saw (or heard of) someone at _last_seen: it gives up after _p.memory.
+var _seen_at := -100.0
+## 困難: the cover it is heading for (or sitting in), how long it has sat there, and when
+## it may look for cover again.
+var _cover_at := Vector3.INF
+var _cover_wait := 0.0
+var _cover_cd := 0.0
+var _cover_left := 0.0
+## 困難: a flanking spot to reach before going for a teammate's callout.
+var _flank_at := Vector3.INF
+var _flank_left := 0.0
 
 
 func _ready() -> void:
@@ -134,6 +152,10 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	visible = true
 	_see = false
 	_last_seen = Vector3.INF
+	_cover_at = Vector3.INF
+	_cover_wait = 0.0
+	_cover_cd = 0.0
+	_flank_at = Vector3.INF
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", Geo.HITBOX)
 	_pick_goal()
@@ -148,6 +170,11 @@ func arm(build: Dictionary) -> void:
 		_gun.queue_free()
 	_gun = GunModels.build(weapon.build)
 	_model.find_child("GunHand", true, false).add_child(_gun)
+
+
+func set_level(l: int) -> void:
+	level = clampi(l, BotLevel.EASY, BotLevel.HARD)
+	_p = BotLevel.profile(level)
 
 
 func set_kit(id: String) -> void:
@@ -175,6 +202,8 @@ func lunge(v: Vector3, seconds: float) -> void:
 func _use_ability() -> void:
 	if ability == null or not ability.can_use() or passive:
 		return
+	if float(_p.ability) < 1.0 and rng.randf() > float(_p.ability):
+		return
 	var sees := _see and target != null and is_instance_valid(target)
 	var d := global_position.distance_to(target.global_position) if sees else INF
 	match kit_id:
@@ -191,6 +220,8 @@ func _use_ability() -> void:
 				ability.press()
 		"ram":
 			if sees and d < 14.0 and rng.randf() < 0.5:
+				ability.press()
+			elif sees and _p.punish and d < 22.0 and _target_reloading():
 				ability.press()
 
 
@@ -240,6 +271,12 @@ func _physics_process(delta: float) -> void:
 	if _think <= 0.0:
 		_think = 0.12
 		_look_for_target()
+	# Reload early when nobody's in sight (簡單 waits until the magazine is empty).
+	if not _see and float(_p.reload) > 0.0 and not weapon.is_reloading() \
+			and weapon.ammo < int(weapon.stats.mag) * float(_p.reload):
+		weapon.start_reload()
+	if _p.cover:
+		_think_cover(delta)
 	var speed := SPEED * (0.55 if _slow > 0.0 else 1.0)
 	var flat := Vector3.ZERO
 	if _lunge_left > 0.0:
@@ -254,19 +291,16 @@ func _physics_process(delta: float) -> void:
 	if _see and target != null:
 		_reaction -= delta
 		_face(target.global_position, delta, 9.0)
-		# Strafe left and right while fighting, sometimes hop.
-		_strafe_left -= delta
-		if _strafe_left <= 0.0:
-			_strafe = -_strafe if rng.randf() < 0.7 else _strafe
-			_strafe_left = rng.randf_range(0.4, 1.1)
-			if is_on_floor() and rng.randf() < 0.15:
-				velocity.y = 6.5
-		flat = global_basis.x * _strafe * speed * 0.7
-		var d := global_position.distance_to(target.global_position)
-		if d > float(weapon.stats.range) * 0.8:
-			flat += -global_basis.z * speed * 0.6
+		if _cover_at != Vector3.INF:
+			# Falling back to cover, still shooting.
+			flat = _nav_move(delta, speed) if nav != null else _straight_to(_cover_at, speed)
+			_face(target.global_position, delta, 9.0)
+		else:
+			flat = _fight_move(delta, speed)
 		if _reaction <= 0.0 and not passive:
 			_try_shoot()
+	elif _cover_at != Vector3.INF and nav == null:
+		flat = _straight_to(_cover_at, speed)
 	elif nav != null:
 		flat = _nav_move(delta, speed)
 	else:
@@ -292,12 +326,12 @@ func _physics_process(delta: float) -> void:
 		if objective != Vector3.INF and _detour <= 0.0:
 			if to_goal.length() > 0.01:
 				_face(global_position + to_goal, delta, 5.0)
-				flat = to_goal.normalized() * speed * 0.8
+				flat = to_goal.normalized() * speed * float(_p.roam)
 		elif to_goal.length() < 1.2:
 			_pick_goal()
 		elif to_goal.length() > 0.01:
 			_face(global_position + to_goal, delta, 5.0)
-			flat = to_goal.normalized() * speed * 0.8
+			flat = to_goal.normalized() * speed * float(_p.roam)
 	velocity.x = lerpf(velocity.x, flat.x, 1.0 - exp(-8.0 * delta))
 	velocity.z = lerpf(velocity.z, flat.z, 1.0 - exp(-8.0 * delta))
 	velocity.y -= GRAVITY * delta
@@ -323,8 +357,17 @@ func _physics_process(delta: float) -> void:
 func _nav_move(delta: float, speed: float) -> Vector3:
 	if _last_seen != Vector3.INF and _flat_to(_last_seen) < 1.5:
 		_last_seen = Vector3.INF
+	if _flank_at != Vector3.INF:
+		_flank_left -= delta
+		if _flat_to(_flank_at) < 2.0 or _flank_left <= 0.0:
+			_flank_at = Vector3.INF
 	var dest := objective if objective != Vector3.INF else (_last_seen if _last_seen != Vector3.INF else _goal)
-	if objective == Vector3.INF and _last_seen == Vector3.INF and _flat_to(_goal) < 1.5:
+	if _flank_at != Vector3.INF and objective == Vector3.INF:
+		dest = _flank_at
+	if _cover_at != Vector3.INF:
+		dest = _cover_at
+	if objective == Vector3.INF and _last_seen == Vector3.INF and _flank_at == Vector3.INF and _cover_at == Vector3.INF \
+			and _flat_to(_goal) < 1.5:
 		_pick_goal()
 		dest = _goal
 	_path_t -= delta
@@ -346,8 +389,186 @@ func _nav_move(delta: float, speed: float) -> Vector3:
 		_path_t = 0.0
 		if is_on_floor():
 			velocity.y = 6.8
-	_face(global_position + to, delta, 6.0)
-	return to.normalized() * speed * 0.85
+	# 困難 walks with its gun on the corner it expects you round (where you were last seen);
+	# the others look where they're going.
+	if level == BotLevel.HARD and _last_seen != Vector3.INF and _flat_to(_last_seen) < 30.0 and not _see:
+		_face(_last_seen, delta, 6.0)
+	elif not _see:
+		_face(global_position + to, delta, 6.0)
+	return to.normalized() * speed * (0.95 if _cover_at != Vector3.INF else float(_p.roam))
+
+
+## Where it moves in a fight (it is already facing the target). 簡單 mostly stands and
+## walks in, 中等 strafes and hops and backs off when hurt, 困難 also holds its gun's best
+## distance and closes in on someone reloading.
+func _fight_move(delta: float, speed: float) -> Vector3:
+	_strafe_left -= delta
+	if _strafe_left <= 0.0:
+		_strafe = -_strafe if rng.randf() < 0.7 else _strafe
+		# 困難 breaks rhythm: shorter, less even strafes.
+		_strafe_left = rng.randf_range(0.25, 0.9) if level == BotLevel.HARD else rng.randf_range(0.4, 1.1)
+		if is_on_floor() and rng.randf() < float(_p.hop):
+			velocity.y = 6.5
+	var flat := global_basis.x * _strafe * speed * float(_p.strafe)
+	var d := global_position.distance_to(target.global_position)
+	var fwd := -global_basis.z
+	if _p.hold_range:
+		var best := clampf(float(weapon.stats.range) * 0.45, 5.0, 26.0)
+		if _p.punish and _target_reloading():
+			best = 3.0
+		if d > best * 1.3:
+			flat += fwd * speed * 0.75
+		elif d < best * 0.6:
+			flat -= fwd * speed * 0.6
+	elif float(_p.approach) > 0.0:
+		if d > float(_p.approach):
+			flat += fwd * speed * 0.5
+	elif d > float(weapon.stats.range) * 0.8:
+		flat += fwd * speed * 0.6
+	if float(_p.retreat) > 0.0 and health < float(_p.retreat) and not _p.cover:
+		flat -= fwd * speed * 0.6
+	return flat
+
+
+func _straight_to(p: Vector3, speed: float) -> Vector3:
+	var to := p - global_position
+	to.y = 0.0
+	return to.normalized() * speed if to.length() > 0.3 else Vector3.ZERO
+
+
+func _target_reloading() -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+	var w = target.get("weapon")
+	return w is Weapon and (w as Weapon).is_reloading()
+
+
+## Nobody in sight: gunshots in earshot (中等, 困難) and the team's callouts (困難) give it
+## somewhere to go.
+func _listen() -> void:
+	if _last_seen != Vector3.INF and BotLevel.now() - _seen_at < 1.0:
+		return
+	if float(_p.hearing) > 0.0:
+		var noise := BotLevel.nearest_noise(global_position, team, float(_p.hearing))
+		if noise != Vector3.INF:
+			_last_seen = noise
+			_seen_at = BotLevel.now()
+			return
+	if not _p.team or _last_seen != Vector3.INF:
+		return
+	var c := BotLevel.callout(team)
+	if c.is_empty() or c.by == self:
+		return
+	_last_seen = c.at
+	_seen_at = float(c.time)
+	# A teammate is already fighting there: come at it from the side.
+	var by = c.by
+	if nav != null and _flank_at == Vector3.INF and by is Bot and is_instance_valid(by) and (by as Bot).alive \
+			and (by as Bot).fighting():
+		_flank_at = _flank_point((by as Bot).global_position, c.at)
+		_flank_left = 8.0
+
+
+## A spot to the side of the line from `from` (a teammate) to `at` (the enemy), on the
+## floor plan, from which to come at it; INF if there is none.
+func _flank_point(from: Vector3, at: Vector3) -> Vector3:
+	var dir := at - from
+	dir.y = 0.0
+	if dir.length() < 1.0:
+		return Vector3.INF
+	dir = dir.normalized()
+	var side := dir.cross(Vector3.UP)
+	if side.dot(global_position - at) < 0.0:
+		side = -side
+	for off in [10.0, 7.0, 4.5]:
+		for back in [3.0, 0.0]:
+			var p: Vector3 = at + side * off - dir * back
+			var c := nav.cell_of(p)
+			if nav.walkable(c.x, c.y):
+				return nav.centre(c.x, c.y, at.y)
+	return Vector3.INF
+
+
+## 困難: when hurt, low on ammo or caught reloading in a fight, fall back to the nearest
+## spot out of the target's sight, reload there, then go back for them.
+func _think_cover(delta: float) -> void:
+	_cover_cd = maxf(_cover_cd - delta, 0.0)
+	if _cover_at != Vector3.INF:
+		if _flat_to(_cover_at) < 1.0:
+			_cover_wait += delta
+			if weapon.ammo < int(weapon.stats.mag):
+				weapon.start_reload()
+			if (_cover_wait > 1.0 and not weapon.is_reloading()) or _cover_wait > 4.0 or (_see and _cover_wait > 0.4):
+				_cover_at = Vector3.INF
+				_cover_wait = 0.0
+				_cover_cd = 3.0
+		else:
+			_cover_left -= delta
+			if _cover_left <= 0.0:
+				_cover_at = Vector3.INF   # can't get there: fight on
+				_cover_cd = 3.0
+		return
+	if _cover_cd > 0.0 or target == null or not is_instance_valid(target) or not (_see or hurt_within(1.0)):
+		return
+	var low_ammo := weapon.ammo <= int(weapon.stats.mag) * 0.25 or weapon.is_reloading()
+	if not (health < float(_p.retreat) and hurt_within(3.0)) and not (low_ammo and _see):
+		return
+	_cover_cd = 2.0
+	var spot := _find_cover()
+	if spot == Vector3.INF:
+		return
+	_cover_at = spot
+	_cover_wait = 0.0
+	_cover_left = 4.0
+	if weapon.ammo < int(weapon.stats.mag):
+		weapon.start_reload()
+	if ability != null and ability.can_use() and (kit_id == "veil" or kit_id == "bulwark"):
+		ability.press()
+
+
+## The best nearby spot the target can't see and it can walk straight to, or INF.
+func _find_cover() -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var threat := target.global_position + Vector3(0, 1.5, 0)
+	var best := Vector3.INF
+	var best_score := INF
+	for i in 16:
+		var a := TAU * i / 16.0
+		var dir := Vector3(sin(a), 0, cos(a))
+		for r in [3.0, 5.0, 7.5, 10.0]:
+			var p: Vector3 = global_position + dir * r
+			var walk := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.6, 0), p + Vector3(0, 0.6, 0),
+				Geo.WORLD | Geo.BODIES, exclusions())
+			var straight := space.intersect_ray(walk).is_empty()
+			if not straight and nav == null:
+				break
+			var floor_q := PhysicsRayQueryParameters3D.create(p + Vector3(0, 0.8, 0), p + Vector3(0, -1.5, 0), Geo.WORLD)
+			if space.intersect_ray(floor_q).is_empty():
+				continue
+			var look := PhysicsRayQueryParameters3D.create(threat, p + Vector3(0, 1.3, 0), Geo.WORLD, exclusions())
+			if space.intersect_ray(look).is_empty():
+				continue
+			# Round a corner on the floor plan, if it's not far.
+			var walk_len: float = r
+			if not straight:
+				var c := nav.cell_of(p)
+				if not nav.walkable(c.x, c.y):
+					continue
+				var path := nav.path(global_position, p)
+				if path.is_empty():
+					continue
+				walk_len = 0.0
+				var from := global_position
+				for q in path:
+					walk_len += Vector2(q.x - from.x, q.z - from.z).length()
+					from = q
+				if walk_len > 16.0:
+					continue
+			var score: float = walk_len - 0.3 * p.distance_to(threat)
+			if score < best_score:
+				best_score = score
+				best = p
+	return best
 
 
 func _flat_to(p: Vector3) -> float:
@@ -411,8 +632,11 @@ func _look_for_target() -> void:
 	if target != null and not is_instance_valid(target):
 		target = null
 	_pick_target()
+	if _last_seen != Vector3.INF and BotLevel.now() - _seen_at > float(_p.memory):
+		_last_seen = Vector3.INF
 	if target == null or not target.get("alive"):
 		_see = false
+		_listen()
 		return
 	var eye := _eye()
 	var aim_at := target.global_position + Vector3(0, 1.3, 0)
@@ -420,17 +644,24 @@ func _look_for_target() -> void:
 	var was := _see
 	_see = false
 	if d > SIGHT:
+		_listen()
 		return
 	var to := (aim_at - eye).normalized()
 	var facing := (-global_basis.z).dot(to)
-	if facing < -0.1 and d > 6.0 and not was:
+	if facing < float(_p.view) and d > float(_p.near) and not was:
+		_listen()
 		return
 	var q := PhysicsRayQueryParameters3D.create(eye, aim_at, Geo.WORLD, exclusions())
 	if get_world_3d().direct_space_state.intersect_ray(q).is_empty() and not Deploy.sight_blocked(eye, aim_at):
 		_see = true
 		_last_seen = target.global_position
+		_seen_at = BotLevel.now()
+		if _p.team:
+			BotLevel.call_out(team, _last_seen, self)
 		if not was:
 			_reaction = rng.randf_range(REACTION.x, REACTION.y)
+	else:
+		_listen()
 
 
 func _try_shoot() -> void:
@@ -498,6 +729,7 @@ func take_hit(info: Dictionary) -> bool:
 	if by is Node3D and is_instance_valid(by) and by != self and by.get("alive") and by.get("team") != null and int(by.team) != team:
 		target = by
 		_last_seen = (by as Node3D).global_position
+		_seen_at = BotLevel.now()
 	return _damage(float(info.damage), info)
 
 
