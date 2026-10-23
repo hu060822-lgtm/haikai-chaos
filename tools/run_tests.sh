@@ -23,6 +23,7 @@ run --path . --script res://tests/athlete_test.gd
 run --path . --script res://tests/reload_anim_test.gd
 run --path . --script res://tests/net_anim_test.gd
 run --path . --script res://tests/bot_level_test.gd
+run --path . --script res://tests/testament_test.gd
 xvfb-run -a "$GODOT" --path . --script res://tests/mouse_test.gd 2>&1 | grep -E "^  (ok|FAIL)|TESTS"
 [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
 for hz in 60 120 240; do

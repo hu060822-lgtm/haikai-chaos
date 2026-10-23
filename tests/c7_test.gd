@@ -215,7 +215,7 @@ func _test_physics(scene: Node3D) -> void:
 
 func _test_maps(scene: Node3D) -> void:
 	print("map passages")
-	for M in [FoldedWorks, DreamHome, FaultYard]:
+	for M in [FoldedWorks, DreamHome, FaultYard, LastTestament]:
 		var m: Node3D = M.new()
 		scene.add_child(m)
 		await frames(3)

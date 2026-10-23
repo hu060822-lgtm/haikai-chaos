@@ -67,6 +67,8 @@ func _ready() -> void:
 		map = DreamHome.new()
 	elif map_id == "yard":
 		map = FaultYard.new()
+	elif map_id == "testament":
+		map = LastTestament.new()
 	else:
 		map = FoldedWorks.new()
 	add_child(map)
@@ -304,12 +306,15 @@ func _start() -> void:
 	Music.play(get_tree(), "match")
 	player.input_enabled = team_match == null
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	var subtitle: Variant = map.get("subtitle")
 	if team_match:
+		if subtitle != null:
+			hud.show_hint(str(subtitle), 4.0)
 		return
 	if lab:
 		hud.show_hint("移動測試場：穿過起點門開始計時　T 回到起點　F4 除錯面板", 6.0)
 	else:
-		hud.show_hint("Tab 打開改槍工作台　F1 操作說明　F4 移動除錯", 4.0)
+		hud.show_hint(("%s　" % subtitle if subtitle != null else "") + "Tab 打開改槍工作台　F1 操作說明　F4 移動除錯", 4.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:

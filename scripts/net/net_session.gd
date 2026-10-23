@@ -29,7 +29,7 @@ static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "
 ## Modes (id -> name): 改版死鬥 (C2) and 預算戰, rounds with a part economy (C4, RoundRules).
 const MODES := {"patch": "改版死鬥", "rounds": "預算戰", "bomb": "爆破"}
 ## Maps a team match can be played on (id -> name); "random" picks one at the start.
-const MAPS := {"folded": "折疊工廠", "dream": "夢核之家", "yard": "斷層貨場", "random": "隨機"}
+const MAPS := {"folded": "折疊工廠", "dream": "夢核之家", "yard": "斷層貨場", "testament": "最後的遺訓", "random": "隨機"}
 ## The room's code (relay code, or the LAN address) and, once UPnP worked, its internet code.
 static var room_code := ""
 ## True when this session goes through the relay server.

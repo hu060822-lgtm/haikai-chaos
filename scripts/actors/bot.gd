@@ -355,7 +355,7 @@ func _physics_process(delta: float) -> void:
 ## Walking the floor plan to where it wants to be: the bomb site, where it last saw
 ## someone, or a random spot. Re-plans every couple of seconds or when the goal moves.
 func _nav_move(delta: float, speed: float) -> Vector3:
-	if _last_seen != Vector3.INF and _flat_to(_last_seen) < 1.5:
+	if _last_seen != Vector3.INF and _at(_last_seen, 1.5):
 		_last_seen = Vector3.INF
 	if _flank_at != Vector3.INF:
 		_flank_left -= delta
@@ -367,7 +367,7 @@ func _nav_move(delta: float, speed: float) -> Vector3:
 	if _cover_at != Vector3.INF:
 		dest = _cover_at
 	if objective == Vector3.INF and _last_seen == Vector3.INF and _flank_at == Vector3.INF and _cover_at == Vector3.INF \
-			and _flat_to(_goal) < 1.5:
+			and _at(_goal, 1.5):
 		_pick_goal()
 		dest = _goal
 	_path_t -= delta
@@ -377,7 +377,7 @@ func _nav_move(delta: float, speed: float) -> Vector3:
 		_path_t = 2.0 + rng.randf() * 0.5
 		if _path.is_empty() and objective == Vector3.INF:
 			_pick_goal()
-	while not _path.is_empty() and _flat_to(_path[0]) < (0.6 if _path.size() == 1 else 1.1):
+	while not _path.is_empty() and _at(_path[0], 0.6 if _path.size() == 1 else 1.1):
 		_path.pop_front()
 	if _path.is_empty():
 		return Vector3.ZERO
@@ -569,6 +569,12 @@ func _find_cover() -> Vector3:
 				best_score = score
 				best = p
 	return best
+
+
+## Within `r` of `p` across the floor, and on a plan with more than one floor (C10) on
+## the same one as it (not right under a gallery it is heading up to).
+func _at(p: Vector3, r: float) -> bool:
+	return _flat_to(p) < r and (nav == null or not nav.layered() or absf(p.y - global_position.y) < 2.2)
 
 
 func _flat_to(p: Vector3) -> float:
