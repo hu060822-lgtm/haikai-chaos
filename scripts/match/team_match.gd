@@ -81,6 +81,7 @@ var pings := {}
 var _ping_t := 0.0
 var _was_alive := {}      # host: id -> alive last tick (a respawn resets the ledger)
 var _forced_here := false
+var record: MatchLog
 
 
 func _init() -> void:
@@ -100,6 +101,7 @@ func _ready() -> void:
 		rules = BombRules.new() if mode == "bomb" else RoundRules.new()
 		rules.tm = self
 		add_child(rules)
+	record = MatchLog.new(mode, str(NetSession.config.get("map", "")), net.is_host())
 	SafeZone.clear()
 	SafeZone.repel = true
 	for t in 2:
@@ -539,6 +541,7 @@ func _died(victim_id: String, wire: Dictionary) -> void:
 	if killer_id == my_id and victim_id != my_id:
 		main.hud.kills += 1
 	_stat(victim_id, "deaths", 1)
+	record.kill(rules.round_no if rules != null else 0, killer_id, victim_id, wire)
 	if killer_id != "" and killer_id != victim_id and team_of(killer_id) != victim_team:
 		_stat(killer_id, "kills", 1)
 		if rules != null:
@@ -681,10 +684,27 @@ func _end(winner: int, final: Array) -> void:
 	over = true
 	running = false
 	scores = final
+	_write_log(winner, final)
 	player.input_enabled = false
 	main.show_results(winner, final, player.team)
 	if net.is_host():
 		get_tree().create_timer(10.0).timeout.connect(net.end_match)
+
+
+func _exit_tree() -> void:
+	_write_log(-1, scores)
+
+
+func _write_log(winner: int, final: Array) -> void:
+	if record == null or record.written != "":
+		return
+	for id in entities:
+		var n = entities[id]
+		if is_instance_valid(n):
+			record.player(id, str(n.display_name), int(n.team), id.begins_with("b"))
+	var path := record.write(winner, final)
+	if path != "":
+		print("match log: ", ProjectSettings.globalize_path(path))
 
 
 ## The match's best player by personal points (kills, then fewer deaths break ties):

@@ -178,6 +178,8 @@ func _bot_shop(bot: Bot) -> void:
 			best_value = value(b)
 	money[bot.id] = have - cost(current, best)
 	builds[bot.id] = best
+	if best != current:
+		tm.record.buy(round_no, bot.id, Arsenal.clean(best), cost(current, best))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -436,6 +438,7 @@ func _round_end(winner: int, why: String, new_wins: Array, new_money: Dictionary
 	wins = new_wins.duplicate()
 	money = new_money.duplicate()
 	tm.scores = wins.duplicate()
+	tm.record.round_over(round_no, winner, why)
 	zone_open = false
 	_show_ring(false)
 	_round_ended()
@@ -490,6 +493,8 @@ func _take(id: String, build: Dictionary) -> bool:
 		return false
 	money[id] = int(money.get(id, 0)) - c
 	builds[id] = clean
+	if c != 0:
+		tm.record.buy(round_no, id, clean, c)
 	_paid.rpc(money, {}, 0)
 	return true
 
