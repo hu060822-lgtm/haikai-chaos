@@ -532,6 +532,14 @@ func _wings() -> void:
 		floor_at(r.position, r.end, 0.02, mat("tile", TILE_AQUA), 0.1)
 	for r in layout.rects("s"):
 		floor_at(r.position, r.end, 0.02, mat("checker", CREAM, Color("#BFD9F0"), 1.0), 0.1)
+	# The ring under the house's walls (C8): the house's floor stops at HALF and the dream's
+	# starts a metre further out, so anything cut through the walls (doors, panels,
+	# passages) used to open onto a metre-wide hole.
+	var ring := mat("carpet", CARPET)
+	floor_at(Vector2(-HALF.x - 1.0, -HALF.y - 1.0), Vector2(HALF.x + 1.0, -HALF.y), 0.0, ring)
+	floor_at(Vector2(-HALF.x - 1.0, HALF.y), Vector2(HALF.x + 1.0, HALF.y + 1.0), 0.0, ring)
+	floor_at(Vector2(-HALF.x - 1.0, -HALF.y), Vector2(-HALF.x, HALF.y), 0.0, ring)
+	floor_at(Vector2(HALF.x, -HALF.y), Vector2(HALF.x + 1.0, HALF.y), 0.0, ring)
 	# The door strips through the house's walls (the house's floor stops at its walls).
 	for r in layout.rects("."):
 		var inside_wall := Rect2(-HALF.x - 2, -HALF.y - 2, HALF.x * 2 + 4, HALF.y * 2 + 4).encloses(r)

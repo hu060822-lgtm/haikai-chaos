@@ -303,7 +303,7 @@ static func kill_force(info: Dictionary) -> float:
 		f += 2.6
 	if e.has("knock"):
 		f += clampf(absf(float(e.knock)) * 0.25, 0.4, 2.0)
-	if int(info.get("pellets", 1)) > 3 or str(info.get("gun_name", "")) in ["重踩", "肩撞"]:
+	if int(info.get("pellets", 1)) > 3 or str(info.get("gun_name", "")) in ["重踩", "肩撞", "衝撞"]:
 		f += 1.0
 	if str(info.get("zone", "")) == "head":
 		f += 0.4

@@ -1,33 +1,41 @@
 class_name Anchor
 extends Ability
-## ANCHOR's grappling line (C6). Not a fixed pull: the hook flies out at HOOK_SPEED, and
-## once it bites the player is on a rope (Player Move.GRAPPLE) where gravity, the reel and
-## the rope's length shape the arc together:
+## ANCHOR's grappling line (C6, reworked in C8 after ULTRAKILL's whiplash and Apex's
+## Pathfinder). The hook flies out at HOOK_SPEED; once it bites, the line pulls you at
+## the hook (Player Move.GRAPPLE): the speed toward it builds to PULL_SPEED, while all the
+## sideways speed you came in with stays, so coming in from an angle swings you round it.
 ##
-##   hold F     reel in (the rope shortens at REEL m/s and pulls at PULL m/s²): a fast zip
-##   tap F      the hook bites with the rope at its length: a pendulum swing
-##   move keys  pump the swing (STEER m/s² of air control on the rope)
-##   let go     release F (after a hold) or press F again (after a tap): off the rope with
-##              all the speed of the arc, aimed wherever the swing was going
-##   jump       a release that adds a hop (RELEASE_HOP up)
-##   dash       cuts the rope and dashes
+##   tap F      fire and forget: it pulls you all the way in and pops you over the top
+##   hold F     pull while held, let go of F to drop off with all the speed
+##   F again    drop off now (after a tap)
+##   move keys  steer the swing (STEER m/s² of air control on the line)
+##   jump       drop off with a hop (RELEASE_HOP up)
+##   dash       cuts the line and dashes
 ##
-## A slide or a wall run straight after keeps the speed, like any landing. Counter: the line
-## is drawn and heard by everyone, the hook takes time to land, the path follows the rope
-## (a circle round the hook point) so it can be read and shot.
+## Short cooldown (Kit: 0.5 s): it's a movement tool, chained hook to hook. A slide or a
+## wall run straight after keeps the speed. Counter: the line is drawn and heard by
+## everyone, and the path is a straight pull at a point you can see, so it can be read
+## and shot.
 
-const RANGE := 34.0
-const HOOK_SPEED := 95.0
-const REEL := 13.0
-const PULL := 24.0
-const STEER := 9.0
-const MIN_ROPE := 2.0
-const MAX_TIME := 3.2
-const MAX_SPEED := 27.0
+const RANGE := 38.0
+const HOOK_SPEED := 120.0
+## The pull: speed toward the hook builds at PULL_ACCEL up to PULL_SPEED.
+const PULL_SPEED := 26.0
+const PULL_ACCEL := 75.0
+## The line shortens at least this fast, so a swing still closes in.
+const REEL := 16.0
+const STEER := 12.0
+const MIN_ROPE := 1.6
+const MAX_TIME := 2.5
+const MAX_SPEED := 36.0
 const RELEASE_HOP := 5.5
-## While reeling the line carries most of the weight, and a bite from the floor lifts off.
-const REEL_GRAVITY := 0.35
+## Arriving pops you up this much, over a ledge or a wall top.
+const ARRIVE_POP := 6.5
+## On the line gravity is mostly off.
+const REEL_GRAVITY := 0.25
 const LIFT_OFF := 4.0
+## A press shorter than this is a tap (fire and forget).
+const TAP := 0.22
 ## A miss only costs this much of the cooldown.
 const MISS_REFUND := 0.7
 
@@ -42,12 +50,14 @@ var reeling := false
 var _dir := Vector3.FORWARD
 var _flown := 0.0
 var _time := 0.0
+var _held_t := 0.0
+## Fire and forget (the press was a tap).
+var tapped := false
 
 
 func press() -> void:
 	if state == State.ATTACHED:
-		if not reeling:
-			_let_go(user as Player, false)
+		_let_go(user as Player, false)
 		return
 	if state != State.IDLE or not alive():
 		return
@@ -56,6 +66,8 @@ func press() -> void:
 		return
 	spend()
 	held = true
+	tapped = false
+	_held_t = 0.0
 	var a := aim()
 	hook = a.origin
 	_dir = -a.basis.z
@@ -67,13 +79,19 @@ func press() -> void:
 
 
 func release() -> void:
+	if not held:
+		return
 	held = false
-	if state == State.ATTACHED and reeling:
+	if _held_t < TAP:
+		tapped = true
+	elif state == State.ATTACHED:
 		_let_go(user as Player, false)
 
 
 func tick(delta: float) -> void:
 	super.tick(delta)
+	if held:
+		_held_t += delta
 	if state == State.ATTACHED and user is Player and (user as Player).move != Player.Move.GRAPPLE:
 		_let_go(null, false)
 	if state != State.FLYING:
@@ -106,16 +124,16 @@ func _bite(at: Vector3) -> void:
 	point = at
 	hook = at
 	state = State.ATTACHED
-	reeling = held
+	reeling = true
 	_time = 0.0
 	rope = maxf(_centre(p).distance_to(point), MIN_ROPE)
 	Sfx.play(user, "hook_hit", -4.0)
-	if reeling:
-		Sfx.play(user, "hook_reel", -10.0)
+	Sfx.play(user, "hook_reel", -10.0)
 	Deploy.fx(user, "rope_on", {"at": point})
 	if p != null:
-		if reeling and p.is_on_floor():
+		if p.is_on_floor():
 			p.velocity.y = maxf(p.velocity.y, LIFT_OFF)
+		p.burst(0.5)
 		p._set_move(Player.Move.GRAPPLE, "勾索勾到")
 
 
@@ -149,12 +167,14 @@ func move_frame(p: Player, delta: float, wish: Vector3) -> void:
 		_let_go(p, false, "勾索被擋住了")
 		return
 	var v := p.velocity
-	v.y -= p.tune.gravity * (REEL_GRAVITY if reeling else 1.0) * delta
-	if reeling:
-		rope = maxf(rope - REEL * delta, MIN_ROPE)
-		v += n * PULL * delta
-	v += wish * STEER * delta
-	# The rope: no moving outward once it's taut, and a firm tug back if past its length.
+	v.y -= p.tune.gravity * REEL_GRAVITY * delta
+	rope = maxf(minf(rope, d) - REEL * delta, MIN_ROPE)
+	# The pull: speed toward the hook builds to PULL_SPEED; sideways speed is left alone.
+	var toward := v.dot(n)
+	if toward < PULL_SPEED:
+		v += n * minf(PULL_ACCEL * delta, PULL_SPEED - toward)
+	v += (wish - n * wish.dot(n)) * STEER * delta
+	# The line: no moving away once it's taut, and a firm tug back if past its length.
 	var radial := v.dot(n)
 	if d >= rope - 0.02 and radial < 0.0:
 		v -= n * radial
@@ -163,11 +183,17 @@ func move_frame(p: Player, delta: float, wish: Vector3) -> void:
 	if v.length() > MAX_SPEED:
 		v = v.normalized() * MAX_SPEED
 	p.velocity = v
-	p.limiter = "勾索（收索中）" if reeling else "勾索（擺盪）"
+	p.limiter = "勾索（拉過去）"
 	if _time >= MAX_TIME:
 		_let_go(p, false, "勾索到時間了")
-	elif reeling and d <= MIN_ROPE + 0.4:
-		_let_go(p, true)
+	elif d <= MIN_ROPE + 0.5 or (d < 4.0 and v.dot(n) < 1.0 and _time > 0.25):
+		_arrive(p)
+
+
+## Pulled all the way in: off the line with a pop up, over whatever the hook was on.
+func _arrive(p: Player) -> void:
+	_let_go(p, false, "勾索拉到了")
+	p.velocity.y = maxf(p.velocity.y, ARRIVE_POP)
 
 
 func _let_go(p: Player, hop: bool, why := "放開勾索") -> void:
@@ -193,6 +219,7 @@ func cancel() -> void:
 	busy = false
 	reeling = false
 	held = false
+	tapped = false
 	var p := user as Player
 	if p != null and p.move == Player.Move.GRAPPLE:
 		p._set_move(Player.Move.AIR, "勾索取消")
