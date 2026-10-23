@@ -28,6 +28,10 @@ const LEAD := Color("#1C1D20")
 const WARN_RED := Color("#C2352B")
 const AMBER := Color("#E3A23C")
 
+## The choir stalls: thirteen seats a side from x -30 to -14 (in their graybox block).
+const STALL_X0 := -30.0
+const STALL_W := 16.0 / 13.0
+
 
 ## A world material: Counterform's real materials, or the print look's ink.
 static func mat(kind: String, color: Color, glow := Color.BLACK) -> Material:
@@ -259,7 +263,7 @@ static func _glass(map: LastTestament) -> void:
 	var b := Batch.new()
 	# The east window over the altar: an anonymous warrior raising a huge gun in a halo.
 	# Scaled to sit between the tablet's top (6 m) and the wall's (16 m).
-	var east := Transform3D(Basis(Vector3.UP, -PI / 2.0).scaled(Vector3.ONE * 0.77), Vector3(74.1, 6.6, 0))
+	var east := Transform3D(Basis(Vector3.UP, -PI / 2.0).scaled(Vector3.ONE * 0.77), Vector3(73.95, 7.0, 0))
 	_saint(b, east)
 	# Lancets in the aisle walls, facing the nave across the gallery.
 	var motifs := ["halo", "gun", "gear", "shards"]
@@ -396,8 +400,11 @@ static func _galleries(map: LastTestament) -> void:
 		for x in range(-46, 28, 4):
 			b.box(Vector3(0.35, 0.5, 6.0), Vector3(x, y - 0.6, 17.0 * s), "polymer", WOOD)
 		# The choir stalls on the back wall (in their graybox block).
-		for x in range(-30, -14, 2):
-			_stall(b, Vector3(x + 1.0, y, 19.35 * s), s)
+		# Thirteen seats a side; the south row's thirteenth is TestamentDetail's.
+		for i in 13:
+			if i == 12 and s > 0:
+				continue
+			_stall(b, Vector3(STALL_X0 + (i + 0.5) * STALL_W, y, 19.35 * s), s, STALL_W)
 	for x in range(-48, -38, 2):
 		b.box(Vector3(1.94, 0.05, 27.9), Vector3(x + 1.0, y + 0.025, 0), "polymer", WOOD if (x / 2) % 2 == 0 else WOOD_LIGHT, Vector3.ZERO, 0.01, Color.BLACK, false)
 	b.flush(root)
@@ -414,12 +421,12 @@ static func _galleries(map: LastTestament) -> void:
 
 ## One choir stall (seat, high back, arm rests) against the back wall, facing the nave:
 ## a front panel over the collision block's face, the seat and back above it.
-static func _stall(b: Batch, at: Vector3, s: float) -> void:
-	b.box(Vector3(1.96, 0.5, 0.1), at + Vector3(0, 0.25, -0.3 * s), "polymer", WOOD)
-	b.box(Vector3(1.9, 0.06, 0.9), at + Vector3(0, 0.53, 0.1 * s), "polymer", WOOD_LIGHT)
-	b.box(Vector3(1.96, 1.1, 0.12), at + Vector3(0, 1.05, 0.55 * s), "polymer", WOOD_LIGHT)
-	for e in [-0.95, 0.95]:
-		b.box(Vector3(0.08, 1.6, 0.96), at + Vector3(e, 0.8, 0.12 * s), "polymer", WOOD)
+static func _stall(b: Batch, at: Vector3, s: float, w: float) -> void:
+	b.box(Vector3(w - 0.04, 0.5, 0.1), at + Vector3(0, 0.25, -0.3 * s), "polymer", WOOD)
+	b.box(Vector3(w - 0.1, 0.06, 0.9), at + Vector3(0, 0.53, 0.1 * s), "polymer", WOOD_LIGHT)
+	b.box(Vector3(w - 0.04, 1.1, 0.12), at + Vector3(0, 1.05, 0.55 * s), "polymer", WOOD_LIGHT)
+	for e in [-0.5, 0.5]:
+		b.box(Vector3(0.08, 1.6, 0.96), at + Vector3(e * (w - 0.08), 0.8, 0.12 * s), "polymer", WOOD)
 
 
 # --- Confessionals -----------------------------------------------------------------------

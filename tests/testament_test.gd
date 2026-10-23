@@ -2,6 +2,8 @@ extends SceneTree
 ## 最後的遺訓 THE LAST TESTAMENT, Phase 2 (C10): the graybox is fair (mirrored, the same
 ## way to everything from both spawns), nobody can get stuck anywhere, no spawn sees the
 ## other, the real player gets up and down every floor, and bots walk every floor too.
+## Phase 5: every word and egg from the design book is there, all of it static, the hum is
+## quiet, and nothing of it sits on a spawn or a site.
 ##   godot --headless --path . --script res://tests/testament_test.gd
 
 var map: LastTestament
@@ -20,6 +22,7 @@ func _init() -> void:
 	_test_mirror()
 	_test_floors()
 	_test_sightlines()
+	_test_dressing()
 	await _test_player()
 	await _test_bots()
 	print("TESTAMENT TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
@@ -110,6 +113,63 @@ func _test_floors() -> void:
 	for a in l.links:
 		ways[a / per] += 1
 	check(ways[map.gallery] >= 6 and ways[map.crypt] >= 4, "ways off the galleries: %d, out of the crypt: %d" % [ways[map.gallery], ways[map.crypt]])
+
+
+func _labels(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c is Label3D:
+			out.append((c as Label3D).text)
+		_labels(c, out)
+
+
+func _scripted(n: Node, out: Array) -> void:
+	for c in n.get_children():
+		if c.get_script() != null or c is Area3D or c is RigidBody3D:
+			out.append(c.name)
+		_scripted(c, out)
+
+
+func _test_dressing() -> void:
+	print("words and eggs")
+	var texts := []
+	_labels(map, texts)
+	var all := "\n".join(texts).replace("\n", " ")
+	for want in ["CONFESS YOUR BUILD.", "NO ATTACHMENT IS INNOCENT.", "YOUR RECOIL HAS BEEN NOTED.", "THE SAINT OF RECOIL",
+			"BLESSED ARE THE FLEXIBLE.", "FOR THEY SHALL NOT BE PREDICTABLE.", "KEEP YOUR MOMENTUM.", "APPROVED BY NO ONE.",
+			"TIME IS A SUGGESTION.", "PLAYER NOT FOUND.", "HERE LIES THE PERFECT BUILD.", "BUILD SHEET"]:
+		check(want in all, "on the walls: %s" % want)
+	var signs := 0
+	for t in texts:
+		if "CONFESSIONALS" in t or "GALLERY" in t or "ALTAR" in t or "ORGAN" in t or "CRYPT" in t:
+			signs += 1
+	check(signs >= 10, "%d area signs (confessionals, gallery, altar, organ, crypt, both sides)" % signs)
+	var moving := []
+	for n in ["EasterEggs", "Signs", "StainedGlass", "CentralHall"]:
+		_scripted(map.get_node(n), moving)
+	check(moving.is_empty(), "the eggs and the art are static: no scripts, areas or bodies that move (%s)" % str(moving))
+	var hums := 0
+	var loud := 0
+	for c in map.get_children():
+		if c is AudioStreamPlayer3D and str(c.name).begins_with("OrganHum"):
+			hums += 1
+			if (c as AudioStreamPlayer3D).volume_db > -20.0:
+				loud += 1
+	check(hums >= 1 and loud == 0, "the organ hums (%d sources), quieter than the quietest footstep" % hums)
+	# Nothing new stands on a spawn or a bomb site.
+	var space := map.get_world_3d().direct_space_state
+	var blocked := []
+	var spots: Array = map.team_spawns[0] + map.team_spawns[1] + map.bomb_sites
+	for p in spots:
+		var q := PhysicsShapeQueryParameters3D.new()
+		var cap := CapsuleShape3D.new()
+		cap.radius = 0.4
+		cap.height = 1.8
+		q.shape = cap
+		q.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, p.y + 1.1, p.z))
+		q.collision_mask = Geo.WORLD
+		if not space.intersect_shape(q, 1).is_empty():
+			blocked.append(p)
+	check(blocked.is_empty(), "every spawn and both sites stay clear (%s)" % str(blocked))
 
 
 func _sees(a: Vector3, b: Vector3) -> bool:

@@ -85,6 +85,7 @@ func _ready() -> void:
 	_crypt()
 	_lights()
 	TestamentArt.build(self)
+	TestamentDetail.build(self)
 	waypoints = layout.wander_points(5)
 	bot_spawns = [Vector3(-6, 0.1, 6), Vector3(6, 0.1, -6), Vector3(50, 0.1, 10), Vector3(-62, CRYPT_Y + 0.1, 8), Vector3(0, GALLERY_Y + 0.1, 17)]
 
@@ -314,14 +315,16 @@ func _altar() -> void:
 	Geo.block(self, Vector3(DAIS.size.x, DAIS_Y, DAIS.size.y), Vector3(DAIS.get_center().x, DAIS_Y / 2.0, DAIS.get_center().y),
 		Counterform.BONE_CONCRETE, Vector3.ZERO, {"bevel": 0.06}).set_meta("art", "dais")
 	Geo.ramp(self, Vector3(56, 0, 0), Vector3(62, DAIS_Y, 0), 8.0, Counterform.CONCRETE_MID, 0.4).set_meta("art", "ramp")
-	Geo.block(self, Vector3(1.6, 6.0, 7.6), Vector3(73, 3.0, 0), Counterform.CONCRETE_DARK, Vector3.ZERO, {"bevel": 0.08}).set_meta("art", "tablet")
+	# The broken tablet, free of the wall so you can walk round and read its back.
+	Geo.block(self, Vector3(0.6, 4.4, 6.4), Vector3(72.5, 2.2, 0), Counterform.CONCRETE_DARK, Vector3.ZERO, {"bevel": 0.08}).set_meta("art", "tablet")
 	# The display stand for the giant gun (the gun's own collision comes with the art).
 	Geo.block(self, Vector3(1.6, 0.4, 3.6), Vector3(69, DAIS_Y + 0.2, 0), Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.06}).set_meta("art", "gun_stand")
 	for z in [1.0, -1.0]:
 		Geo.block(self, Vector3(3.6, 1.6, 1.6), Vector3(60, 0.8, 5.0 * z), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.05}).set_meta("art", "stand")
 		Geo.block(self, Vector3(1.8, 1.6, 1.8), Vector3(49, 0.8, 11.0 * z), Counterform.POLYMER_TAN, Vector3(0, 10, 0), {"bevel": 0.05})
 		Geo.block(self, Vector3(3.6, 1.0, 1.6), Vector3(56, 0.5, 9.0 * z), Counterform.GREEN_GREY, Vector3.ZERO, {"bevel": 0.05})
-	_site_label("A", Vector3(73.9 - 1.0, 7.5, 0), -90.0)
+	for z in [6.0, -6.0]:
+		_site_label("A", Vector3(73.95, 3.4, z), -90.0, 320)
 
 
 ## Site B: the crypt's pillars, tombs, cabinets and the low wall.
@@ -336,17 +339,17 @@ func _crypt() -> void:
 		var body := Geo.block(self, Vector3(q.size.x, h, q.size.y), Vector3(q.get_center().x, CRYPT_Y + h / 2.0, q.get_center().y),
 			Counterform.STEEL if h > 2.0 and h < 3.0 else Counterform.CONCRETE_MID, Vector3.ZERO, {"bevel": 0.05})
 		body.set_meta("art", "crypt_pillar" if h >= 4.0 else ("cabinet" if h > 2.0 else "tomb"))
-	_site_label("B", Vector3(-73.9, CRYPT_Y + 2.4, 0), 90.0)
+	_site_label("B", Vector3(-73.85, CRYPT_Y + 2.4, 0), 90.0)
 	# The organ above: one solid bank against the organ room's west wall (the pipes are art).
 	Geo.block(self, Vector3(1.4, 14.5, 20.0), Vector3(-73.3, 7.25, 0), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.1}).set_meta("art", "organ")
 	# Its façade high on the loft's west wall, above the bridge opening.
 	Geo.block(self, Vector3(0.8, 9.5, 17.0), Vector3(-47.6, 8.25 + 4.75, 0), Counterform.BRASS, Vector3.ZERO, {"bevel": 0.05}).set_meta("art", "organ")
 
 
-func _site_label(text: String, pos: Vector3, yaw: float) -> void:
+func _site_label(text: String, pos: Vector3, yaw: float, size := 700) -> void:
 	var label := Label3D.new()
 	label.text = text
-	label.font_size = 700
+	label.font_size = size
 	label.pixel_size = 0.01
 	label.modulate = Counterform.OXIDE_ORANGE
 	label.position = pos
