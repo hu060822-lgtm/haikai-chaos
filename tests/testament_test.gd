@@ -50,9 +50,12 @@ func _test_mirror() -> void:
 				same = false
 	check(same, "the floor plan is mirrored north–south, heights too")
 	var spots := {"mid": map.mid_zone, "A": map.bomb_sites[0], "B": map.bomb_sites[1]}
+	# The spots sit on the centre line, between two rows of cells: each team aims at its own
+	# side of it (the same point mirrored), or the search breaks near-ties differently.
 	for name in spots:
-		var d0 := _length(l.path(map.team_zones[0], spots[name]), map.team_zones[0])
-		var d1 := _length(l.path(map.team_zones[1], spots[name]), map.team_zones[1])
+		var near: Vector3 = spots[name] + Vector3(0, 0, 0.5)
+		var d0 := _length(l.path(map.team_zones[0], near), map.team_zones[0])
+		var d1 := _length(l.path(map.team_zones[1], l.twin(near)), map.team_zones[1])
 		check(d0 > 0.0 and absf(d0 - d1) < 0.5, "spawn -> %s: blue %.1f m, red %.1f m" % [name, d0, d1])
 	var g0 := _length(l.path(map.team_zones[0], Vector3(0, LastTestament.GALLERY_Y, 17)), map.team_zones[0])
 	var g1 := _length(l.path(map.team_zones[1], Vector3(0, LastTestament.GALLERY_Y, -17)), map.team_zones[1])
@@ -149,6 +152,30 @@ func _test_sightlines() -> void:
 					if _sees(a, b):
 						n += 1
 		check(n == 0, "%s can't see into either spawn (%d lines)" % [name, n])
+	# No perch rules the map: nowhere sees both sites, and the dais sees only part of the nave.
+	var both := []
+	for level in l.decks.size() + 1:
+		for r in range(0, l.rows, 2):
+			for c in range(0, l.cols, 2):
+				var g := Vector2i(c, r)
+				if not l.open_on(level, g):
+					continue
+				var eye := l.centre(c, r, l.height(level, g) + 1.6)
+				if _sees_site(eye, 0) and _sees_site(eye, 1):
+					both.append(eye)
+	check(both.is_empty(), "no spot on any floor sees both sites (%s)" % str(both.slice(0, 3)))
+	var nave := _grid(Rect2(-36, -12, 76, 24), 1.2)
+	var from_dais := Vector3(64, LastTestament.DAIS_Y + 1.6, 0)
+	var seen_n := nave.filter(func(p: Vector3) -> bool: return _sees(from_dais, p)).size()
+	check(seen_n < nave.size() * 0.6, "the top of the dais sees %d%% of the nave floor" % (100 * seen_n / nave.size()))
+
+
+func _sees_site(eye: Vector3, i: int) -> bool:
+	var site: Vector3 = map.bomb_sites[i]
+	for off in [Vector3.ZERO, Vector3(2, 0, 0), Vector3(-2, 0, 0), Vector3(0, 0, 2), Vector3(0, 0, -2)]:
+		if _sees(eye, site + off + Vector3(0, 1.0, 0)):
+			return true
+	return false
 
 
 # --- The real player on fixed routes ---------------------------------------------------
