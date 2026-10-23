@@ -38,6 +38,14 @@ var _debug := {}
 var _ragdolled := false
 var _driven := {}
 var _limp_from: Array[Transform3D] = []
+var motion := AthleteMotion.new()
+var _last_yaw := 0.0
+var _heft := 0.0
+var _ground_off: Array[float] = [0.0, 0.0]
+var _foot_world: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]
+var _pin := Vector3.INF
+## Hip joint to ankle, the leg at full stretch.
+const LEG := 0.848
 
 static var _mesh: ArrayMesh
 static var _skin: Skin
@@ -116,117 +124,197 @@ func _find_gun() -> void:
 		_slots = g.get_meta("slots")
 		var muzzle: Vector3 = g.get_meta("muzzle", Vector3(0, 0, -0.5))
 		_pistol = muzzle.z > -0.25
+		var butt: Vector3 = _slots.get("buttpad", Vector3(0, 0, 0.25))
+		_heft = clampf((butt.z - muzzle.z - 0.85) / 0.8, 0.0, 1.0)
 
 
 # --- The pose ------------------------------------------------------------------------------
 
+## The old entry point (bots, decoys, older callers): the move is worked out from the flags.
 func pose(delta: float, vel: Vector3, on_floor: bool, crouch := 0.0, slide := false, wall := 0, pitch := 0.0) -> void:
+	var m := AthleteMotion.GROUND
+	if slide:
+		m = AthleteMotion.SLIDE
+	elif wall != 0:
+		m = AthleteMotion.WALLRUN
+	elif not on_floor:
+		m = AthleteMotion.AIR
+	animate(delta, {"vel": vel, "floor": on_floor, "move": m, "crouch": crouch, "pitch": pitch})
+
+
+## One frame from the game state. s: {vel (world), floor, move (Player.Move), crouch 0..1,
+## pitch, and optionally wall (world normal), event ("wall_kick")}. Only the bones move.
+func animate(delta: float, s: Dictionary) -> void:
 	if dead or skel == null or not _debug.is_empty():
 		return
 	_find_gun()
-	var local := global_basis.inverse() * vel if is_inside_tree() else vel
-	var flat := Vector2(local.x, local.z)
-	var k := 1.0 - exp(-10.0 * delta)
-	_speed = lerpf(_speed, flat.length(), k)
-	_side = lerpf(_side, clampf(local.x / maxf(flat.length(), 1.0), -1.0, 1.0), k)
-	var forward := -local.z
-	_air = lerpf(_air, 0.0 if on_floor else 1.0, 1.0 - exp(-12.0 * delta))
-	_crouch = lerpf(_crouch, maxf(crouch, 1.0 if slide else 0.0), 1.0 - exp(-12.0 * delta))
-	_tilt = lerpf(_tilt, float(wall) * 0.32, 1.0 - exp(-8.0 * delta))
+	var inside := is_inside_tree()
+	var inv := global_basis.inverse() if inside else Basis.IDENTITY
+	var st := s.duplicate()
+	st["vel"] = inv * (s.get("vel", Vector3.ZERO) as Vector3)
+	var yaw := global_rotation.y if inside else 0.0
+	st["yaw_rate"] = wrapf(yaw - _last_yaw, -PI, PI) / delta if delta > 0.0 else 0.0
+	_last_yaw = yaw
+	var m: int = s.get("move", AthleteMotion.GROUND)
+	if s.get("wall") is Vector3 and s.wall != Vector3.ZERO:
+		st["wall"] = inv * (s.wall as Vector3)
+	elif inside and (m == AthleteMotion.WALLRUN or m == AthleteMotion.CLIMB):
+		st["wall"] = inv * _probe_wall()
+	st["heft"] = _heft
+	var pitch: float = s.get("pitch", 0.0)
 	_pitch = lerpf(_pitch, pitch, 1.0 - exp(-14.0 * delta)) if delta > 0.0 else pitch
 	_breath += delta * 1.6
-	var run := clampf(_speed / 7.0, 0.0, 1.6)
-	if on_floor and not slide:
-		_phase += delta * (_speed / (1.1 + 0.35 * run)) * PI
-		var n := int(_phase / PI)
-		if n != _step_n:
-			_step_n = n
-			if steps and _speed > 2.5:
-				Sfx.step(self, _speed)
 	var sub := maxi(ceili(delta / 0.005), 1)
 	for i in sub:
 		var h := delta / sub
 		_flinch_v += (-220.0 * _flinch - 20.0 * _flinch_v) * h
 		_flinch += _flinch_v * h
+	var d := motion.update(delta, st)
+	# Footsteps on the stride (one per step), not on a timer.
+	var n := int(motion.phase / PI)
+	if n != _step_n:
+		_step_n = n
+		var flat := Vector2((st.vel as Vector3).x, (st.vel as Vector3).z).length()
+		if steps and flat > 2.5 and bool(s.get("floor", true)) and inside:
+			Sfx.step(self, flat)
+	_apply(d, delta)
+
+
+func _apply(d: AthleteMotion.Desc, delta: float) -> void:
 	_rest()
-	# Pelvis: height from the crouch and the stride's bob, a sway with the stride, the
-	# wall run's tilt.
-	var bob := absf(sin(_phase)) * 0.04 * minf(run, 1.2) * (1.0 - _air)
-	var drop := _crouch * (0.55 if slide else 0.36)
 	var hip := b("hips")
-	_local[hip].origin = AthleteBones.rest_local(hip).origin + Vector3(0, bob - drop - 0.02 * run, 0.06 * _crouch * (0.0 if slide else 1.0))
-	_local[hip].basis = Basis(Vector3.BACK, _tilt) * Basis(Vector3.UP, sin(_phase) * 0.08 * minf(run, 1.0)) \
-		* Basis(Vector3.RIGHT, (-0.25 * _crouch if not slide else 0.0)) * _local[hip].basis
-	# Spine: lean into the run, back in a slide, with the look pitch; breathing; a hit.
-	var lean := 0.22 * clampf(forward / 7.0, -0.6, 1.4) - (0.45 if slide else 0.0)
-	_lean = lerpf(_lean, lean, k) if delta > 0.0 else lean
-	var breath := sin(_breath) * 0.012 * (1.0 - minf(run, 1.0))
-	var twist := -sin(_phase) * 0.12 * minf(run, 1.0)
-	var blade := -BLADE if _gun != null and not _pistol else 0.0
-	_euler("spine", Vector3(-_lean * 0.5 + _pitch * 0.1 + 0.18 * _crouch * (0.0 if slide else 1.0), twist * 0.5 + blade * 0.3, -_side * 0.04 * run))
-	_euler("chest", Vector3(-_lean * 0.5 + _pitch * 0.1 + breath + _flinch.x, twist * 0.5 + blade * 0.35 + _flinch.y, -_side * 0.04 * run + _flinch.z))
-	_euler("upper_chest", Vector3(_pitch * 0.1 - breath * 0.5, blade * 0.35, 0.0))
+	_local[hip].origin = AthleteBones.rest_local(hip).origin + d.hip
+	_local[hip].basis = Basis(Vector3.UP, d.hip_rot.y) * Basis(Vector3.RIGHT, d.hip_rot.x) * Basis(Vector3.BACK, d.hip_rot.z) * _local[hip].basis
+	var rifle := _gun != null and not _pistol
+	var blade := -BLADE * d.blade if rifle else 0.0
+	var breath := sin(_breath) * 0.012
+	var sp := d.spine
+	var p := _pitch
+	_euler("spine", Vector3(sp.x * 0.35 + p * 0.1, sp.y * 0.35 + blade * 0.3, sp.z * 0.35))
+	_euler("chest", Vector3(sp.x * 0.35 + p * 0.1 + breath + _flinch.x, sp.y * 0.35 + blade * 0.35 + _flinch.y, sp.z * 0.35 + _flinch.z))
+	_euler("upper_chest", Vector3(sp.x * 0.3 + p * 0.1 - breath * 0.5, sp.y * 0.3 + blade * 0.35, sp.z * 0.3))
 	_fk()
-	_legs(slide, run, flat)
-	_arms()
+	_legs(d, delta)
+	_arms(d)
 	_write()
+	if is_inside_tree():
+		for i in 2:
+			_foot_world[i] = global_transform * _glob[b("foot_" + ["l", "r"][i])].origin
 
 
-func _legs(slide: bool, run: float, flat: Vector2) -> void:
-	var dir := Vector3(flat.x, 0.0, flat.y).normalized() if flat.length() > 0.3 else Vector3.FORWARD
-	var stride := 0.34 * minf(run, 1.25) * (1.0 - _crouch * 0.4)
+func _legs(d: AthleteMotion.Desc, delta: float) -> void:
+	var targets: Array[Vector3] = [d.foot_l, d.foot_r]
+	var toes: Array[float] = [d.toe_l, d.toe_r]
+	var poles: Array[Vector3] = [d.pole_l, d.pole_r]
+	var inside := is_inside_tree()
+	var planted := (motion.weights[AthleteMotion.GROUND] + motion.weights[AthleteMotion.SLIDE] + motion.weights[AthleteMotion.CHARGE]) \
+		* (1.0 if motion._floor else 0.0)
+	var drop := 0.0
+	for i in 2:
+		# Feet on uneven floor: each finds the ground under it (read only).
+		if inside and planted > 0.5:
+			var want := _ground_under(targets[i])
+			_ground_off[i] = lerpf(_ground_off[i], want, 1.0 - exp(-20.0 * delta)) if delta > 0.0 else want
+		else:
+			_ground_off[i] = lerpf(_ground_off[i], 0.0, 1.0 - exp(-10.0 * delta)) if delta > 0.0 else 0.0
+		targets[i].y += _ground_off[i]
+		drop = minf(drop, _ground_off[i])
+		# A wall push: the foot stays where it left the wall while the body moves off.
+		if motion.push_new and i == motion.push_foot and inside:
+			_pin = _foot_world[i]
+		if motion.push_left > 0.0 and i == motion.push_foot and _pin != Vector3.INF and inside:
+			var w := clampf(motion.push_left / 0.08, 0.0, 1.0)
+			targets[i] = targets[i].lerp(global_transform.affine_inverse() * _pin, w)
+	if drop < 0.0:
+		# A foot lower than the other: the pelvis comes down so the leg still reaches.
+		var hip := b("hips")
+		_local[hip].origin.y += drop
+		_fk()
 	for i in 2:
 		var s := "l" if i == 0 else "r"
-		var sx := -1.0 if i == 0 else 1.0
-		var ph := _phase + PI * i
-		var f := sin(ph) * stride
-		var lift := maxf(0.0, cos(ph)) * 0.16 * minf(run, 1.0)
-		var hip_at := _glob[b("thigh_" + s)].origin
-		var ground := Vector3(sx * (0.118 + 0.05 * _crouch), 0.088 + lift, 0.02) + dir * f
-		# In the air: knees tucked up under the hips, reaching down as it falls.
-		var tuck := hip_at + Vector3(sx * 0.03, -0.62, -0.12 + 0.18 * i)
-		var foot := ground.lerp(tuck, _air)
-		var toe := 0.25 * lift / 0.16 - 0.3 * _air
-		if slide:
-			# Front (right) leg out along the floor, the back leg folded under.
-			foot = Vector3(0.14, 0.1, -0.52) if i == 1 else Vector3(-0.17, 0.07, 0.16)
-			toe = 0.45 if i == 1 else -0.4
-		_ik("thigh_" + s, "shin_" + s, foot, Vector3(sx * 0.25, 0.0 if not slide or i == 1 else -0.9, -1.0), -1.0)
-		_aim_bone("foot_" + s, Basis(Vector3.RIGHT, toe) * AthleteBones.rest_global(b("foot_" + s)).basis)
+		# A foot past the leg's reach rolls up onto its toes (the heel lifts) instead of the
+		# knee locking straight and snapping when it comes back in reach.
+		var head := _glob[b("thigh_" + s)].origin
+		var flat := Vector2(targets[i].x - head.x, targets[i].z - head.z).length()
+		var room := LEG * lerpf(1.0, 0.97, clampf(planted, 0.0, 1.0))
+		if flat < room and planted > 0.0:
+			var lowest := head.y - sqrt(room * room - flat * flat)
+			if targets[i].y < lowest:
+				toes[i] -= (lowest - targets[i].y) * 4.0
+				targets[i].y = lowest
+		_ik("thigh_" + s, "shin_" + s, targets[i], poles[i] if poles[i] != Vector3.ZERO else Vector3.FORWARD, -1.0)
+		var hip_yaw := Basis(Vector3.UP, _glob[b("hips")].basis.get_euler().y * 0.5)
+		_aim_bone("foot_" + s, hip_yaw * Basis(Vector3.RIGHT, toes[i]) * AthleteBones.rest_global(b("foot_" + s)).basis)
 	_fk()
+
+
+## How far the ground under a model-space foot point is above (+) or below (-) the floor
+## the body stands on, within ±0.3 m.
+func _ground_under(at: Vector3) -> float:
+	var space := get_world_3d().direct_space_state
+	var from := global_transform * Vector3(at.x, 0.45, at.z)
+	var to := global_transform * Vector3(at.x, -0.35, at.z)
+	var q := PhysicsRayQueryParameters3D.create(from, to, Geo.WORLD)
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return 0.0
+	return clampf((global_transform.affine_inverse() * (hit.position as Vector3)).y, -0.3, 0.3)
+
+
+## The nearest wall's normal (world), for a wall run or climb seen on someone else.
+func _probe_wall() -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var c := global_position + Vector3(0, 1.0, 0)
+	var best := Vector3.ZERO
+	var near := 9.0
+	for dir: Vector3 in [global_basis.x, -global_basis.x, -global_basis.z]:
+		var q := PhysicsRayQueryParameters3D.create(c, c + dir * 1.2, Geo.WORLD)
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and c.distance_to(hit.position) < near:
+			near = c.distance_to(hit.position)
+			best = hit.normal
+	return best
 
 
 ## The gun: on the right shoulder for long guns, at arm's length for pistols, turned by
-## the look pitch; then both hands on it.
-func _arms() -> void:
+## the look pitch, moved by the motion (sprint, stomp, port); then both hands on it.
+func _arms(d: AthleteMotion.Desc) -> void:
 	var p := _pitch
-	var aim := Basis(Vector3.RIGHT, p)
 	var uc := b("upper_chest")
-	var mount: Transform3D
 	if _gun == null:
 		_relaxed_arms()
 		return
+	var aim := Basis(Vector3.RIGHT, p)
+	var mount: Transform3D
+	var grip: Vector3 = _slots.get("grip", Vector3.ZERO)
 	if _pistol:
 		var centre := (_glob[b("upper_arm_l")].origin + _glob[b("upper_arm_r")].origin) * 0.5
-		var grip: Vector3 = _slots.get("grip", Vector3.ZERO)
 		mount = Transform3D(aim, centre + aim * PISTOL_REACH) * Transform3D(Basis.IDENTITY, -grip)
 	else:
 		var pocket := _glob[uc] * (AthleteBones.rest_global(uc).affine_inverse() * POCKET)
 		var butt: Vector3 = _slots.get("buttpad", Vector3(0, 0.03, 0.25))
 		mount = Transform3D(aim, pocket) * Transform3D(Basis.IDENTITY, -butt)
+	# The motion's own turn and shift of the gun (about the grip).
+	var g_at := mount * grip
+	var turn := Basis(Vector3.UP, d.gun_rot.y) * Basis(Vector3.RIGHT, d.gun_rot.x) * Basis(Vector3.BACK, d.gun_rot.z)
+	mount = Transform3D(turn, g_at + d.gun) * Transform3D(Basis.IDENTITY, -g_at) * mount
+	if d.port > 0.01:
+		# High port: muzzle up, the gun against the right of the chest.
+		var chest := _glob[uc] * (AthleteBones.rest_global(uc).affine_inverse() * Vector3(0.12, 1.24, -0.27))
+		var port := Transform3D(Basis(Vector3.UP, 0.35) * Basis(Vector3.RIGHT, 1.2), chest) * Transform3D(Basis.IDENTITY, -grip)
+		mount = mount.interpolate_with(port, clampf(d.port, 0.0, 1.0))
 	gun_hand.transform = mount
-	var gb := mount.basis
+	var gb := mount.basis.orthonormalized()
 	# Head: down onto the stock for a long gun, square behind a pistol; looking with the pitch.
-	var back := BLADE if not _pistol else 0.0
-	_euler("neck", Vector3(p * 0.12 - (0.06 if not _pistol else 0.03), back * 0.45, 0.0))
-	_euler("head", Vector3(p * 0.3 - (0.05 if not _pistol else 0.02), back * 0.55, -0.08 if not _pistol else 0.0))
-	# Shoulders a little forward into the gun.
+	var back := BLADE * d.blade if not _pistol else 0.0
+	_euler("neck", Vector3(p * 0.12 - (0.06 if not _pistol else 0.03), back * 0.45, 0.0) + d.neck * 0.5)
+	_euler("head", Vector3(p * 0.3 - (0.05 if not _pistol else 0.02), back * 0.55, -0.08 if not _pistol else 0.0) + d.neck * 0.5)
 	_turn_model("clavicle_r", Vector3.UP, 0.18)
 	_turn_model("clavicle_l", Vector3.UP, -0.3 if not _pistol else -0.2)
 	_fk()
 	# Right hand round the grip: the back of the hand out to the right, the knuckles
 	# forward across the grip, the index finger at the trigger.
-	var grip_at: Vector3 = mount * (_slots.get("grip", Vector3.ZERO) as Vector3)
+	var grip_at := mount * grip
 	var yr := (gb * Vector3(-0.28, -0.3, -0.91)).normalized()
 	var xr := gb.x
 	xr = (xr - yr * xr.dot(yr)).normalized()
@@ -255,14 +343,25 @@ func _arms() -> void:
 		# Too far out (a long handguard, a punt gun): the hand slides back along it.
 		var shoulder := (_glob[b("clavicle_l")] * AthleteBones.rest_local(b("upper_arm_l"))).origin
 		var reach := (AthleteBones.length(b("upper_arm_l")) + AthleteBones.length(b("forearm_l"))) * 0.96
-		var room := 0
-		while wrist_l.distance_to(shoulder) > reach and room < 12:
-			wrist_l += gb.z * 0.025
-			room += 1
-	_ik("upper_arm_l", "forearm_l", wrist_l, Vector3(-0.5, -1.0, 0.1), 1.0)
+		var rel := wrist_l - shoulder
+		if rel.length() > reach:
+			# The nearest point back along the gun (+Z) that the arm reaches, at most 0.3 m.
+			var along := rel.dot(gb.z)
+			var disc := along * along - (rel.length_squared() - reach * reach)
+			var t := (-along + sqrt(disc)) if disc >= 0.0 else -along
+			wrist_l += gb.z * clampf(t, 0.0, 0.3)
+	var free := clampf(d.free_l, 0.0, 1.0)
+	if free > 0.01:
+		# Off the gun: reaching for a wall, a ledge, the rope; palm forward and down.
+		var hf := Basis(Vector3(0.3, -0.2, -0.93).normalized(), Vector3(0.1, 0.97, -0.2).normalized(), Vector3.ZERO)
+		hf.z = hf.x.cross(hf.y).normalized()
+		hf.y = hf.z.cross(hf.x).normalized()
+		wrist_l = wrist_l.lerp(d.free_at, free)
+		hl = hl.slerp(hf.orthonormalized(), free)
+	_ik("upper_arm_l", "forearm_l", wrist_l, Vector3(-0.5, -1.0, 0.1).lerp(Vector3(-1.0, -0.2, 0.3), free), 1.0)
 	_aim_bone("hand_l", hl)
 	_turn("fingers_r", Vector3.BACK, FINGER_CURL)
-	_turn("fingers_l", Vector3.BACK, -FINGER_CURL * 1.1)
+	_turn("fingers_l", Vector3.BACK, -FINGER_CURL * lerpf(1.1, 0.35, free))
 	_fk()
 
 

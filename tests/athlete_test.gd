@@ -23,6 +23,9 @@ func _init() -> void:
 		for pitch in [-0.9, 0.0, 0.9]:
 			_test_hands(scene, frame, pitch)
 	_test_feet(scene)
+	_test_landing()
+	_test_wall_push(scene)
+	_test_no_teleport(scene)
 	await _test_death(scene)
 	print("ATHLETE TESTS: %s" % ("PASS" if failures == 0 else "%d FAILED" % failures))
 	quit(1 if failures > 0 else 0)
@@ -146,3 +149,108 @@ func _test_death(scene: Node3D) -> void:
 	var now := b.skel.get_bone_global_pose(AthleteBones.index("spine")).origin
 	check(now.distance_to(start) > 0.2, "its bones follow the bodies as it falls (%.2f m)" % now.distance_to(start))
 	check(b.gun_hand.get_child_count() == 0, "the gun flies loose")
+
+
+## Phase 3: a landing squashes with the speed it came down at; a soft one barely does.
+func _test_landing() -> void:
+	var deepest: Array[float] = []
+	for vy in [-2.0, -8.0, -20.0]:
+		var m := AthleteMotion.new()
+		var dt := 1.0 / 60.0
+		for f in 20:
+			m.update(dt, {"vel": Vector3(0, vy, -4), "floor": false, "move": AthleteMotion.AIR})
+		var low := 9.0
+		var rest := 0.0
+		for f in 40:
+			var d := m.update(dt, {"vel": Vector3(0, 0, -4), "floor": true, "move": AthleteMotion.GROUND})
+			low = minf(low, d.hip.y)
+			rest = d.hip.y
+		deepest.append(rest - low)
+	check(deepest[0] < 0.03, "a soft landing barely squashes (%.3f m)" % deepest[0])
+	check(deepest[2] > deepest[1] + 0.03 and deepest[1] > deepest[0] + 0.02,
+		"landing squash grows with the fall speed (%.3f, %.3f, %.3f m)" % [deepest[0], deepest[1], deepest[2]])
+
+
+## Phase 3: running on a wall, the soles touch the wall (not inside it); leaving it, the
+## foot on the wall's side drives the body off: it starts where it stood on the wall and
+## the leg stays straight toward the wall while the body flies away (the push is seen).
+func _test_wall_push(scene: Node3D) -> void:
+	var a := _make(scene)
+	var dt := 1.0 / 60.0
+	a.global_position = Vector3(0, 2, 0)
+	var vel := Vector3(0, 0, -10)
+	var wall_x := -AthleteMotion.WALL_GAP
+	var inside := -9.0
+	var foot := AthleteBones.index("foot_l")
+	for f in 30:
+		a.global_position += vel * dt
+		a.animate(dt, {"vel": vel, "floor": false, "move": AthleteMotion.WALLRUN, "wall": Vector3(1, 0, 0)})
+		if f > 15:
+			inside = maxf(inside, wall_x - (a.global_transform * _g(a, foot).origin).x + a.global_position.x)
+	check(inside < 0.0, "wall run: the wall-side foot stays out of the wall (%.3f m in)" % inside)
+	var on_wall := a.global_transform * _g(a, foot).origin
+	vel = Vector3(6, 4, -10)
+	var first := 9.0
+	var straight := true
+	var toward := 9.0
+	for f in 6:
+		a.global_position += vel * dt
+		a.animate(dt, {"vel": vel, "floor": false, "move": AthleteMotion.AIR})
+		var w := a.global_transform * _g(a, foot).origin
+		if f == 0:
+			first = w.distance_to(on_wall)
+		var th := _g(a, AthleteBones.index("thigh_l")).basis.y
+		var sh := _g(a, AthleteBones.index("shin_l")).basis.y
+		straight = straight and th.angle_to(sh) < deg_to_rad(15.0)
+		toward = minf(toward, (a.global_transform * _g(a, 0).origin).x - w.x)
+	check(a.motion.push_foot == 0, "the push foot is the one on the wall's side")
+	check(first < 0.1, "the push starts from where the foot stood on the wall (%.3f m)" % first)
+	check(straight and toward > 0.3, "the leg stays straight toward the wall as the body leaves (%.2f m to the wall side)" % toward)
+	a.queue_free()
+
+
+## Phase 3: no state change teleports a limb: run -> slide -> slide jump -> land -> dash
+## -> run, every bone moves at most what a running stride moves it in a frame.
+func _test_no_teleport(scene: Node3D) -> void:
+	var a := _make(scene)
+	var dt := 1.0 / 60.0
+	var plan := []
+	for f in 30:
+		plan.append([AthleteMotion.GROUND, Vector3(0, 0, -5), true, 0.0])
+	for f in 30:
+		plan.append([AthleteMotion.SLIDE, Vector3(0, 0, -8), true, 1.0])
+	for f in 25:
+		plan.append([AthleteMotion.AIR, Vector3(0, 5.0 - f * 0.5, -8), false, 0.0])
+	for f in 30:
+		plan.append([AthleteMotion.GROUND, Vector3(0, 0, -5), true, 0.0])
+	for f in 15:
+		plan.append([AthleteMotion.DASH, Vector3(-9, 0, 0), true, 0.0])
+	for f in 20:
+		plan.append([AthleteMotion.GROUND, Vector3(0, 0, -5), true, 0.0])
+	# A teleport is a jump out of step with the frames before it: the change in how far a
+	# bone moves from one frame to the next stays small (a fast limb is fine, a pop is not).
+	var prev: Array[Vector3] = []
+	var last: Array[float] = []
+	var worst := 0.0
+	var worst_at := ""
+	var fastest := 0.0
+	for f in plan.size():
+		var st: Array = plan[f]
+		a.animate(dt, {"vel": st[1], "floor": st[2], "move": st[0], "crouch": st[3]})
+		a.skel.force_update_all_bone_transforms()
+		for i in a.skel.get_bone_count():
+			var o := a.skel.get_bone_global_pose(i).origin
+			if f == 0:
+				prev.append(o)
+				last.append(0.0)
+				continue
+			var jump := o.distance_to(prev[i])
+			fastest = maxf(fastest, jump)
+			if f > 1 and jump - last[i] > worst:
+				worst = jump - last[i]
+				worst_at = "%s at frame %d" % [a.skel.get_bone_name(i), f]
+			prev[i] = o
+			last[i] = jump
+	check(fastest < 0.25, "run, slide, slide jump, land, dash, run: no bone moves more than 0.25 m in a frame (%.3f)" % fastest)
+	check(worst < 0.16, "run, slide, slide jump, land, dash, run: no bone pops (worst %.3f m/frame more than the frame before, %s)" % [worst, worst_at])
+	a.queue_free()
