@@ -15,6 +15,8 @@ extends RefCounted
 ## 'o' blocked for bots but built by hand (a tower, a table), 'c' low cover (bots go round),
 ## anything else is open floor of a named area ('a' site A, 'b' site B, 's' spawn...).
 ## 'w' (C6) is a breakable panel in a gap of the rock: solid until a RAM goes through it.
+## 'v' (C7) is a vault window: a sill and a lintel, jump through it (solid for bots).
+## 'k' (C7) is a ledge block against a wall, 1.1 or 2.1 m high (solid for bots).
 
 const CEILING := 40.0
 const DIRS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -96,12 +98,12 @@ static func turn(p: Vector3, mid := Vector2.ZERO) -> Vector3:
 
 
 func solid(c: int, r: int) -> bool:
-	return at(c, r) == "#" or at(c, r) == "w"
+	return at(c, r) == "#" or at(c, r) == "w" or at(c, r) == "v" or at(c, r) == "k"
 
 
 func walkable(c: int, r: int) -> bool:
 	var k := at(c, r)
-	return k != "#" and k != "o" and k != "c" and k != "w"
+	return k != "#" and k != "o" and k != "c" and k != "w" and k != "v" and k != "k"
 
 
 ## The cells of `chars` merged into rectangles (in cells): Rect2i(col, row, w, h).
@@ -160,6 +162,15 @@ func build_walls(parent: Node3D, height: float, make: Callable) -> void:
 		Deploy.register(panel.uid, panel)
 		var top := centre(g.x, g.y, (CEILING + height) / 2.0)
 		barrier(parent, Vector3(cell, CEILING - height, cell), top)
+	for l in ledges:
+		var g: Vector2i = l[0]
+		var h: float = l[1]
+		make.call(Vector3(cell, h, cell), centre(g.x, g.y, h / 2.0))
+	for wnd in windows:
+		var g: Vector2i = wnd[0]
+		make.call(Vector3(cell, WINDOW_SILL, cell), centre(g.x, g.y, WINDOW_SILL / 2.0))
+		make.call(Vector3(cell, height - WINDOW_TOP, cell), centre(g.x, g.y, (height + WINDOW_TOP) / 2.0))
+		barrier(parent, Vector3(cell, CEILING - height, cell), centre(g.x, g.y, (CEILING + height) / 2.0))
 	seal(parent)
 
 
@@ -171,8 +182,108 @@ func build_walls(parent: Node3D, height: float, make: Callable) -> void:
 const MAX_BREACH := 8
 
 func mark_breaches(pairs := 2, min_detour := 30.0, max_detour := 110.0) -> void:
+	for p in _pick_gaps(pairs, min_detour, max_detour, MAX_BREACH, 18.0):
+		breaches.append([_cut(p, "w"), p[1]])
+
+
+## C7: small open passages, 1 cell (2 m) wide, through walls up to `max_thick` cells,
+## where they save at least `min_detour` metres of walking. Mirrored like everything else.
+func cut_passages(pairs := 4, min_detour := 18.0, max_thick := 8) -> void:
+	for p in _pick_gaps(pairs, min_detour, 200.0, max_thick, 12.0):
+		_cut(p, ".")
+		passages.append(p)
+
+
+## C7: vault windows: a passage with a sill (WINDOW_SILL high) and a lintel (from
+## WINDOW_TOP up) in its middle cell: jump or mantle through, bots go round.
+const WINDOW_SILL := 0.95
+const WINDOW_TOP := 2.95
+
+func cut_windows(pairs := 2, min_detour := 14.0, max_thick := 5) -> void:
+	for p in _pick_gaps(pairs, min_detour, 200.0, max_thick, 12.0):
+		windows.append([_cut(p, "v"), p[1]])
+
+
+## C7: a hand-placed passage in cells (and its twin turned half round), for maps whose
+## walls are too thick for cut_passages to find one.
+func carve_cells2(r: Rect2i, ch := ".") -> void:
+	for rr in range(r.position.y, r.end.y):
+		for cc in range(r.position.x, r.end.x):
+			set_cell(cc, rr, ch)
+			set_cell(cols - 1 - cc, rows - 1 - rr, ch)
+	var mid := r.get_center()
+	_gaps.append(mid)
+	_gaps.append(Vector2i(cols - 1 - mid.x, rows - 1 - mid.y))
+
+
+## C7: a vault window at cell `g` (and its twin), across a passage running along `axis`.
+func window2(g: Vector2i, axis: Vector2i) -> void:
+	for q in [g, Vector2i(cols - 1 - g.x, rows - 1 - g.y)]:
+		set_cell(q.x, q.y, "v")
+		windows.append([q, axis])
+
+
+## C7: ledge blocks against the walls of wide lanes, two heights (LEDGE_HEIGHTS): a step
+## up onto a wall run, a perch, a kick-off point. Bots walk round them ('k').
+const LEDGE_HEIGHTS := [1.1, 2.1]
+var ledges: Array = []
+
+func add_ledges(pairs := 6) -> void:
 	var found := []
-	var seen := 0
+	for r in range(2, rows - 2):
+		for c in range(2, cols - 2):
+			var g := Vector2i(c, r)
+			if at(c, r) != "." or not _lane(g):
+				continue
+			for axis in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				# Rock behind, three open cells in front, open along the wall both ways.
+				var back: Vector2i = g - axis
+				if at(back.x, back.y) != "#":
+					continue
+				var ok := true
+				for k in range(1, 4):
+					var q: Vector2i = g + axis * k
+					if at(q.x, q.y) != "." :
+						ok = false
+				var side := Vector2i(axis.y, axis.x)
+				for q in [g + side, g - side]:
+					if at(q.x, q.y) != ".":
+						ok = false
+				if ok:
+					found.append(g)
+					break
+	# Spread out: deterministic shuffle by position, then keep far-apart ones.
+	found.sort_custom(func(x: Vector2i, y: Vector2i) -> bool: return (x.x * 73856093 ^ x.y * 19349663) % 1000 < (y.x * 73856093 ^ y.y * 19349663) % 1000)
+	var mid := rect.get_center()
+	for g in found:
+		if ledges.size() >= pairs * 2:
+			break
+		var twin := cell_of(turn(centre(g.x, g.y), mid))
+		if at(twin.x, twin.y) != "." or twin == g:
+			continue
+		var far := true
+		for q in _gaps:
+			if q.distance_to(g) * cell < 14.0 or q.distance_to(twin) * cell < 14.0:
+				far = false
+				break
+		if not far:
+			continue
+		var h: float = LEDGE_HEIGHTS[ledges.size() / 2 % LEDGE_HEIGHTS.size()]
+		for q in [g, twin]:
+			set_cell(q.x, q.y, "k")
+			ledges.append([q, h])
+			_gaps.append(q)
+
+
+## The gaps picked so far (any kind), so later ones keep away from them.
+var _gaps: Array[Vector2i] = []
+## Open passages [cell, axis, thickness] and windows [cell, axis] (C7).
+var passages: Array = []
+var windows: Array = []
+
+
+func _pick_gaps(pairs: int, min_detour: float, max_detour: float, max_thick: int, spacing: float) -> Array:
+	var found := []
 	for r in range(1, rows - 1):
 		for c in range(1, cols - 1):
 			if at(c, r) != "#":
@@ -182,14 +293,14 @@ func mark_breaches(pairs := 2, min_detour := 30.0, max_detour := 110.0) -> void:
 				var a: Vector2i = g - axis
 				if not _lane(a):
 					continue
-				var t := _thickness(g, axis)
+				var t := _thickness(g, axis, max_thick)
 				if t == 0:
 					continue
 				var b: Vector2i = g + axis * t
-				seen += 1
 				var d := _walk(a, b, int(max_detour / cell) + 4) * cell
 				if d >= min_detour and d <= max_detour:
-					found.append([d, g, axis, t])
+					found.append([d - t * cell * 2.0, g, axis, t])
+	# Longest detour saved first; a thin wall beats a long tunnel for the same saving.
 	found.sort_custom(func(x: Array, y: Array) -> bool: return x[0] > y[0])
 	var picked := []
 	for f in found:
@@ -200,31 +311,38 @@ func mark_breaches(pairs := 2, min_detour := 30.0, max_detour := 110.0) -> void:
 		var t: int = f[3]
 		# The twin starts from the far end, so it is the same strip turned round.
 		var twin := cell_of(turn(centre(g.x, g.y) + Vector3(axis.x, 0, axis.y) * cell * (t - 1), rect.get_center()))
-		if _thickness(twin, axis) != t or g.distance_to(twin) < 6.0:
+		if _thickness(twin, axis, max_thick) != t or g.distance_to(twin) < 6.0:
 			continue
 		var far := true
-		for p in picked:
-			if (p[0] as Vector2i).distance_to(g) * cell < 18.0 or (p[0] as Vector2i).distance_to(twin) * cell < 18.0:
+		for q in _gaps:
+			if q.distance_to(g) * cell < spacing or q.distance_to(twin) * cell < spacing:
 				far = false
+				break
 		if not far:
 			continue
+		_gaps.append(g)
+		_gaps.append(twin)
 		picked.append([g, axis, t])
 		picked.append([twin, axis, t])
-	for p in picked:
-		var g: Vector2i = p[0]
-		var axis: Vector2i = p[1]
-		var t: int = p[2]
-		for k in t:
-			var q: Vector2i = g + axis * k
-			set_cell(q.x, q.y, "w" if k == t / 2 else ".")
-		breaches.append([g + axis * (t / 2), axis])
+	return picked
+
+
+## Cuts a picked gap open; its middle cell becomes `middle`. Returns the middle cell.
+func _cut(p: Array, middle: String) -> Vector2i:
+	var g: Vector2i = p[0]
+	var axis: Vector2i = p[1]
+	var t: int = p[2]
+	for k in t:
+		var q: Vector2i = g + axis * k
+		set_cell(q.x, q.y, middle if k == t / 2 else ".")
+	return g + axis * (t / 2)
 
 
 ## How many solid cells from `g` along `axis` to open lane (1..MAX_BREACH), with rock on
 ## both sides of every one of them; 0 if it isn't a gap like that.
-func _thickness(g: Vector2i, axis: Vector2i) -> int:
+func _thickness(g: Vector2i, axis: Vector2i, max_thick := MAX_BREACH) -> int:
 	var perp := Vector2i(axis.y, axis.x)
-	for t in range(1, MAX_BREACH + 1):
+	for t in range(1, max_thick + 1):
 		var q: Vector2i = g + axis * (t - 1)
 		if at(q.x, q.y) != "#" or not (solid(q.x + perp.x, q.y + perp.y) and solid(q.x - perp.x, q.y - perp.y)):
 			return 0

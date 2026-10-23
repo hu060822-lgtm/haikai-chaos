@@ -61,6 +61,7 @@ func tick(delta: float) -> void:
 		Sfx.play(user, "ram", -2.0)
 		if user is Player:
 			(user as Player)._set_move(Player.Move.CHARGE, "肩撞")
+			(user as Player).burst(1.0)
 		elif user.has_method("lunge"):
 			user.lunge(dir * SPEED, TIME)
 	if state == State.GO:

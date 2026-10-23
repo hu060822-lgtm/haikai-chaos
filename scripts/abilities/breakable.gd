@@ -94,19 +94,13 @@ func restore() -> void:
 		layout.set_cell(cell.x, cell.y, "w")
 
 
-## A few bent sheets thrown forward, gone in a second.
+## Bent sheets as real pieces (C7, PhysicsFx), thrown the way the ram was going.
 func _debris() -> void:
-	var world := get_tree().current_scene
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color("#6d6a63")
-	for i in 6:
-		var m := MeshInstance3D.new()
-		m.mesh = LowPoly.chamfer_box(Vector3(randf_range(0.3, 0.7), randf_range(0.3, 0.8), 0.04), 0.01)
-		m.material_override = mat
-		world.add_child(m)
-		m.global_position = global_position + Vector3(randf_range(-0.8, 0.8), randf_range(0.4, 2.0), randf_range(-0.8, 0.8))
-		m.rotation = Vector3(randf() * TAU, randf() * TAU, 0)
-		var tw := m.create_tween()
-		tw.tween_property(m, "global_position", m.global_position + Vector3(randf_range(-2, 2), -m.global_position.y + global_position.y + 0.05, randf_range(-2, 2)), 0.5).set_ease(Tween.EASE_IN)
-		tw.tween_interval(0.8)
-		tw.tween_callback(m.queue_free)
+	mat.metallic = 0.5
+	var push := Vector3.ZERO
+	for p in get_tree().get_nodes_in_group("combatants"):
+		if p is Node3D and (p as Node3D).global_position.distance_to(global_position) < 4.0 and p.get("velocity") is Vector3:
+			push = (p.get("velocity") as Vector3) * 0.8
+	PhysicsFx.shards(get_tree().current_scene, global_position + Vector3(0, 1.2, 0), Vector3(0.7, 0.8, 0.05), mat, 8, push, 5.0)

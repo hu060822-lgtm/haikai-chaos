@@ -527,7 +527,7 @@ func _died(victim_id: String, wire: Dictionary) -> void:
 		return
 	var victim = entities.get(victim_id)
 	if victim is Avatar:
-		victim.die(wire.get("dir", Vector3.ZERO) if wire.get("dir") is Vector3 else Vector3.ZERO)
+		victim.die(wire.get("dir", Vector3.ZERO) if wire.get("dir") is Vector3 else Vector3.ZERO, CompetitorRig.kill_force(wire))
 	elif victim == player and player.alive and sender == 1 and not net.is_host():
 		# The host's count says we're dead: we are (no second announcement).
 		_forced_here = true

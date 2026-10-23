@@ -76,6 +76,8 @@ static func _stream(id: String) -> AudioStreamWAV:
 		"ram": w = _make(0.3, 0.75, 85.0, 40.0, 11.0, 0.9)
 		"panel_break": w = _make(0.7, 0.85, 200.0, 50.0, 6.0, 1.0)
 		"decoy_pop": w = _make(0.3, 0.3, 1200.0, 300.0, 14.0, 0.2)
+		# C7: the body of a hit confirm, under the tick.
+		"thud": w = _make(0.11, 0.55, 140.0, 60.0, 30.0, 0.5)
 		_: w = _make(0.1, 0.5, 300.0, 200.0, 30.0)
 	_cache[id] = w
 	return w
@@ -132,10 +134,11 @@ static func shot(at: Node3D, klass: String, quiet := false) -> void:
 
 
 ## Flat (non-positional) UI sounds: hit and kill confirms.
-static func ui(tree: SceneTree, id: String, volume_db := -6.0) -> void:
+static func ui(tree: SceneTree, id: String, volume_db := -6.0, pitch := 1.0) -> void:
 	var p := AudioStreamPlayer.new()
 	p.stream = _stream(id)
 	p.volume_db = volume_db
+	p.pitch_scale = pitch
 	p.bus = "SFX"
 	tree.current_scene.add_child(p)
 	p.play()

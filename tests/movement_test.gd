@@ -172,13 +172,14 @@ func _test_dash() -> void:
 
 
 func _test_mobility() -> void:
-	print("gun weight vs movement")
+	print("gun weight vs movement (C7: none)")
 	player.equip({"frame": "service_pistol", "parts": {}, "tune": {}})
 	var light := player.mobility
-	player.equip({"frame": "lmg", "parts": {}, "tune": {}})
+	player.equip({"frame": "anti_materiel", "parts": {}, "tune": {}})
 	var heavy := player.mobility
-	check(light > heavy + 0.15, "a pistol moves you more than a machine gun (%.2f vs %.2f)" % [light, heavy])
-	check(player.max_kicks() < Player.WALL_KICKS, "heavy guns get fewer wall kicks")
+	check(light == 1.0 and heavy == 1.0, "a 13 kg rifle moves like a pistol (%.2f vs %.2f)" % [light, heavy])
+	check(player.max_kicks() == Player.WALL_KICKS, "and gets every wall kick")
+	check(float(player.weapon.stats.aim_time) > 0.3, "weight still slows aiming (%.2f s)" % player.weapon.stats.aim_time)
 	player.equip({"frame": "carbine", "parts": {}, "tune": {}})
 
 

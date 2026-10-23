@@ -516,7 +516,8 @@ func _die(info: Dictionary) -> void:
 	PrintFx.takedown(get_tree().current_scene, global_position, Faultprint.INFO_ENEMY)
 	# The body stays where it fell, gone limp (CompetitorRig); the bot itself hides until
 	# it spawns again with a new one.
-	CompetitorRig.leave_corpse(_model, info.get("dir", Vector3.ZERO) if info.get("dir") is Vector3 else Vector3.ZERO)
+	CompetitorRig.leave_corpse(_model, info.get("dir", Vector3.ZERO) if info.get("dir") is Vector3 else Vector3.ZERO,
+		6.0, CompetitorRig.kill_force(info), velocity)
 	_model = null
 	_gun = null
 	visible = false

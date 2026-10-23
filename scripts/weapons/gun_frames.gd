@@ -2068,3 +2068,56 @@ static func anchor_gun(r: GunModels.Rig) -> void:
 	r.mount = Vector3(0, y + 0.026, -0.12)
 	r.recv = Vector3(0, y, -0.05)
 	r.body_w = 0.026
+
+
+# --- C7 frames --------------------------------------------------------------------------
+
+## A KRISS-style SMG: the stamped receiver of the SMG with the tall angled housing that
+## drops the bolt's travel down in front of the grip, and a grey polymer skin.
+static func vector_smg(r: GunModels.Rig) -> void:
+	smg(r)
+	var y := 0.075
+	var grey := f("poly_grey")
+	GunModels._slab(r.root, [Vector2(-0.03, y - 0.02), Vector2(-0.15, y - 0.02), Vector2(-0.15, y - 0.03),
+			Vector2(-0.1, y - 0.075), Vector2(-0.06, y - 0.082), Vector2(-0.034, y - 0.05)], 0.036, grey, 0.0, 0.004)
+	GunModels._seam(r, Vector2(-0.034, y - 0.05), Vector2(-0.1, y - 0.074), 0.018)
+	for i in 4:
+		GunModels._box(r.root, Vector3(0.037, 0.003, 0.006), Vector3(0, y - 0.05 - i * 0.006, -0.07 - i * 0.008), f("bore"), Vector3(-35, 0, 0), 0.0)
+	# The sliding mass seen through a slot in the housing.
+	GunModels._box(r.root, Vector3(0.0016, 0.03, 0.012), Vector3(0.0185, y - 0.05, -0.09), f("oxide"), Vector3(-35, 0, 0), 0.0)
+	GunModels._box(r.root, Vector3(0.036, 0.012, 0.13), Vector3(0, y + 0.03, -0.06), grey, Vector3.ZERO, 0.003)
+	r.top = Vector3(0, y + 0.036, -0.04)
+	r.mount = Vector3(0, y + 0.036, -0.11)
+
+
+## A scout rifle: the bolt-action body, lighter, with a bipod folded into the fore-end and a
+## forward rail on the barrel for a long-eye-relief scope.
+static func scout_rifle(r: GunModels.Rig) -> void:
+	rifle(r)
+	var fg := r.foregrip
+	for sx: float in [-0.006, 0.006]:
+		GunModels._rod(r.root, 0.003, 0.003, 0.15, fg + Vector3(sx, -0.004, 0.02), f("black"), 8)
+		GunModels._ball(r.root, 0.004, fg + Vector3(sx, -0.004, -0.055), f("rubber"))
+	GunModels._box(r.root, Vector3(0.02, 0.01, 0.022), fg + Vector3(0, -0.002, 0.1), f("black"), Vector3.ZERO, 0.002)
+	var rail := r.barrel_start.lerp(r.muzzle, 0.18) + Vector3(0, r.barrel_r + 0.008, 0)
+	GunModels._box(r.root, Vector3(0.02, 0.008, 0.11), rail, f("black"), Vector3.ZERO, 0.0015)
+	for i in 7:
+		GunModels._box(r.root, Vector3(0.022, 0.003, 0.004), rail + Vector3(0, 0.005, -0.045 + i * 0.015), f("bore"), Vector3.ZERO, 0.0)
+	GunModels._box(r.root, Vector3(0.024, 0.004, 0.03), rail + Vector3(0, -0.006, 0.07), f("oxide"), Vector3.ZERO, 0.001)
+
+
+## A VAL-style silent rifle: the old rifle's receiver round a fat integral suppressor that
+## runs the whole barrel, a skeleton stock, a short 20-round magazine.
+static func silent_rifle(r: GunModels.Rig) -> void:
+	ak(r)
+	var start := r.barrel_start
+	var end := r.muzzle
+	var length := absf(end.z - start.z) + 0.08
+	var c := Vector3(end.x, start.y, (start.z + end.z) / 2.0 - 0.04)
+	GunModels._rod(r.root, 0.022, 0.022, length, c, f("black"), 14)
+	for i in 6:
+		GunModels._turn(r.root, [Vector2(-0.003, 0.0228), Vector2(0.003, 0.0228)], c + Vector3(0, 0, -length / 2.0 + 0.02 + i * length / 6.0), f("bore"), 16)
+	GunModels._cyl(r.root, 0.012, 0.002, Vector3(c.x, c.y, c.z - length / 2.0 - 0.001), f("bore"), 14)
+	r.muzzle = Vector3(end.x, start.y, c.z - length / 2.0)
+	r.barrel_r = 0.022
+	r.hg_r = maxf(r.hg_r, 0.026)

@@ -508,7 +508,16 @@ func _wings() -> void:
 	var backrooms := mat("stripes", Color("#E8D9A0"), Color("#DCCB8A"))
 	var tile_wall := mat("tile", Color("#EEF4F2"))
 	var n := [0]
+	# C7: back-room crawlways through the thick blocks by the top lanes, one with a window.
+	layout.carve_cells2(Rect2i(14, 8, 15, 1))
+	layout.carve_cells2(Rect2i(21, 5, 1, 3))
+	layout.carve_cells2(Rect2i(33, 8, 9, 1))
+	layout.window2(Vector2i(25, 8), Vector2i(1, 0))
 	layout.mark_breaches(2)  # C6: rammable shortcuts
+	layout.cut_passages(4)  # C7: small passages, vault windows, ledges
+	layout.cut_windows(2)
+	layout.add_ledges(6)
+	PhysProp.scatter(self, layout, 36, [BABY_PINK, MINT, LILAC, BUTTER, SKY_BLUE, TOY_RED])  # C7: loose things
 	layout.build_walls(self, OUTER_H, func(size: Vector3, at: Vector3) -> void:
 		var near_site := absf(at.x) > 40.0 and absf(at.z) < 28.0
 		box(size, at, tile_wall if near_site else backrooms, 0.0, true)

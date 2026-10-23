@@ -223,9 +223,9 @@ static func _parts_text(build: Dictionary) -> String:
 
 
 static func _stats_text(s: Dictionary) -> String:
-	return "傷害 %d × %d　射速 %.1f/s\n彈匣 %d　射程 %d m\n重量 %.1f kg　機動性 %d%%\n口徑 %s" % [
+	return "傷害 %d × %d　射速 %.1f/s\n彈匣 %d　射程 %d m\n重量 %.1f kg\n口徑 %s" % [
 		roundi(Weapon.pvp_damage(s)), int(s.pellets), float(s.rate), int(s.mag), roundi(float(s.range)),
-		float(s.weight), roundi(Player.mobility_of(s) * 100), s.caliber]
+		float(s.weight), s.caliber]
 
 
 func _on_copy() -> void:

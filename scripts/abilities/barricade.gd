@@ -152,6 +152,9 @@ func _break(smashed: bool) -> void:
 	if smashed:
 		Sfx.play(self, "shield_break", -2.0)
 		PrintFx.explosion(get_tree().current_scene, global_position + Vector3(0, TALL / 2.0, 0), 1.2)
+		# C7: the plate comes apart in real pieces, thrown back from its face.
+		PhysicsFx.shards(get_tree().current_scene, global_position + Vector3(0, TALL / 2.0, 0), Vector3(0.55, 0.45, THICK),
+			_plate.material_override if _plate != null else null, 9, -global_basis.z * 3.0)
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3(1.0, 0.02, 1.0), 0.18 if smashed else 0.4)
 	tw.tween_callback(queue_free)

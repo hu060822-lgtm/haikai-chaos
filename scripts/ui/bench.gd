@@ -17,7 +17,7 @@ const STAT_ROWS := [
 	["damage", "傷害", 1], ["pellets", "彈丸", 1], ["rate", "射速", 1], ["mag", "彈匣", 1],
 	["reload", "換彈 s", -1], ["spread", "腰射散布", -1], ["moa", "精度 MOA", -1], ["recoil", "後座", -1],
 	["ergo", "操控", 1], ["aim_time", "開鏡 s", -1], ["range", "射程 m", 1], ["zoom", "倍率", 0],
-	["weight", "重量 kg", -1], ["mobility", "機動性 %", 1],
+	["weight", "重量 kg", -1], ["sway", "晃動", -1],
 ]
 
 var build := {}
@@ -451,8 +451,6 @@ func _on_tune(v: float) -> void:
 
 
 func _stat(s: Dictionary, key: String) -> float:
-	if key == "mobility":
-		return Player.mobility_of(s) * 100.0
 	if key == "damage":
 		return Weapon.pvp_damage(s)
 	return float(s.get(key, 0.0))

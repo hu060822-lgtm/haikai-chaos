@@ -142,6 +142,11 @@ func _process(delta: float) -> void:
 			0 if m != Player.Move.WALLRUN else 1, _pitch)
 
 
+## How it's moving on this screen (props it runs through get kicked by this).
+func seen_velocity() -> Vector3:
+	return _seen_vel
+
+
 func flat_speed() -> float:
 	return Vector2(_vel.x, _vel.z).length()
 
@@ -218,9 +223,9 @@ func take_hit(info: Dictionary) -> bool:
 	return float(info.get("damage", 0.0)) >= health
 
 
-func die(dir := Vector3.ZERO) -> void:
+func die(dir := Vector3.ZERO, force := 1.0) -> void:
 	if alive and visible and _model != null and not _states.is_empty():
-		CompetitorRig.leave_corpse(_model, dir)
+		CompetitorRig.leave_corpse(_model, dir, 6.0, force, _seen_vel)
 		_model = null
 		_gun = null
 	alive = false

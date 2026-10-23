@@ -12,6 +12,7 @@ const FRAME_SHORT := {
 	"jump_shotgun": "推進霰彈", "gyrojet": "火箭手槍", "minigun": "六管", "quad_barrel": "四管", "punt_gun": "巨砲",
 	"pneumatic_lance": "穿刺槍", "ricochet_smg": "跳彈衝鋒", "glass_revolver": "玻璃左輪", "tuning_fork": "音叉",
 	"anchor_gun": "錨鉤",
+	"vector_smg": "減後座", "scout_rifle": "偵察", "silent_rifle": "微聲",
 }
 
 

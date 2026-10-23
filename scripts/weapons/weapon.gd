@@ -23,6 +23,7 @@ const STK := {
 	"duck_launcher": 1, "saw_launcher": 2, "bubble_gun": 18,
 	"jump_shotgun": 2, "gyrojet": 4, "minigun": 9, "quad_barrel": 1, "punt_gun": 1, "pneumatic_lance": 1,
 	"ricochet_smg": 7, "glass_revolver": 2, "tuning_fork": 5, "anchor_gun": 2,
+	"vector_smg": 7, "scout_rifle": 2, "silent_rifle": 5,
 }
 ## Rays a cone weapon (flamethrower) sends per shot.
 const CONE_RAYS := 7
@@ -396,7 +397,14 @@ func _query(shooter: Node3D, from: Vector3, to: Vector3, exclude: Array) -> Dict
 	return shooter.get_world_3d().direct_space_state.intersect_ray(q)
 
 
+## One ray of a shot (C7: and whatever loose thing it passes gets knocked, PhysicsFx).
 func _ray(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: float, context: Dictionary) -> Dictionary:
+	var result := _trace(shooter, origin, dir, reach, power, context)
+	PhysicsFx.shot(shooter, origin, result.to, dir, float(stats.damage) * power / 15.0)
+	return result
+
+
+func _trace(shooter: Node3D, origin: Vector3, dir: Vector3, reach: float, power: float, context: Dictionary) -> Dictionary:
 	# A copy: what one ray passes through must not hide the target from the next pellet (or the echo).
 	var exclude: Array = (context.get("exclude", []) as Array).duplicate()
 	var result := {"from": origin, "to": origin + dir * reach, "normal": -dir, "hit_body": false}

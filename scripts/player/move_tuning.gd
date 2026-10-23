@@ -71,7 +71,7 @@ var slam_bounce := 0.6           # share of the slam's fall height given back
 var slam_bounce_max := 16.0      # m/s up at most
 
 # --- Wall run, wall jump, wall kick ---------------------------------------------------
-var wallrun_min := 5.0           # m/s along the wall to start
+var wallrun_min := 3.5           # m/s along the wall to start
 var wallrun_speed := 12.0         # m/s × mobility: the run accelerates toward this
 var wallrun_accel := 14.0        # m/s²
 var wallrun_max := 22.0          # m/s: above this the excess bleeds
@@ -81,14 +81,14 @@ var wallrun_gravity_late := 5.0 # m/s² at the end of the run
 var wallrun_late_from := 0.65    # share of the run after which it starts sinking
 var wallrun_max_fall := 2.0      # m/s: never sinks faster than this on the wall
 var wallrun_rise_damp := 3.0     # 1/s: upward speed from the hop onto the wall fades this fast
-var wallrun_min_height := 0.6    # m above the ground
-var wallrun_angle := 0.8         # max |direction · wall normal| to start (0 = parallel)
-var wall_reach := 0.7            # m past the capsule to catch a wall
-var wall_reach_hold := 0.95      # m past the capsule to keep a wall (hysteresis)
-var wall_grace := 0.1            # s: losing the wall this briefly doesn't end the run
-var wall_release := 0.15         # s: letting go of the input this long ends the run
-var wall_coyote := 0.15          # s: wall jump still allowed after leaving a run
-var wall_rearm := 1.2            # s: the same wall can be run again after this (or floor/other wall)
+var wallrun_min_height := 0.35   # m above the ground
+var wallrun_angle := 0.92        # max |direction · wall normal| to start (0 = parallel)
+var wall_reach := 0.95           # m past the capsule to catch a wall
+var wall_reach_hold := 1.25     # m past the capsule to keep a wall (hysteresis)
+var wall_grace := 0.2            # s: losing the wall this briefly doesn't end the run
+var wall_release := 0.3         # s: letting go of the input this long ends the run
+var wall_coyote := 0.28         # s: wall jump still allowed after leaving a run
+var wall_rearm := 0.6            # s: the same wall can be run again after this (or floor/other wall)
 var wall_jump_out := 5.6         # m/s × mobility: the least speed straight off the wall
 var wall_jump_speed := 11.0      # m/s × mobility: at least this fast in the input direction
 var wall_jump_min_out := 0.4     # the input direction is bent to leave the wall at least this much

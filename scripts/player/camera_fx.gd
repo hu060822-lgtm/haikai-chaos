@@ -83,6 +83,25 @@ func kill_punch(strength := 1.0) -> void:
 	_pitch.kick(0.12 * strength)
 
 
+## A burst of speed (dash, slide boost, wall jump, a line let go, a charge): the view
+## widens for a moment and springs back (C7).
+func burst(strength := 1.0) -> void:
+	_zoom.kick(55.0 * strength)
+
+
+## A hit landed (C7): a tiny punch in, bigger for a head.
+func hit_punch(head: bool) -> void:
+	_zoom.kick(-14.0 if head else -7.0)
+	_pitch.kick(0.05 if head else 0.025)
+
+
+## Going very fast: a faint rumble, more the faster (only at full strength) (C7).
+func rumble(amount: float) -> void:
+	if amount > 0.0 and _shake_left <= 0.0:
+		_shake_left = 0.05
+		_shake_amount = 0.0022 * amount
+
+
 func slam() -> void:
 	_height.kick(-3.0)
 	_shake_left = 0.3

@@ -133,7 +133,7 @@ func _draw() -> void:
 		["總速度", "%.2f m/s" % v.length()],
 		["水平加速度", "%+.1f m/s²" % p.accel],
 		["空中轉向", ("%.0f °/s" % p.air_control) if p.air_control > 0.0 else "—"],
-		["機動性", "%d%%（槍重 %.1f kg）" % [roundi(p.mobility * 100), p.weapon.stats.weight]],
+		["槍重", "%.1f kg（不影響身法）" % p.weapon.stats.weight],
 	]
 	for r in rows:
 		_text(r[0], Vector2(x, y), 13, dim)
