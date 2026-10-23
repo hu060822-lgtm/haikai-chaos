@@ -73,6 +73,7 @@ func _ready() -> void:
 	add_child(MapGuard.new(map))
 	SafeZone.clear()
 	SafeZone.repel = false
+	BotLevel.reset()
 	if not lab and not tdm:
 		SafeZone.add(map.player_spawn.origin, 6.0, 0)
 		SafeZone.draw(map, 0)
@@ -97,6 +98,7 @@ func _ready() -> void:
 		bot.target = player
 		bot.waypoints = map.waypoints
 		bot.nav = map.get("layout")
+		bot.set_level(Settings.bot_level)
 		add_child(bot)
 		bot.spawn(map.bot_spawns[i % map.bot_spawns.size()], _next_seed())
 		bot.died.connect(_on_bot_died)
@@ -409,6 +411,10 @@ func _on_kit_chosen(id: String) -> void:
 
 
 func _on_settings_closed() -> void:
+	if team_match == null:
+		for b in bots:
+			if b.level != Settings.bot_level:
+				b.set_level(Settings.bot_level)
 	# The menu over the lobby (or the front end) leaves the cursor where it was: visible.
 	if _title.visible or lobby.visible:
 		return

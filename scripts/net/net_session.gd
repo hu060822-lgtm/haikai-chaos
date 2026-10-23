@@ -25,7 +25,7 @@ const TEAM_NAMES := ["藍隊", "紅隊"]
 static var active := false
 ## peer id -> {"name": String, "team": int}
 static var roster := {}
-static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded", "mode": "patch", "rounds": 5}
+static var config := {"team_size": 4, "score": 50, "minutes": 8, "bots": true, "map": "folded", "mode": "patch", "rounds": 5, "bot_level": 1}
 ## Modes (id -> name): 改版死鬥 (C2) and 預算戰, rounds with a part economy (C4, RoundRules).
 const MODES := {"patch": "改版死鬥", "rounds": "預算戰", "bomb": "爆破"}
 ## Maps a team match can be played on (id -> name); "random" picks one at the start.

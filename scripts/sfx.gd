@@ -130,6 +130,7 @@ static func step(at: Node3D, speed: float) -> void:
 
 
 static func shot(at: Node3D, klass: String, quiet := false) -> void:
+	BotLevel.heard(at)   # bots that listen come to look (C9)
 	play(at, "shot_quiet" if quiet else "shot_" + klass, -4.0)
 
 
