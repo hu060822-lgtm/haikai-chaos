@@ -178,7 +178,7 @@ static func _slogans(map: LastTestament) -> void:
 			var out := Vector3(sin(deg_to_rad(yaw)), 0, cos(deg_to_rad(yaw)))
 			b.box(Vector3(6.4, 0.7, 0.04), pos + out * 0.02, "paint", NOTICE, Vector3(0, yaw, 0), 0.01)
 			words(root, spec[0], pos + out * 0.05, yaw, 0.3, STENCIL)
-	b.flush(root)
+	b.flush(root, false)
 
 
 ## "THE SAINT OF RECOIL" cut under the east window, and the broken tablet's two faces.
@@ -206,7 +206,7 @@ static func _lost_wall(map: LastTestament, root: Node3D) -> void:
 	b.box(Vector3(0.24, 0.1, 0.01), Vector3(-53.5, 2.3, z + 0.005), "paint", TestamentArt.STONE_DEEP, Vector3.ZERO, 0.0, Color.BLACK, false)
 	words(root, "↓", Vector3(-55.5, 1.9, z + 0.01), 0.0, 0.18, STENCIL)
 	words(root, "KEEP YOUR MOMENTUM.", Vector3(-56.4, 0.22, z + 0.01), 0.0, 0.09, CARVE)
-	b.flush(root)
+	b.flush(root, false)
 
 
 ## B: the impossible weapon list. A requisition form on the counter of one confessional (the
@@ -221,7 +221,7 @@ static func _weapon_list(map: LastTestament, root: Node3D) -> void:
 		b.box(Vector3(0.4, 0.94, 1.12), at + Vector3(0.02, -0.03, 0), "polymer", TestamentArt.WOOD, Vector3.ZERO, 0.02)
 	var paper := Vector3(-0.23, 1.005, 27.4)
 	b.box(Vector3(0.3, 0.004, 0.42), paper, "polymer", Color("#D8D2C2"), Vector3(0, 8, 0), 0.0, Color.BLACK, false)
-	b.flush(root)
+	b.flush(root, false)
 	var form := "REQUISITION 77-B\nBARREL: 3 LMG BARRELS, END TO END\nGRIP: BEHIND THE STOCK\nSTOCK: ON THE MUZZLE\nOPTIC: FACING THE SHOOTER\nMAGAZINES: SIX, IN A RING\nWEIGHT: YES"
 	var l := words(root, form, paper + Vector3(0, 0.004, 0.02), 90.0 + 8.0, 0.016, Color("#2B2B2B"), true, -90.0)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -236,7 +236,7 @@ static func _checkpoint(map: LastTestament, root: Node3D) -> void:
 	b.box(Vector3(0.14, 0.32, 0.7), at, "paint", TestamentArt.IRON, Vector3.ZERO, 0.02)
 	b.box(Vector3(0.02, 0.16, 0.56), at + Vector3(0.075, 0.03, 0), "paint", Color("#1A1010"))
 	b.box(Vector3(0.05, 0.05, 0.05), at + Vector3(0.07, -0.11, 0.28), "polymer", TestamentArt.WARN_RED, Vector3.ZERO, 0.01, TestamentArt.WARN_RED)
-	b.flush(root)
+	b.flush(root, false)
 	collider(root, Vector3(0.14, 0.32, 0.7), at)
 	words(root, "00:00.00", at + Vector3(0.087, 0.03, 0), 90.0, 0.12, Color("#FF5A3C"), false)
 	words(root, "TIME IS A SUGGESTION.", Vector3(-47.99, LastTestament.GALLERY_Y + 1.12, 19.2), 90.0, 0.07, CARVE)
@@ -261,7 +261,7 @@ static func _thirteenth_seat(map: LastTestament, root: Node3D) -> void:
 	b.box(Vector3(0.07, 0.08, 0.035), f + Vector3(0, 0.12, 0), "polymer", grey, Vector3.ZERO, 0.0)
 	b.box(Vector3(0.17, 0.02, 0.02), f + Vector3(0, 0.15, 0), "polymer", grey, Vector3.ZERO, 0.0)
 	b.box(Vector3(0.045, 0.045, 0.045), f + Vector3(0, 0.19, 0), "polymer", grey, Vector3.ZERO, 0.0)
-	b.flush(root)
+	b.flush(root, false)
 	words(root, "PLAYER NOT FOUND.", at + Vector3(0, 1.2, -0.37), 180.0, 0.09, CARVE)
 
 
@@ -294,7 +294,7 @@ static func _perfect_build(map: LastTestament, root: Node3D) -> void:
 	# The sheet, on the floor of the open end.
 	var sheet := Vector3(c.x - size.x * 0.33, top - 0.375, c.z - 0.1)
 	b.box(Vector3(0.3, 0.004, 0.42), sheet, "polymer", Color("#D8D2C2"), Vector3(0, -12, 0), 0.0, Color.BLACK, false)
-	b.flush(root)
+	b.flush(root, false)
 	var l := words(root, "BUILD SHEET\nFRAME ________\nBARREL ________\nOPTIC ________\nSTOCK ________\nAMMO ________",
 		sheet + Vector3(0, 0.004, 0), 90.0 - 12.0, 0.022, Color("#2B2B2B"), true, -90.0)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -312,7 +312,7 @@ static func _wrong_icon(map: LastTestament, root: Node3D) -> void:
 		var xf := Transform3D(Basis(Vector3.UP, PI if s > 0 else 0.0).scaled(Vector3.ONE * 1.3), Vector3(1.0, 8.2, 11.59 * s))
 		_icon(b, xf)
 		collider(root, Vector3(1.45, 4.2, 1.39), Vector3(1.0, 9.51, 11.5 * s))
-	b.flush(root)
+	b.flush(root, false)
 
 
 ## The statue in its own space: standing at the origin on a corbel, facing +z.

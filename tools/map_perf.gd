@@ -7,8 +7,8 @@ extends SceneTree
 ## Under xvfb the GPU is Mesa's software rasteriser, so frame times are only comparable
 ## between maps on the same machine; draw calls and primitives are exact anywhere.
 
-const WARM := 20
-const MEASURE := 90
+const WARM := 8
+const MEASURE := 40
 ## Testament's own viewpoints: the busiest views in the church.
 const TESTAMENT_VIEWS := {
 	"spawn": [Vector3(0, 1.7, 45), Vector3(-8, 1.5, 32)],

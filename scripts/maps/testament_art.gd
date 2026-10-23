@@ -69,7 +69,9 @@ class Batch:
 	func box(size: Vector3, pos: Vector3, kind: String, color: Color, rot := Vector3.ZERO, bevel := 0.04, glow := Color.BLACK, shadow := true) -> void:
 		add(LowPoly.chamfer_box(size, bevel), LowPoly.at(pos, rot), kind, color, glow, shadow)
 
-	func flush(parent: Node3D) -> void:
+	## `shadows` false: nothing in this flush casts a shadow (detail on walls, the crypt
+	## under the floor, where a shadow pass would only cost).
+	func flush(parent: Node3D, shadows := true) -> void:
 		for key in parts:
 			var p: Array = parts[key]
 			var list: Array = p[1]
@@ -78,7 +80,7 @@ class Batch:
 				var mi := MeshInstance3D.new()
 				mi.mesh = LowPoly.merge(list.slice(i, i + 400))
 				mi.material_override = p[0]
-				if not p[2]:
+				if not p[2] or not shadows:
 					mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				parent.add_child(mi)
 		parts.clear()
@@ -280,7 +282,7 @@ static func _glass(map: LastTestament) -> void:
 			var xf := Transform3D(Basis(Vector3.UP, PI if s > 0 else 0.0), Vector3(x, 8.0, 20.1 * s))
 			_lancet(b, xf, 3.2, 5.0, motifs[k % motifs.size()])
 			k += 1
-	b.flush(root)
+	b.flush(root, false)
 
 
 ## The Saint of Recoil (4.1): 9 m wide, 11 m tall, in the east wall.
@@ -407,7 +409,7 @@ static func _galleries(map: LastTestament) -> void:
 			_stall(b, Vector3(STALL_X0 + (i + 0.5) * STALL_W, y, 19.35 * s), s, STALL_W)
 	for x in range(-48, -38, 2):
 		b.box(Vector3(1.94, 0.05, 27.9), Vector3(x + 1.0, y + 0.025, 0), "polymer", WOOD if (x / 2) % 2 == 0 else WOOD_LIGHT, Vector3.ZERO, 0.01, Color.BLACK, false)
-	b.flush(root)
+	b.flush(root, false)
 	for n in map.get_children():
 		if n is StaticBody3D and n.has_meta("art"):
 			match str(n.get_meta("art")):
@@ -449,7 +451,7 @@ static func _confessionals(map: LastTestament) -> void:
 			else:
 				for g in 5:
 					b.box(Vector3(0.05, 0.6, 0.04), Vector3(x0 + 0.08, 1.6, 26.0 * s + (g - 2) * 0.16), "paint", IRON, Vector3.ZERO, 0.0)
-	b.flush(root)
+	b.flush(root, false)
 
 
 # --- The altar ---------------------------------------------------------------------------
@@ -560,7 +562,7 @@ static func _crypt(map: LastTestament) -> void:
 		for x in [-70.0, -62.0, -56.0]:
 			b.box(Vector3(0.3, 0.2, 0.15), Vector3(x, floor_y + 3.45, 15.85 * s), "paint", IRON)
 			b.box(Vector3(0.18, 0.1, 0.06), Vector3(x, floor_y + 3.45, 15.75 * s), "polymer", AMBER, Vector3.ZERO, 0.01, AMBER)
-	b.flush(root)
+	b.flush(root, false)
 	for n in map.get_children():
 		if n is StaticBody3D and n.has_meta("art"):
 			match str(n.get_meta("art")):
