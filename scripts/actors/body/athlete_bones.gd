@@ -77,6 +77,18 @@ static func rest_global(i: int) -> Transform3D:
 	return _rest_global[i]
 
 
+## Every bone's rest transform relative to its parent, in bone order (do not modify).
+static func rest_locals() -> Array[Transform3D]:
+	_ensure()
+	return _rest_local
+
+
+## Every bone's parent (-1 for the root), in bone order; parents come before children.
+static func parents() -> PackedInt32Array:
+	_ensure()
+	return _parent
+
+
 ## A bone's rest transform relative to its parent.
 static func rest_local(i: int) -> Transform3D:
 	_ensure()

@@ -92,6 +92,17 @@ static func create(look: Dictionary) -> AthleteRig:
 	return r
 
 
+## Builds the shared body mesh now (about a third of a second, once per run), so the
+## first competitor to appear in a match doesn't stall a frame. Main calls it on load.
+static func prewarm() -> void:
+	if _mesh != null:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var r := create(CompetitorModel.look(Color.WHITE, rng))
+	r.free()
+
+
 ## Puts a gun in the hands.
 func hold(gun: Node3D) -> void:
 	for c in gun_hand.get_children():
@@ -141,6 +152,30 @@ func _find_gun() -> void:
 # --- The pose ------------------------------------------------------------------------------
 
 
+## Beyond this many metres from the camera the body animates at half rate.
+const LOD_FAR := 35.0
+var _lod_skip := false
+var _lod_dt := 0.0
+var _kicks_seen := -1
+var _shots_seen := -1
+
+
+func play_state(delta: float, vel: Vector3, st: Array) -> void:
+	if st.size() < 11:
+		pose(delta, vel, true)
+		return
+	var kicks := int(st[7])
+	var shots := int(st[8])
+	var event := "wall_kick" if _kicks_seen >= 0 and kicks > _kicks_seen else ""
+	if _shots_seen >= 0 and shots > _shots_seen:
+		fired(float(st[10]))
+	_kicks_seen = kicks
+	_shots_seen = shots
+	reload_state(float(st[4]), float(st[5]), bool(st[6]))
+	animate(delta, {"vel": vel, "floor": bool(st[9]), "move": int(st[0]), "crouch": float(st[2]), "pitch": float(st[1]),
+		"wall": st[3], "event": event})
+
+
 func reload_state(left: float, total: float, empty: bool) -> void:
 	if left <= 0.0:
 		_reload_left = 0.0
@@ -183,6 +218,17 @@ func pose(delta: float, vel: Vector3, on_floor: bool, crouch := 0.0, slide := fa
 func animate(delta: float, s: Dictionary) -> void:
 	if dead or skel == null or not _debug.is_empty():
 		return
+	# Far away (a few pixels tall) the body is solved every other frame; never across an
+	# event, so a wall kick far off still pushes off.
+	if delta > 0.0 and str(s.get("event", "")) == "" and is_inside_tree():
+		var cam := get_viewport().get_camera_3d()
+		if cam != null and cam.global_position.distance_squared_to(global_position) > LOD_FAR * LOD_FAR:
+			_lod_skip = not _lod_skip
+			if _lod_skip:
+				_lod_dt += delta
+				return
+		delta += _lod_dt
+		_lod_dt = 0.0
 	_find_gun()
 	var inside := is_inside_tree()
 	var inv := global_basis.inverse() if inside else Basis.IDENTITY
@@ -281,7 +327,7 @@ func _legs(d: AthleteMotion.Desc, delta: float) -> void:
 		_ik("thigh_" + s, "shin_" + s, targets[i], poles[i] if poles[i] != Vector3.ZERO else Vector3.FORWARD, -1.0)
 		var hip_yaw := Basis(Vector3.UP, _glob[b("hips")].basis.get_euler().y * 0.5)
 		_aim_bone("foot_" + s, hip_yaw * Basis(Vector3.RIGHT, toes[i]) * AthleteBones.rest_global(b("foot_" + s)).basis)
-	_fk()
+	_fk(LEGS_FROM)
 
 
 ## How far the ground under a model-space foot point is above (+) or below (-) the floor
@@ -364,7 +410,7 @@ func _arms(d: AthleteMotion.Desc) -> void:
 	_euler("head", Vector3(p * 0.3 - (0.05 if not _pistol else 0.02), back * 0.55, -0.08 if not _pistol else 0.0) + d.neck * 0.5)
 	_turn_model("clavicle_r", Vector3.UP, 0.18)
 	_turn_model("clavicle_l", Vector3.UP, -0.3 if not _pistol else -0.2)
-	_fk()
+	_fk(4, LEGS_FROM)
 	# Right hand round the grip: the back of the hand out to the right, the knuckles
 	# forward across the grip, the index finger at the trigger.
 	var grip_at := mount * (grip + (rs.get("right", cyc.get("right", Vector3.ZERO)) as Vector3))
@@ -423,7 +469,7 @@ func _arms(d: AthleteMotion.Desc) -> void:
 	_aim_bone("hand_l", hl)
 	_turn("fingers_r", Vector3.BACK, FINGER_CURL)
 	_turn("fingers_l", Vector3.BACK, -FINGER_CURL * lerpf(1.1, 0.35, free))
-	_fk()
+	_fk(ARMS_FROM, LEGS_FROM)
 	_carry(rs.get("prop", ""))
 
 
@@ -482,13 +528,23 @@ func _relaxed_arms() -> void:
 
 # --- Bones -----------------------------------------------------------------------------------
 
+## Bone order (AthleteBones.BONES): the spine and head, then the left and right arms,
+## then the legs; a partial forward pass only redoes the part that changed.
+const ARMS_FROM := 6
+const LEGS_FROM := 16
+static var _ids := {}
+static var _par := PackedInt32Array()
+
+
 static func b(name: String) -> int:
-	return AthleteBones.index(name)
+	if _ids.is_empty():
+		for i in AthleteBones.count():
+			_ids[AthleteBones.BONES[i][0]] = i
+	return _ids[name]
 
 
 func _rest() -> void:
-	for i in _local.size():
-		_local[i] = AthleteBones.rest_local(i)
+	_local.assign(AthleteBones.rest_locals())
 
 
 ## Turns a bone about one of its own axes.
@@ -555,9 +611,14 @@ func _ik(upper: String, lower: String, target: Vector3, pole: Vector3, flex: flo
 	_glob[c] = _glob[a] * _local[c]
 
 
-func _fk() -> void:
-	for i in _local.size():
-		var p := AthleteBones.parent(i)
+## Model-space poses from the local ones, for bones `from` up to (not including) `to`.
+func _fk(from := 0, to := -1) -> void:
+	if _par.is_empty():
+		_par = AthleteBones.parents()
+	if to < 0:
+		to = _local.size()
+	for i in range(from, to):
+		var p := _par[i]
 		_glob[i] = _local[i] if p < 0 else _glob[p] * _local[i]
 
 

@@ -49,6 +49,8 @@ func _ready() -> void:
 	InputSetup.register()
 	FpUi.install()
 	Music.setup_buses()
+	if Settings.look == Faultprint.COUNTERFORM:
+		AthleteRig.prewarm()
 	net = NetSession.new()
 	add_child(net)
 	Deploy.clear()

@@ -122,6 +122,35 @@ func _rest_of(j: Node3D) -> Transform3D:
 ## One frame of motion. `vel` is the body's velocity in world space, `floor` whether it
 ## stands on something, `crouch` 0..1, `slide` and `wall` (-1/0/1 side) for those moves,
 ## `pitch` the look pitch in radians.
+## A combatant's animation state, the same whether it comes from the local player, a bot,
+## a remote player's packets or a kill replay's recording (character overhaul, Phase 5):
+##   [move (Player.Move), pitch, crouch 0..1, wall normal (world, or zero), reload left,
+##    reload total, run dry, wall kicks so far, shots so far, on the floor, shots a second]
+## The counters turn one-off events (a wall kick, a shot) into state, so a lost packet or
+## a skipped replay frame never loses one.
+static func anim(move: int, pitch: float, crouch: float, wall: Vector3, weapon: Variant, kicks: int, shots: int, on_floor: bool) -> Array:
+	var left := 0.0
+	var total := 1.0
+	var dry := false
+	var rate := 5.0
+	if weapon != null:
+		left = float(weapon.reload_left)
+		total = float(weapon.reload_time())
+		dry = int(weapon.ammo) == 0
+		rate = float(weapon.stats.get("rate", 5.0))
+	return [move, pitch, crouch, wall, left, total, dry, kicks, shots, on_floor, rate]
+
+
+## One frame from an anim() state and the velocity the body is seen moving at. The rigid
+## FAULTPRINT figure reads what its old pose() understood; the athlete reads it all.
+func play_state(delta: float, vel: Vector3, st: Array) -> void:
+	if st.size() < 11:
+		pose(delta, vel, true)
+		return
+	var m := int(st[0])
+	pose(delta, vel, bool(st[9]), float(st[2]), m == Player.Move.SLIDE, 1 if m == Player.Move.WALLRUN else 0, float(st[1]))
+
+
 ## The weapon's reload clock (seconds left, the whole reload, run dry), every frame; the
 ## skinned athlete plays it (AthleteRig), the rigid FAULTPRINT figure ignores it.
 func reload_state(_left: float, _total: float, _empty: bool) -> void:

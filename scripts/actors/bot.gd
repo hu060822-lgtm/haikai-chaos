@@ -47,6 +47,8 @@ var damage_mult := DAMAGE_MULT
 ## Drawn in the ally colour (a team match, on a teammate's screen).
 var tint_ally := false
 var move := 0
+var shot_count := 0
+var _look_pitch := 0.0
 
 var _model: CompetitorRig
 var _gun: Node3D
@@ -309,8 +311,8 @@ func _physics_process(delta: float) -> void:
 		if _see and target != null and is_instance_valid(target):
 			var to := target.global_position - global_position
 			pitch = atan2(to.y, Vector2(to.x, to.z).length())
-		_model.pose(delta, velocity, is_on_floor(), 0.0, false, 0, pitch)
-		_model.reload_state(weapon.reload_left, weapon.reload_time(), weapon.ammo == 0)
+		_look_pitch = pitch
+		_model.play_state(delta, velocity, anim_state())
 		var marker := _model.get_node_or_null("Marker")
 		if marker:
 			marker.rotate_y(delta * 2.0)
@@ -451,8 +453,7 @@ func _try_shoot() -> void:
 	var saved: float = weapon.stats.damage
 	weapon.stats.damage = float(saved) * damage_mult
 	var results := weapon.fire(self, eye, aim, spread, context)
-	if _model != null:
-		_model.fired(weapon.rate)
+	shot_count += 1
 	weapon.stats.damage = saved
 	var world := get_tree().current_scene
 	var muzzle := _gun.to_global(_gun.get_meta("muzzle")) if _gun else eye
@@ -525,3 +526,9 @@ func _die(info: Dictionary) -> void:
 	_gun = null
 	visible = false
 	died.emit(self, info)
+
+
+## How the third-person body should look right now (CompetitorRig.anim).
+func anim_state() -> Array:
+	var m := Player.Move.GROUND if is_on_floor() else Player.Move.AIR
+	return CompetitorRig.anim(m, _look_pitch, 0.0, Vector3.ZERO, weapon, 0, shot_count, is_on_floor())
