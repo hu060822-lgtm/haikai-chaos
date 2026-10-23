@@ -51,6 +51,10 @@ var _kit_desc: Label
 ## The build the bench opened on (what you own).
 var opened_on := {}
 var _rng := RandomNumberGenerator.new()
+var _strip_btn: Button
+## The parts "拆下全部" took off, so a second press puts them back (until the build changes).
+var _stripped := {}
+var _after_strip := {}
 
 
 func _init() -> void:
@@ -109,9 +113,17 @@ func _ready() -> void:
 	_kit_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_kit_desc.custom_minimum_size = Vector2(300, 0)
 	left.add_child(_kit_desc)
+	var frame_row := HBoxContainer.new()
+	frame_row.add_theme_constant_override("separation", 4)
+	left.add_child(frame_row)
 	var frame_btn := FpUi.button("換槍身…", 16)
+	frame_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	frame_btn.pressed.connect(_show_frames)
-	left.add_child(frame_btn)
+	frame_row.add_child(frame_btn)
+	_strip_btn = FpUi.button("拆下全部", 16)
+	_strip_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_strip_btn.pressed.connect(strip_all)
+	frame_row.add_child(_strip_btn)
 	var slots_scroll := ScrollContainer.new()
 	slots_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	slots_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -212,6 +224,7 @@ func open(current: Dictionary, current_name: String, in_field := false) -> void:
 	_name_edit.text = current_name if _named else ""
 	_slot = ""
 	_pending = ""
+	_stripped = {}
 	_frame_mode = false
 	visible = true
 	_refresh_kit()
@@ -255,6 +268,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _refresh(preview: Dictionary = {}) -> void:
+	if not _stripped.is_empty() and build != _after_strip:
+		_stripped = {}
+	_strip_btn.text = "裝回 %d 件" % _stripped.parts.size() if not _stripped.is_empty() else "拆下全部"
+	_strip_btn.disabled = _stripped.is_empty() and build.get("parts", {}).is_empty()
 	if budget_text.is_valid():
 		_status.text = budget_text.call(opened_on, build)
 		_status.add_theme_color_override("font_color", Counterform.SULFUR)
@@ -336,6 +353,10 @@ func _fill_parts() -> void:
 		_part_title.text = "選一個插槽"
 		return
 	_part_title.text = Arsenal.slot_name(_slot)
+	if _slot == "ammo":
+		# Ammo is the one part that follows the gun: only rounds that fit the calibre.
+		var cal := Arsenal.caliber_of(build)
+		_part_title.text = "彈藥（%s）" % Arsenal.CALIBERS.get(cal, {}).get("name", cal)
 	var current: String = build.parts.get(_slot, "")
 	var none := _part_button("", "（拆下）", current == "")
 	none.pressed.connect(_on_part.bind(""))
@@ -397,6 +418,25 @@ func _on_part(id: String) -> void:
 	_pending = ""
 	_warn.text = ""
 	build = next
+	_refresh()
+
+
+## One click takes every part off and leaves the bare frame; pressed again right after,
+## it puts them all back.
+func strip_all() -> void:
+	_pending = ""
+	if not _stripped.is_empty():
+		build = Arsenal.clean(_stripped)
+		_stripped = {}
+		_warn.text = "零件都裝回去了。"
+		_refresh()
+		return
+	if build.get("parts", {}).is_empty():
+		return
+	_stripped = build.duplicate(true)
+	build = Arsenal.clean({"frame": build.frame, "parts": {}, "tune": {}})
+	_after_strip = build.duplicate(true)
+	_warn.text = "拆下了 %d 個零件，只剩槍身。再按一次可以全部裝回。" % _stripped.parts.size()
 	_refresh()
 
 

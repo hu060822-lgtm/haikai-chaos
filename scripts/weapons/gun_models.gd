@@ -78,6 +78,15 @@ const AMMO_LOOK := {
 	"volatile_rounds": [Color(0.75, 0.3, 0.18), Color(0.45, 0.12, 0.0)],
 	"adrenaline_rounds": [Color(0.9, 0.85, 0.35), Color(0.15, 0.12, 0.0)],
 	"smart_rounds": [Color(0.4, 0.5, 0.55), Color(0.05, 0.2, 0.3)],
+	"galvanized_nails": [Color(1.2, 1.22, 1.25), Color.BLACK],
+	"napalm_gel": [Color(1.1, 0.45, 0.1), Color(0.6, 0.2, 0.0)],
+	"high_octane": [Color(1.3, 0.9, 0.2), Color(0.5, 0.3, 0.0)],
+	"overcharged_cell": [Color(1.2, 0.3, 0.9), Color(0.6, 0.1, 0.5)],
+	"stable_cell": [Color(0.4, 1.0, 0.6), Color(0.05, 0.35, 0.15)],
+	"big_duck": [Color(1.4, 1.2, 0.2), Color(0.2, 0.15, 0.0)],
+	"diamond_saw": [Color(0.85, 1.2, 1.35), Color(0.15, 0.3, 0.4)],
+	"sticky_soap": [Color(0.9, 0.6, 1.2), Color(0.2, 0.1, 0.3)],
+	"co2_cartridge": [Color(0.5, 0.55, 0.6), Color.BLACK],
 }
 
 

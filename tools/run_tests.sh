@@ -19,6 +19,7 @@ run --path . --script res://tests/maps_test.gd
 run --path . --script res://tests/bomb_test.gd -- 24696
 run --path . --script res://tests/abilities_test.gd
 run --path . --script res://tests/c7_test.gd
+run --path . --script res://tests/ammo_test.gd
 run --path . --script res://tests/athlete_test.gd
 run --path . --script res://tests/reload_anim_test.gd
 run --path . --script res://tests/net_anim_test.gd
