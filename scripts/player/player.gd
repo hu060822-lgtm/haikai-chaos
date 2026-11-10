@@ -247,8 +247,19 @@ func ability_aim() -> Transform3D:
 
 ## How a gun moves you. C7: always 1.0, so every gun has the full movement kit (movement
 ## is one of the game's pillars); weight still slows aiming and adds sway (Arsenal._derive).
-static func mobility_of(_stats: Dictionary) -> float:
-	return 1.0
+## 超規卡 (C11) can still change it: a "mobility" card effect (Augments).
+static func mobility_of(stats: Dictionary) -> float:
+	return float((stats.get("effects", {}) as Dictionary).get("mobility", 1.0))
+
+
+## Dash charges: DASH_CHARGES, plus any extra_dash card (Augments).
+func dash_cap() -> float:
+	return DASH_CHARGES + float(weapon.stats.effects.get("extra_dash", 0)) if weapon != null else DASH_CHARGES
+
+
+## Jump height from cards (spring legs, Augments).
+func _spring() -> float:
+	return float(weapon.stats.effects.get("spring", 1.0))
 
 
 ## Wall kicks per air time: heavy guns get fewer.
@@ -286,7 +297,7 @@ func spawn_at(xform: Transform3D) -> void:
 	_coyote = 0.0
 	_slide_cd = 0.0
 	_slide_t = 0.0
-	_dash_charge = DASH_CHARGES
+	_dash_charge = dash_cap()
 	_kicks = max_kicks()
 	_climbed = false
 	_wall_coyote = 0.0
@@ -473,7 +484,7 @@ func _timers(delta: float) -> void:
 	_wall_ban_t -= delta
 	if _wall_ban_t <= 0.0:
 		_wall_ban = null
-	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), DASH_CHARGES)
+	_dash_charge = minf(_dash_charge + delta / (tune.dash_recharge / mobility), dash_cap())
 	_slow = maxf(_slow - delta, 0.0)
 	_stagger = maxf(_stagger - delta, 0.0)
 	combat_left = maxf(combat_left - delta, 0.0)
@@ -735,7 +746,7 @@ func _jump() -> void:
 	var why := "滑鏟跳" if from_slide else ("衝刺跳（保留衝刺速度）" if move == Move.DASH else "跳躍")
 	_buffer = 0.0
 	_coyote = 0.0
-	var up := tune.jump_speed * sqrt(mobility) * (0.75 if _slow > 0.0 else 1.0)
+	var up := tune.jump_speed * sqrt(mobility) * (0.75 if _slow > 0.0 else 1.0) * _spring()
 	if from_slide:
 		up *= tune.slide_jump_mult
 	if _slam_bounce > 0.0:
@@ -1005,8 +1016,10 @@ func _wall_jump(wish: Vector3, n: Vector3, node: Object, why: String) -> void:
 	var dir := _off_wall_dir(wish, n, h)
 	velocity = dir * maxf(h.length() * tune.wall_jump_keep, tune.wall_jump_speed * mobility)
 	_ensure_out(n, tune.wall_jump_out * mobility)
-	_launch(tune.wall_jump_up * sqrt(mobility))
+	_launch(tune.wall_jump_up * sqrt(mobility) * _spring())
 	_cam.burst(0.6)
+	if weapon.stats.effects.has("walljump_feed") and weapon.feed(int(weapon.stats.effects.walljump_feed)) > 0:
+		Sfx.ui(get_tree(), "hit")
 	_ban_wall(node)
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
 	view.jolt(global_basis.inverse() * n * 0.015)
@@ -1024,7 +1037,7 @@ func _wall_kick(wall: Dictionary) -> void:
 	var dir := _off_wall_dir(_wish_dir(), n, h)
 	velocity = dir * maxf(h.length() * tune.wall_kick_keep, tune.wall_kick_out * mobility)
 	_ensure_out(n, tune.wall_kick_out * mobility * 0.6)
-	_launch(tune.wall_kick_up * sqrt(mobility))
+	_launch(tune.wall_kick_up * sqrt(mobility) * _spring())
 	_cam.wall_kick(signf(global_basis.x.dot(-n)))
 	view.jolt(global_basis.inverse() * n * 0.015)
 	_set_move(Move.AIR, "踢牆（剩 %d 次）" % _kicks, true)
@@ -1358,8 +1371,9 @@ func windows() -> Dictionary:
 
 func _weapon_frame(delta: float) -> void:
 	weapon.tick(delta)
-	var aiming := input_enabled and _want("aim") and not weapon.is_reloading() and move != Move.MANTLE \
-		and move != Move.GRAPPLE and move != Move.CHARGE and _stagger <= 0.0
+	var aiming: bool = input_enabled and _want("aim") and not weapon.is_reloading() and move != Move.MANTLE \
+		and move != Move.GRAPPLE and move != Move.CHARGE and _stagger <= 0.0 \
+		and not weapon.stats.effects.get("no_aim", false)
 	var aim_rate := delta / maxf(float(weapon.stats.aim_time), 0.05)
 	_aim = move_toward(_aim, 1.0 if aiming else 0.0, aim_rate)
 	if not input_enabled:
@@ -1572,6 +1586,7 @@ func take_hit(info: Dictionary) -> bool:
 			info.damage = float(info.damage) * (1.0 - float(mine.guard))
 		if mine.has("glass"):
 			info.damage = float(info.damage) * float(mine.glass)
+		info.damage = Augments.taken(float(info.damage), mine)
 		if mine.get("pain_feed", false):
 			weapon.feed(ceili(float(info.damage) / 10.0))
 	var effects: Dictionary = info.get("effects", {})
@@ -1609,12 +1624,12 @@ func can_mod() -> bool:
 
 ## A kill with a kill_dash gun: both dashes are ready again.
 func refill_dash() -> void:
-	_dash_charge = DASH_CHARGES
+	_dash_charge = dash_cap()
 
 
 ## Part effects that reach back into the movement (see Weapon "CHAOS 2").
 func add_dash(amount: float) -> void:
-	_dash_charge = minf(_dash_charge + amount, DASH_CHARGES)
+	_dash_charge = minf(_dash_charge + amount, dash_cap())
 
 
 func rush(seconds: float) -> void:

@@ -25,6 +25,7 @@ run --path . --script res://tests/reload_anim_test.gd
 run --path . --script res://tests/net_anim_test.gd
 run --path . --script res://tests/bot_level_test.gd
 run --path . --script res://tests/testament_test.gd
+run --path . --script res://tests/cards_test.gd -- 24703
 # Map 04 in all three modes: 爆破, 預算戰, then 改版死鬥 with bots.
 run --path . --script res://tests/bomb_test.gd -- 24697 --map=testament
 run --path . --script res://tests/rounds_test.gd -- 24698 --map=testament
@@ -38,6 +39,7 @@ for hz in 60 120 240; do
 done
 # Netplay: a host and a client process, then a host alone with live bots.
 "$(dirname "$0")/net_test.sh" "$GODOT" 24687 || status=1
+"$(dirname "$0")/cards_net_test.sh" "$GODOT" 24689 || status=1
 run --path . --script res://tests/net_test.gd -- solo 24690
 # The relay server (C4): its protocol test, then the same host + client match through it.
 if command -v node > /dev/null && [ -d relay/node_modules ]; then

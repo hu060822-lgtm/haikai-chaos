@@ -712,6 +712,12 @@ func take_hit(info: Dictionary) -> bool:
 		return false
 	if SafeZone.blocks(info, team, global_position):
 		return false
+	if info.get("attacker") != self and weapon != null:
+		# The bot's own cards (C11): glass and tough, as on a player.
+		var mine: Dictionary = weapon.stats.effects
+		if mine.has("glass"):
+			info.damage = float(info.damage) * float(mine.glass)
+		info.damage = Augments.taken(float(info.damage), mine)
 	var e: Dictionary = info.get("effects", {})
 	if e.has("knock"):
 		velocity += (info.dir as Vector3) * float(e.knock) * 2.5 + Vector3(0, 2.5, 0)

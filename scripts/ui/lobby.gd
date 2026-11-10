@@ -43,6 +43,10 @@ const RULES_BOMB := ("・預算戰的回合與經濟（工作台就是商店，�
 	+ "・進攻：在 A 或 B 點按住 E 3.5 秒安裝炸彈，40 秒後引爆就贏；或全滅防守方。\n"
 	+ "・防守：時間到還沒裝、裝之前全滅進攻方、或按住 E 6 秒拆掉炸彈。安裝、拆除各 +$300。")
 
+const RULES_CARDS := ("・預算戰的回合與經濟，外加超規卡：每回合備戰先從 3 張卡挑 1 張（上回合輸的隊挑 4 選 1，每場可重抽 2 次）。\n"
+	+ "・卡片整場都在，死了也不會掉；槍卡改子彈、身法卡把槍和身法綁在一起、交易卡很強但有代價。\n"
+	+ "・擊殺會從對手身上奪走一張卡（擊殺列會顯示）。同一類卡湊滿 3 張觸發共鳴。")
+
 
 func _init() -> void:
 	set_anchors_preset(PRESET_FULL_RECT)
@@ -289,9 +293,9 @@ func _refresh() -> void:
 	_time_label.get_parent().visible = not rounds
 	_rounds_label.get_parent().visible = rounds
 	_rounds_label.text = "先贏　%d 回合" % int(cfg.get("rounds", 5))
-	_rules.text = {"rounds": RULES_ROUNDS, "bomb": RULES_BOMB}.get(mode, RULES_PATCH)
+	_rules.text = {"rounds": RULES_ROUNDS, "bomb": RULES_BOMB, "cards": RULES_CARDS}.get(mode, RULES_PATCH)
 	_title.text = NetSession.MODES.get(mode, "改版死鬥")
-	_subtitle.text = {"rounds": "BUDGET WAR　回合制", "bomb": "DEMOLITION　回合制爆破"}.get(mode, "PATCH WAR　團隊死鬥")
+	_subtitle.text = {"rounds": "BUDGET WAR　回合制", "bomb": "DEMOLITION　回合制爆破", "cards": "OVERRULE　超規卡混戰"}.get(mode, "PATCH WAR　團隊死鬥")
 	_host_box.modulate.a = 1.0 if host else 0.55
 	_bots.disabled = not host
 	_size_label.text = "每隊人數　%d" % int(cfg.get("team_size", 4))

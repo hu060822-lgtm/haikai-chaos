@@ -1309,7 +1309,12 @@ static func clean(build: Dictionary) -> Dictionary:
 		for slot in tree.parts:
 			if part(tree.parts[slot]).has("tune") and given_tune.has(slot):
 				tune[slot] = clampf(float(given_tune[slot]), -1.0, 1.0)
-	return {"frame": frame_id, "parts": tree.parts, "tune": tune}
+	var out := {"frame": frame_id, "parts": tree.parts, "tune": tune}
+	# 超規卡 (C11): the holder's cards ride with the gun (Augments).
+	var cards := Augments.clean(build.get("cards", []))
+	if not cards.is_empty():
+		out.cards = cards
+	return out
 
 
 ## Every id a build is made of (the frame first, then parts in slot order).
@@ -1377,6 +1382,7 @@ static func stats(build: Dictionary) -> Dictionary:
 				result.effects[effect] = maxf(result.effects[effect], value)
 			else:
 				result.effects[effect] = value
+	Augments.apply(result, build.get("cards", []))
 	for stat in INT_STATS:
 		result[stat] = maxi(1, roundi(result[stat]))
 	for stat in PERCENT_STATS:
