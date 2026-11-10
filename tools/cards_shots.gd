@@ -39,6 +39,13 @@ func _init() -> void:
 	rules._offer(rules.offers[tm.my_id], 2)
 	await frames(10)
 	await shot("cards_pick_behind")
+	await frames(2)
+	# C11.1: the crazier ones, a rule card among them.
+	rules._offer(["grenadier", "double_jump", "minigun", "thief"], 1)
+	await frames(10)
+	await shot("cards_pick_crazy")
+	rules._offer(rules.offers[tm.my_id], 2)
+	await frames(2)
 	rules._ask_pick("glass_cannon")
 	await frames(5)
 	# Hand the host a few more, enough for a resonance.

@@ -25,6 +25,7 @@ const KINDS := {
 	"gun": {"name": "槍卡", "color": Color("#D9774F")},
 	"move": {"name": "身法卡", "color": Color("#7FB7A8")},
 	"trade": {"name": "交易卡", "color": Color("#C9A43A")},
+	"rule": {"name": "規則卡", "color": Color("#B48EC9")},
 }
 
 const RESONANCE := {
@@ -34,9 +35,9 @@ const RESONANCE := {
 }
 
 ## Effects that add up across cards (the rest: the bigger one wins, like parts).
-const ADD_FX := ["ricochet", "chain", "tough", "extra_dash", "walljump_feed"]
+const ADD_FX := ["ricochet", "chain", "tough", "extra_dash", "walljump_feed", "air_jump"]
 ## Effects that multiply across cards (start at 1.0).
-const MUL_FX := ["mobility", "spring"]
+const MUL_FX := ["mobility", "spring", "gravity"]
 
 const CARDS := {
 	# --- 槍卡 -------------------------------------------------------------------------
@@ -136,6 +137,109 @@ const CARDS := {
 		"cost": "每發傷害 ×0.7，換彈時間 ×2", "x": {"rate": 2.2, "mag": 1.5}, "down_x": {"damage": 0.7, "reload": 2.0}},
 	"one_and_done": {"name": "一發入魂", "kind": "trade", "desc": "傷害 ×2.6，換彈 ×0.6",
 		"cost": "彈匣只剩 1 發", "x": {"damage": 2.6, "reload": 0.6}, "down_x": {"mag": 0.01}},
+	# --- C11.1 瘋狂擴充：槍卡 ---------------------------------------------------------
+	"grenadier": {"name": "榴彈化", "kind": "gun", "desc": "槍變成榴彈發射器：子彈拋物線飛出、碰到就炸，傷害 ×1.4，射速 ×0.6",
+		"x": {"damage": 1.4, "rate": 0.6}, "set": {"kind": "lob"}, "fx": {"explode": 3.0}},
+	"torch": {"name": "噴火槍", "kind": "gun", "desc": "槍變成近距離噴火：一團扇形火舌，燒人 4 秒，射速 ×1.5",
+		"x": {"rate": 1.5}, "set": {"kind": "cone"}, "fx": {"burn": 4.0}},
+	"full_auto": {"name": "全自動化", "kind": "gun", "desc": "任何槍都能按住連射（預設全自動），射速 ×1.2",
+		"x": {"rate": 1.2}, "modes": ["auto"]},
+	"double_barrel": {"name": "雙管齊下", "kind": "gun", "desc": "預設一次射兩發（耗兩發子彈）",
+		"modes": ["double"]},
+	"buckshot": {"name": "霰彈化", "kind": "gun", "desc": "每發變六顆彈丸，每顆傷害 ×0.3，散布 ×2.5",
+		"x": {"pellets": 6.0, "damage": 0.3, "spread": 2.5}},
+	"railgun": {"name": "電磁砲", "kind": "gun", "desc": "按住蓄力、放開發射：傷害 ×2.2，直接穿過人體",
+		"x": {"damage": 2.2}, "set": {"kind": "charge"}, "fx": {"pierce": true}},
+	"rubber": {"name": "彈力球", "kind": "gun", "desc": "子彈像彈力球一樣在牆之間彈四次",
+		"set": {"kind": "bounce"}, "fx": {"ricochet": 3}},
+	"frost": {"name": "冰凍彈", "kind": "gun", "desc": "打中的人 2 秒內移動變慢",
+		"fx": {"slow": 2.0}},
+	"concuss": {"name": "腦震盪", "kind": "gun", "desc": "打中的人短暫失去平衡、準星亂飄",
+		"fx": {"stagger": 0.6}},
+	"shove": {"name": "推土機", "kind": "gun", "desc": "子彈把人往後撞飛",
+		"fx": {"knock": 5.0}},
+	"venom": {"name": "毒刺", "kind": "gun", "desc": "命中後持續流血 5 秒",
+		"fx": {"bleed": 5.0}},
+	"long_eye": {"name": "鷹眼", "kind": "gun", "desc": "射程 ×1.6，越遠越痛（最高 ×2）",
+		"x": {"range": 1.6}, "fx": {"long_bonus": 2.0}},
+	"thunder": {"name": "雷暴", "kind": "gun", "desc": "電弧一口氣跳四個人，單發傷害 ×0.85",
+		"x": {"damage": 0.85}, "fx": {"chain": 4}},
+	"hush": {"name": "靜音", "kind": "gun", "desc": "槍聲變小、幾乎沒有槍口火光",
+		"x": {"flash": 0.2}, "fx": {"suppressed": true}},
+	"reclaim": {"name": "回收", "kind": "gun", "desc": "擊殺後彈匣補滿，備彈 ×1.5",
+		"x": {"reserve": 1.5}, "fx": {"kill_refill": true}},
+	"harvest": {"name": "收割", "kind": "gun", "desc": "每次擊殺回 40 血",
+		"fx": {"kill_heal": 40.0}},
+	"phase_rounds": {"name": "穿牆彈", "kind": "gun", "desc": "穿透 ×3：薄牆後面的人照打",
+		"x": {"pen": 3.0}},
+	# --- C11.1 瘋狂擴充：身法卡 -------------------------------------------------------
+	"moonwalk": {"name": "月球漫步", "kind": "move", "desc": "你身上的重力只剩 60%",
+		"fx": {"gravity": 0.6}},
+	"double_jump": {"name": "二段跳", "kind": "move", "desc": "空中可以再跳一次",
+		"fx": {"air_jump": 1}},
+	"triple_jump": {"name": "三段跳", "kind": "move", "desc": "空中可以再跳兩次",
+		"fx": {"air_jump": 2}},
+	"rocket_boots": {"name": "火箭靴", "kind": "move", "desc": "自己的爆炸傷不到自己，開槍會把你往後推",
+		"fx": {"blast_proof": true, "recoil_push": 3.0}},
+	"dash_battery": {"name": "衝刺電池", "kind": "move", "desc": "衝刺多兩格",
+		"fx": {"extra_dash": 2}},
+	"slipstream": {"name": "順風", "kind": "move", "desc": "跑越快越痛（最高 ×1.4），命中後加速 1 秒",
+		"fx": {"speed_bonus": 0.4, "rush": 1.0}},
+	"wall_frenzy": {"name": "牆跑狂熱", "kind": "move", "desc": "牆跑每 0.12 秒補一發，衝刺補 1/4 彈匣",
+		"fx": {"wall_feed": 0.12, "dash_feed": 0.25}},
+	"air_ace": {"name": "空戰王牌", "kind": "move", "desc": "空中傷害 ×1.2，空中瞄準時慢慢飄",
+		"fx": {"air_bonus": 1.2, "glide": 0.5}},
+	"pounce": {"name": "飛撲", "kind": "move", "desc": "子彈打到哪，你就被猛拉過去",
+		"fx": {"grapple": 12.0}},
+	"mega_recoil": {"name": "超級後座", "kind": "move", "desc": "每一槍都把你往後轟飛",
+		"fx": {"recoil_push": 10.0}},
+	"speed_demon": {"name": "惡魔速度", "kind": "move", "desc": "所有移動速度 ×1.25",
+		"fx": {"mobility": 1.25}},
+	"bunny": {"name": "兔子", "kind": "move", "desc": "跳躍與蹬牆跳的高度 ×1.6",
+		"fx": {"spring": 1.6}},
+	"hit_chain": {"name": "連鎖衝刺", "kind": "move", "desc": "每次命中充半格衝刺，命中後加速 2 秒",
+		"fx": {"hit_dash": 0.5, "rush": 2.0}},
+	# --- C11.1 瘋狂擴充：交易卡 -------------------------------------------------------
+	"berserk": {"name": "狂戰士", "kind": "trade", "desc": "傷害 ×1.4，射速 ×1.3",
+		"cost": "受到的傷害 ×1.3", "x": {"damage": 1.4, "rate": 1.3}, "down_fx": {"tough": -0.3}},
+	"turtle": {"name": "烏龜", "kind": "trade", "desc": "受到的傷害 ×0.5",
+		"cost": "傷害 ×0.7", "fx": {"tough": 0.5}, "down_x": {"damage": 0.7}},
+	"minigun": {"name": "加特林", "kind": "trade", "desc": "射速 ×3，彈匣 ×4，越射越快",
+		"cost": "移動 ×0.8，散布 ×1.5", "x": {"rate": 3.0, "mag": 4.0}, "fx": {"spool": 1.0},
+		"down_x": {"spread": 1.5, "moa": 1.5}, "down_fx": {"mobility": 0.8}},
+	"marksman": {"name": "神槍手", "kind": "trade", "desc": "傷害 ×1.5，爆頭 ×3",
+		"cost": "射速 ×0.5", "x": {"damage": 1.5}, "fx": {"headhunter": true}, "down_x": {"rate": 0.5}},
+	"cursed_gold": {"name": "詛咒黃金", "kind": "trade", "desc": "傷害 ×1.35",
+		"cost": "你永遠隔牆可見", "x": {"damage": 1.35}, "down_fx": {"beacon": true}},
+	"blindfold": {"name": "蒙眼", "kind": "trade", "desc": "子彈自動追 12 度內的敵人，傷害 ×1.2",
+		"cost": "不能瞄準", "x": {"damage": 1.2}, "fx": {"homing": 12.0}, "down_fx": {"no_aim": true}},
+	"nitro": {"name": "硝化", "kind": "trade", "desc": "子彈落點炸開（2.5 m），殺掉的人大爆炸（6 m）",
+		"cost": "受到的傷害 ×1.25", "fx": {"explode": 2.5, "kill_explode": 6.0}, "down_fx": {"tough": -0.25}},
+	"hollow": {"name": "空心彈", "kind": "trade", "desc": "彈匣 ×3",
+		"cost": "傷害 ×0.75", "x": {"mag": 3.0}, "down_x": {"damage": 0.75}},
+	"jackpot": {"name": "大獎", "kind": "trade", "desc": "傷害 ×1.3",
+		"cost": "每發傷害隨機 ×0.4～×2.2", "x": {"damage": 1.3}, "down_fx": {"gamble": true}},
+	"overclock": {"name": "超頻", "kind": "trade", "desc": "射速 ×1.6，換彈 ×0.7",
+		"cost": "每發 +4% 熱量，散熱 ×0.5", "x": {"rate": 1.6, "reload": 0.7},
+		"down_add": {"heat": 0.04}, "down_x": {"cooling": 0.5}},
+	"lead_boots": {"name": "鉛靴", "kind": "trade", "desc": "傷害 ×1.35，受到的傷害 ×0.8",
+		"cost": "移動 ×0.75", "x": {"damage": 1.35}, "fx": {"tough": 0.2}, "down_fx": {"mobility": 0.75}},
+	"paper_plane": {"name": "紙飛機", "kind": "trade", "desc": "移動 ×1.35，衝刺多一格",
+		"cost": "受到的傷害 ×1.35", "fx": {"mobility": 1.35, "extra_dash": 1}, "down_fx": {"tough": -0.35}},
+	"vampire": {"name": "吸血鬼", "kind": "trade", "desc": "造成傷害的 60% 補回血",
+		"cost": "傷害 ×0.8", "fx": {"leech": 0.6}, "down_x": {"damage": 0.8}},
+	"zero_g": {"name": "無重力槍", "kind": "trade", "desc": "重力只剩 40%，空中傷害 ×1.5",
+		"cost": "移動 ×0.85", "fx": {"gravity": 0.4, "air_bonus": 1.5}, "down_fx": {"mobility": 0.85}},
+	# --- C11.1 規則卡：改的是這個模式本身 -----------------------------------------------
+	"thief": {"name": "慣竊", "kind": "rule", "desc": "每次擊殺奪走兩張卡"},
+	"insured": {"name": "保險箱", "kind": "rule", "desc": "你的卡不會被奪走，也不會被怨靈燒掉"},
+	"grudge": {"name": "怨靈", "kind": "rule", "desc": "殺掉你的人，會被燒掉一張隨機卡"},
+	"gambler": {"name": "賭桌", "kind": "rule", "desc": "選下去的瞬間，變成兩張隨機卡"},
+	"collector": {"name": "收藏家", "kind": "rule", "desc": "之後每回合多看一張卡，重抽次數 +1"},
+	"chameleon": {"name": "百變", "kind": "rule", "desc": "算共鳴時，每一類都多算一張"},
+	"bounty_hunter": {"name": "賞金獵人", "kind": "rule", "desc": "每次擊殺多拿 $300"},
+	"loan_shark": {"name": "高利貸", "kind": "rule", "desc": "立刻拿 $2500，之後每回合開始扣 $400"},
+	"mirror": {"name": "鏡像", "kind": "rule", "desc": "立刻複製一張敵人身上、你沒有的卡"},
 }
 
 
@@ -173,10 +277,13 @@ static func clean(list: Variant) -> Array:
 
 ## kind -> how many of `cards` are that kind.
 static func counts(cards: Array) -> Dictionary:
-	var c := {"gun": 0, "move": 0, "trade": 0}
+	var c := {"gun": 0, "move": 0, "trade": 0, "rule": 0}
 	for id in cards:
 		var k := kind_of(str(id))
 		if c.has(k):
+			c[k] += 1
+	if "chameleon" in cards:
+		for k in ["gun", "move", "trade"]:
 			c[k] += 1
 	return c
 
@@ -245,6 +352,13 @@ static func apply(s: Dictionary, list: Variant) -> void:
 		var c := card(id)
 		for stat in c.get("x", {}):
 			s[stat] = float(s[stat]) * float(c.x[stat])
+		for stat in c.get("set", {}):
+			s[stat] = c.set[stat]
+		for m in c.get("modes", []):
+			var modes: Array = (s.modes as Array).duplicate()
+			modes.erase(m)
+			modes.push_front(m)
+			s.modes = modes
 		for stat in c.get("down_x", {}):
 			var m := float(c.down_x[stat])
 			s[stat] = float(s[stat]) * (lerpf(1.0, m, 0.5) if soft else m)

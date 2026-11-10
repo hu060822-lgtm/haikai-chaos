@@ -122,6 +122,8 @@ var _last_wall_node: Object = null
 var _wall_ban: Object = null
 var _wall_ban_t := 0.0
 var _kicks := WALL_KICKS
+## 超規卡 (C11.1): mid-air jumps left (air_jump cards), back on landing.
+var _air_jumps := 0
 var _climb_left := 0.0
 var _climbed := false
 var _mantle_from := Vector3.ZERO
@@ -426,6 +428,7 @@ func _physics_process(delta: float) -> void:
 	if on_floor:
 		_coyote = tune.coyote
 		_kicks = max_kicks()
+		_air_jumps = int(weapon.stats.effects.get("air_jump", 0))
 		_climbed = false
 		_wall_ban = null
 	if _want("jump", true):
@@ -489,6 +492,8 @@ func _timers(delta: float) -> void:
 	_stagger = maxf(_stagger - delta, 0.0)
 	combat_left = maxf(combat_left - delta, 0.0)
 	marked = maxf(marked - delta, 0.0)
+	if weapon.stats.effects.get("beacon", false):
+		marked = maxf(marked, 0.5)
 	_rush = maxf(_rush - delta, 0.0)
 	if _burn > 0.0:
 		_burn -= delta
@@ -555,7 +560,7 @@ func _fail(why: String) -> void:
 
 ## Half a tick of gravity (the other half comes after the move).
 func _gravity_half() -> void:
-	var g := tune.gravity
+	var g := tune.gravity * float(weapon.stats.effects.get("gravity", 1.0))
 	# Glider stock: aiming while falling in the air.
 	if weapon.stats.effects.has("glide") and move == Move.AIR and _aim > 0.5 and velocity.y < 0.0:
 		g *= float(weapon.stats.effects.glide)
@@ -763,6 +768,19 @@ func _jump() -> void:
 	Sfx.play(self, "jump")
 
 
+## A jump in mid-air (air_jump cards): true when one was used.
+func _try_air_jump() -> bool:
+	if _buffer <= 0.0 or _air_jumps <= 0:
+		return false
+	_air_jumps -= 1
+	_buffer = 0.0
+	_launch(tune.jump_speed * sqrt(mobility) * _spring())
+	_cam.burst(0.4)
+	Sfx.play(self, "jump")
+	_set_move(Move.AIR, "空中跳（剩 %d 次）" % _air_jumps, true)
+	return true
+
+
 func _air_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
 	if move == Move.SLIDE or move == Move.GROUND:
 		_set_move(Move.AIR, "離開地面")
@@ -782,10 +800,13 @@ func _air_frame(delta: float, wish: Vector3, crouch_held: bool) -> void:
 		return
 	var wall := _find_wall()
 	if wall.is_empty():
+		_try_air_jump()
 		return
 	if _buffer > 0.0:
 		if _kicks > 0:
 			_wall_kick(wall)
+			return
+		if _try_air_jump():
 			return
 		_fail("踢牆次數用完（落地回復）")
 	var why := _wallrun_block(wall, wish)

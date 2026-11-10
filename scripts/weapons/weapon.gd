@@ -576,6 +576,8 @@ func _explode(shooter: Node3D, at: Vector3, radius: float, context: Dictionary) 
 			continue
 		var info := _hit_info(at, at, ((t as Node3D).global_position - at).normalized(), "body", 1.0, context)
 		info.damage = pvp_damage(stats) * clampf(1.0 - d / (radius + 0.5), 0.2, 1.0)
+		if t == context.get("attacker") and stats.effects.get("blast_proof", false):
+			continue
 		if t == context.get("attacker"):
 			info.damage *= 0.4  # rocket jumping should hurt, a bit
 			info.self_hit = true
@@ -595,6 +597,8 @@ func blast(shooter: Node3D, at: Vector3, radius: float, damage: float, context: 
 		var info := _hit_info(at, at, ((t as Node3D).global_position - at).normalized(), "body", 1.0, context)
 		info.damage = damage * clampf(1.0 - d / (radius + 0.5), 0.2, 1.0)
 		info.blast = true
+		if t == context.get("attacker") and stats.effects.get("blast_proof", false):
+			continue
 		if t == context.get("attacker"):
 			info.damage *= 0.4
 			info.self_hit = true
