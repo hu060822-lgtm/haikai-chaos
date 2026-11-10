@@ -26,6 +26,8 @@ run --path . --script res://tests/net_anim_test.gd
 run --path . --script res://tests/bot_level_test.gd
 run --path . --script res://tests/testament_test.gd
 run --path . --script res://tests/cards_test.gd -- 24703
+run --path . --script res://tests/throwables_test.gd
+run --path . --script res://tests/dynamics_test.gd
 # Map 04 in all three modes: 爆破, 預算戰, then 改版死鬥 with bots.
 run --path . --script res://tests/bomb_test.gd -- 24697 --map=testament
 run --path . --script res://tests/rounds_test.gd -- 24698 --map=testament

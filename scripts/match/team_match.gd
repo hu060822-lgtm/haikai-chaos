@@ -743,9 +743,37 @@ func deploy_event_out(uid: String, what: String, amount: float) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func _deploy_event(uid: String, what: String, amount: float) -> void:
-	if what not in ["hit", "break", "pop"] or amount < 0.0 or amount > MAX_HIT:
+	if what not in ["hit", "break", "pop", "toggle"] or amount < 0.0 or amount > MAX_HIT:
 		return
 	Deploy.apply(uid, what, amount)
+
+
+## C12: what only the owner's machine knows about one of its objects (a sticky caught
+## someone, a mine went off). Only that machine may send it.
+func deploy_sync_out(uid: String, data: Dictionary) -> void:
+	_deploy_sync.rpc(uid, data)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _deploy_sync(uid: String, data: Dictionary) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	var who := uid.get_slice(":", 0)
+	if sender != multiplayer.get_unique_id() and owner_of(who) != sender:
+		return
+	Deploy.apply_sync(uid, data)
+
+
+## C12: the host's clock and plan for the map's moving parts (MapDynamics), to everyone.
+func map_tick_out(data: Array) -> void:
+	if running and net.is_host():
+		_map_tick.rpc(data)
+
+
+@rpc("authority", "reliable")
+func _map_tick(data: Array) -> void:
+	var d = main.get("dynamics")
+	if d != null and is_instance_valid(d):
+		d.from_host(data)
 
 
 func blow_out(at: Vector3, radius: float) -> void:

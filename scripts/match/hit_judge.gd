@@ -149,6 +149,8 @@ func judge(shooter_id: String, shooter_peer: int, victim_id: String, wire: Dicti
 
 func _judge(shooter_id: String, shooter_peer: int, victim_id: String, wire: Dictionary, build: Dictionary, now: float,
 		blocked: Callable) -> String:
+	if wire.has("throw"):
+		return _judge_throw(victim_id, wire, now - rewind_of(shooter_peer), now)
 	if build.is_empty():
 		return "unknown gun"
 	var stats := Arsenal.stats(build)
@@ -191,6 +193,26 @@ func _judge(shooter_id: String, shooter_peer: int, victim_id: String, wire: Dict
 		var d := (dir as Vector3).normalized()
 		if blocked.call(origin + d * 0.3, point - d * 0.2):
 			return "a wall in the way"
+	return ""
+
+
+## A throwable's blast (C12): no more than that throwable does, and the victim near it.
+func _judge_throw(victim_id: String, wire: Dictionary, t0: float, now: float) -> String:
+	var kind := str(wire.get("throw", ""))
+	if not Throwables.INFO.has(kind):
+		return "unknown throwable"
+	var dmg := float(wire.get("damage", 0.0))
+	var cap := Throwables.max_damage(kind) + 1.0
+	if dmg < 0.0 or dmg > cap:
+		return "damage %.0f over the throwable's %.0f" % [dmg, cap]
+	var point: Variant = wire.get("point")
+	if not (point is Vector3):
+		return "no hit point"
+	var near := INF
+	for p in positions(victim_id, t0, now):
+		near = minf(near, _to_line(point, p))
+	if near > BLAST_REACH:
+		return "the victim wasn't there (%.1f m off)" % near
 	return ""
 
 

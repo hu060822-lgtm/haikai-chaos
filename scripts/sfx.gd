@@ -78,6 +78,21 @@ static func _stream(id: String) -> AudioStreamWAV:
 		"decoy_pop": w = _make(0.3, 0.3, 1200.0, 300.0, 14.0, 0.2)
 		# C7: the body of a hit confirm, under the tick.
 		"thud": w = _make(0.11, 0.55, 140.0, 60.0, 30.0, 0.5)
+		# C12: throwables and the map's moving parts.
+		"nade_pin": w = _make(0.08, 0.2, 2400.0, 2000.0, 40.0)
+		"nade_bounce": w = _make(0.07, 0.4, 900.0, 600.0, 50.0, 0.3)
+		"nade_boom": w = _make(1.2, 0.85, 80.0, 28.0, 3.6, 0.9)
+		"flash_bang": w = _make(0.7, 0.6, 3200.0, 2600.0, 5.0, 0.2)
+		"sticky_stick": w = _make(0.12, 0.7, 300.0, 120.0, 28.0, 0.6)
+		"mine_arm": w = _make(0.1, 0.2, 1400.0, 1900.0, 30.0)
+		"mine_beep": w = _make(0.12, 0.05, 2200.0, 2200.0, 22.0)
+		"kick_boom": w = _make(0.6, 0.9, 140.0, 60.0, 7.0, 0.3)
+		"door_slide": w = _make(0.45, 0.85, 160.0, 120.0, 6.0, 0.5)
+		"shutter_alarm": w = _make(0.6, 0.1, 620.0, 460.0, 2.0)
+		"shutter_move": w = _make(1.6, 0.9, 70.0, 50.0, 1.4, 0.8)
+		"lift_move": w = _make(1.0, 0.85, 90.0, 110.0, 2.0, 0.5)
+		"cover_hit": w = _make(0.08, 0.7, 500.0, 300.0, 40.0, 0.9)
+		"cover_break": w = _make(0.8, 0.9, 120.0, 40.0, 5.0, 1.0)
 		_: w = _make(0.1, 0.5, 300.0, 200.0, 30.0)
 	_cache[id] = w
 	return w
