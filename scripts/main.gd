@@ -18,6 +18,7 @@ static var open_lobby := false
 static var title_message := ""
 
 var map: Node3D
+var dynamics: MapDynamics
 var lab: MovementLab
 var move_debug: MoveDebug
 var settings_menu: SettingsMenu
@@ -73,6 +74,10 @@ func _ready() -> void:
 		map = FoldedWorks.new()
 	add_child(map)
 	add_child(MapGuard.new(map))
+	# C12: doors, blast gates, lifts and breakable cover, laid out on the map's plan.
+	dynamics = MapDynamics.for_map(map)
+	if dynamics != null:
+		add_child(dynamics)
 	SafeZone.clear()
 	SafeZone.repel = false
 	BotLevel.reset()

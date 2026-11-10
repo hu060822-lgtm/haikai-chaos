@@ -93,6 +93,12 @@ var _cover_left := 0.0
 ## 困難: a flanking spot to reach before going for a teammate's callout.
 var _flank_at := Vector3.INF
 var _flank_left := 0.0
+## Throwables (C12): the belt, how long a flash has it blind, when it next thinks about
+## throwing (中等 throws frags at where it lost you, 困難 also stickies and flashes; all
+## of them jump away from a live grenade).
+var pouch: Pouch
+var _blind := 0.0
+var _throw_think := 0.0
 
 
 func _ready() -> void:
@@ -145,6 +151,11 @@ func spawn(at: Vector3, seed_value: int) -> void:
 		set_kit(BOT_KITS[rng.randi() % BOT_KITS.size()] if kit_id == "" else kit_id)
 	ability.cancel()
 	ability.refill()
+	if pouch == null:
+		pouch = Pouch.new(self)
+	pouch.refill()
+	_blind = 0.0
+	_throw_think = randf_range(1.0, 3.0)  # not rng: keep the bot's own sequence as it was
 	_stagger = 0.0
 	_lunge_left = 0.0
 	health = MAX_HEALTH
@@ -225,6 +236,84 @@ func _use_ability() -> void:
 				ability.press()
 
 
+## A flash it was looking at (Grenade): it can't see or shoot for `seconds`.
+func flashed(seconds: float) -> void:
+	_blind = maxf(_blind, seconds)
+	_reaction = maxf(_reaction, seconds)
+	_see = false
+
+
+## A kick throwable's blast (Grenade): thrown along `v` for a moment.
+func launch(v: Vector3) -> void:
+	if not alive:
+		return
+	velocity.y = maxf(velocity.y, 0.0) + v.y
+	lunge(Vector3(v.x, 0, v.z), 0.45)
+
+
+## Jumps away from an enemy grenade that is about to go off nearby.
+func _dodge() -> void:
+	if passive or frozen or _lunge_left > 0.0:
+		return
+	for g in get_tree().get_nodes_in_group("grenades"):
+		if not (g is Grenade) or int(g.team) == team:
+			continue
+		var r: float = g.danger()
+		var away: Vector3 = global_position - (g as Node3D).global_position
+		away.y = 0.0
+		if r > 0.0 and away.length() < r:
+			var dir := away.normalized() if away.length() > 0.1 else -global_basis.z
+			lunge(dir * 8.0, 0.55)
+			return
+
+
+## When to throw something (checked a couple of times a second).
+func _use_throw() -> void:
+	if passive or frozen or level == BotLevel.EASY or _blind > 0.0 or pouch.holding:
+		return
+	if _see or _last_seen == Vector3.INF:
+		return
+	var since := BotLevel.now() - _seen_at
+	var d := _flat_to(_last_seen)
+	if since > 0.6 and since < 4.0 and d > 7.0 and d < 28.0 and rng.randf() < 0.35:
+		var kind := "frag" if pouch.count("frag") > 0 else ("sticky" if level == BotLevel.HARD and pouch.count("sticky") > 0 else "")
+		if kind != "":
+			_lob(kind, _last_seen)
+			return
+	if level == BotLevel.HARD and since < 6.0 and d > 10.0 and d < 30.0 and pouch.count("flash") > 0 and rng.randf() < 0.12:
+		_lob("flash", _last_seen.lerp(global_position, 0.25) + Vector3(0, 1.5, 0))
+
+
+## Throws `kind` to land as near `at` as it can (tries a fan of pitches on the predicted arc).
+func _lob(kind: String, at: Vector3) -> bool:
+	var eye := _eye()
+	var flat := at - eye
+	flat.y = 0.0
+	if flat.length() < 1.0:
+		return false
+	var space := get_world_3d().direct_space_state
+	var best := INF
+	var best_v := Vector3.ZERO
+	var best_from := Vector3.ZERO
+	for deg in [-5.0, 5.0, 12.0, 20.0, 30.0, 42.0, 55.0]:
+		var p := deg_to_rad(deg)
+		var dir := (flat.normalized() * cos(p) + Vector3.UP * sin(p)).normalized()
+		var aim := Transform3D(Basis.looking_at(dir, Vector3.UP), eye)
+		for short in [false, true]:
+			var v := pouch.velocity_for(aim, short)
+			var from := pouch.origin_for(aim)
+			var land: Vector3 = Grenade.predict(space, from, v, exclusions(), 3.0)[1]
+			var err := Vector2(land.x - at.x, land.z - at.z).length() + absf(land.y - at.y) * 0.5
+			if err < best:
+				best = err
+				best_v = v
+				best_from = from
+	if best > 4.5:
+		return false
+	_face(global_position + flat, 1.0, 100.0)
+	return pouch.throw_kind(kind, best_v, best_from)
+
+
 func exclusions() -> Array:
 	var out := [get_rid()]
 	for a in _hitboxes:
@@ -258,6 +347,14 @@ func _physics_process(delta: float) -> void:
 		if _ability_think <= 0.0:
 			_ability_think = 0.3
 			_use_ability()
+	_blind = maxf(_blind - delta, 0.0)
+	if pouch != null:
+		pouch.tick(delta)
+		_throw_think -= delta
+		if _throw_think <= 0.0:
+			_throw_think = 0.4
+			_dodge()
+			_use_throw()
 	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_flash = maxf(_flash - delta, 0.0)
@@ -299,7 +396,7 @@ func _physics_process(delta: float) -> void:
 			_face(target.global_position, delta, 9.0)
 		else:
 			flat = _fight_move(delta, speed)
-		if _reaction <= 0.0 and not passive:
+		if _reaction <= 0.0 and not passive and _blind <= 0.0:
 			_try_shoot()
 	elif _cover_at != Vector3.INF and nav == null:
 		flat = _straight_to(_cover_at, speed)
@@ -639,6 +736,9 @@ func _pick_target() -> void:
 func _look_for_target() -> void:
 	if target != null and not is_instance_valid(target):
 		target = null
+	if _blind > 0.0:
+		_see = false
+		return
 	_pick_target()
 	if _last_seen != Vector3.INF and BotLevel.now() - _seen_at > float(_p.memory):
 		_last_seen = Vector3.INF
@@ -760,6 +860,8 @@ func _die(info: Dictionary) -> void:
 	alive = false
 	if ability != null:
 		ability.cancel()
+	if pouch != null:
+		pouch.cancel()
 	health = 0.0
 	for a in _hitboxes:
 		a.set_deferred("collision_layer", 0)

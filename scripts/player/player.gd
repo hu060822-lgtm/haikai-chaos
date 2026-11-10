@@ -64,6 +64,11 @@ var weapon: Weapon
 ## The class (C6): Kit id and its ability on the ability key.
 var kit_id := Kit.DEFAULT
 var ability: Ability
+## Throwables (C12): the belt, how long the screen stays white from a flash, and the arc
+## shown while the throw key is held.
+var pouch: Pouch
+var flash_left := 0.0
+var _arc: ThrowArc
 var mobility := 1.0
 var tune := MoveTuning.new()
 
@@ -194,6 +199,10 @@ func _ready() -> void:
 		equip({"frame": "carbine", "parts": {}, "tune": {}})
 	if ability == null:
 		set_kit(Settings.kit)
+	if pouch == null:
+		pouch = Pouch.new(self)
+	_arc = ThrowArc.new()
+	add_child(_arc)
 
 
 func _add_hitboxes() -> void:
@@ -293,6 +302,9 @@ func spawn_at(xform: Transform3D) -> void:
 	if ability != null:
 		ability.cancel()
 		ability.refill()
+	if pouch != null:
+		pouch.refill()
+	flash_left = 0.0
 	# Every movement timer back to its start, so a respawn behaves the same every time.
 	_buffer = 0.0
 	_crouch_buf = 0.0
@@ -441,6 +453,7 @@ func _physics_process(delta: float) -> void:
 			ability.press()
 		elif input_enabled and Input.is_action_just_released("ability"):
 			ability.release()
+	_throwing(delta)
 	match move:
 		Move.GRAPPLE, Move.CHARGE:
 			ability.move_frame(self, delta, wish)
@@ -501,6 +514,47 @@ func _timers(delta: float) -> void:
 	var repel := SafeZone.repel_at(global_position, team)
 	if repel > 0.0:
 		_apply_damage(repel * delta, {"attacker_name": "安全區", "gun_name": "安全區", "zone_hit": true}, false)
+
+
+## The throw key (C12): hold to aim (and cook a frag), let go to throw; aim held = short toss.
+func _throwing(delta: float) -> void:
+	flash_left = maxf(flash_left - delta, 0.0)
+	if pouch == null:
+		return
+	pouch.tick(delta)
+	if _want("throw_next", true):
+		pouch.next()
+		Sfx.ui(get_tree(), "tick", -14.0)
+	if _want("throw", true):
+		pouch.press()
+	elif pouch.holding and (not input_enabled or not Input.is_action_pressed("throw")):
+		pouch.release(input_enabled and Input.is_action_pressed("aim"))
+	if _arc != null:
+		if pouch.holding and input_enabled:
+			var aim := camera.global_transform
+			var short := Input.is_action_pressed("aim")
+			_arc.show_arc(get_world_3d().direct_space_state, pouch.origin_for(aim), pouch.velocity_for(aim, short), exclusions(),
+				Throwables.info(pouch.selected).color, aim.origin)
+		else:
+			_arc.hide_arc()
+
+
+## A flash went off where we could see it (Grenade): white for `seconds`.
+func flashed(seconds: float) -> void:
+	flash_left = maxf(flash_left, seconds)
+
+
+## A kick throwable's blast (Grenade): thrown off the ground, keeping what we had.
+func launch(v: Vector3) -> void:
+	if not alive:
+		return
+	velocity += v
+	if v.y > 0.5 and (move == Move.GROUND or move == Move.SLIDE):
+		_coyote = 0.0
+		_set_move(Move.AIR, "推進彈", true)
+	var h := _flat()
+	if h.length() > tune.hard_cap * 0.9:
+		_set_flat(h.normalized() * tune.hard_cap * 0.9)
 
 
 func _want(action: String, just := false) -> bool:
@@ -1679,6 +1733,10 @@ func _die(info: Dictionary) -> void:
 	alive = false
 	if ability != null:
 		ability.cancel()
+	if pouch != null:
+		pouch.cancel(true)
+	if _arc != null:
+		_arc.hide_arc()
 	_set_move(Move.GROUND, "死亡")
 	velocity = Vector3.ZERO
 	PrintFx.takedown(get_tree().current_scene, global_position, Faultprint.INFO_ALLY)

@@ -40,6 +40,9 @@ var _numbers: DamageNumbers
 var _callouts: VBoxContainer
 var _last_hp := 100.0
 var _badge: AbilityBadge
+## C12: the throwables on the belt, and the white of a flash over everything.
+var _belt: ThrowBadge
+var _white: ColorRect
 var _smoke: ColorRect
 
 
@@ -140,6 +143,24 @@ func _ready() -> void:
 	_badge.offset_bottom = -24
 	_badge.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(_badge)
+	_belt = ThrowBadge.new()
+	_belt.player = player
+	_belt.anchor_left = 0.5
+	_belt.anchor_right = 0.5
+	_belt.anchor_top = 1.0
+	_belt.anchor_bottom = 1.0
+	_belt.offset_left = 124
+	_belt.offset_right = 344
+	_belt.offset_top = -86
+	_belt.offset_bottom = -24
+	_belt.mouse_filter = MOUSE_FILTER_IGNORE
+	add_child(_belt)
+	_white = ColorRect.new()
+	_white.set_anchors_preset(PRESET_FULL_RECT)
+	_white.color = Color(1, 1, 0.97, 0.0)
+	_white.mouse_filter = MOUSE_FILTER_IGNORE
+	add_child(_white)
+	(func() -> void: move_child(_white, -1)).call_deferred()
 	# Bottom right: the gun.
 	var right := VBoxContainer.new()
 	right.anchor_left = 1.0
@@ -231,6 +252,8 @@ Ctrl / C 蹲；跑動中按下 = 滑鏟，下坡越滑越快
 Q 衝刺閃避（衝刺中跳 = 衝刺跳）　空中低頭看地面按蹲 = 重踩，落地瞬間跳 = 彈跳
 左鍵 開火　右鍵 瞄準　R 換彈　B 射擊模式
 F 職業技能（工作台左上選職業）　G 死亡畫面抄槍
+V 投擲物：按住看拋物線（破片手雷會開始倒數），放開丟出；按住右鍵放開＝輕拋　X 換下一種
+E 開關門（門可以打爆）；閃黃燈的閘門幾秒後會輪替開關
 Tab 輕按 = 改槍工作台，按住 = 記分板
 F2 敵我顏色　F3 機器人開火　F4 移動除錯　F5 鏡頭效果
 Esc 設定：靈敏度、FOV、音量、自訂按鍵
@@ -308,6 +331,9 @@ func _process(delta: float) -> void:
 	var smoke := Deploy.smoke_at(player.camera.global_position) if player.alive else 0.0
 	_smoke.color.a = lerpf(_smoke.color.a, 0.94 * smoke, 1.0 - exp(-14.0 * delta))
 	_badge.queue_redraw()
+	_belt.queue_redraw()
+	# Full white while the flash holds, fading out over its last 0.9 s.
+	_white.color.a = clampf(player.flash_left / 0.9, 0.0, 1.0) if player.alive else 0.0
 	_hp.text = "%d" % ceili(hp)
 	_hp.add_theme_color_override("font_color", Counterform.DUST_WHITE if hp > 35 else FpUi.enemy_color())
 	_hp_bar.set_value(hp / Player.MAX_HEALTH)
@@ -702,3 +728,40 @@ class AbilityBadge:
 		for i in n:
 			var p := centre + Vector2(r + 14 + i * 12, -10)
 			draw_rect(Rect2(p, Vector2(8, 8)), c if a.charges >= i + 1.0 else Color(c, 0.25))
+
+
+## The throwables (C12): the one in hand big, with its count, the rest as small squares
+## with theirs; V throws, X picks the next.
+class ThrowBadge:
+	extends Control
+	var player: Player
+
+	func _draw() -> void:
+		if player == null or player.pouch == null or not player.alive:
+			return
+		var pouch := player.pouch
+		var font := FpUi.bold()
+		var sel := pouch.selected
+		var info := Throwables.info(sel)
+		var c: Color = info.color
+		var have := pouch.count(sel)
+		var box := Rect2(Vector2(0, 6), Vector2(48, 48))
+		draw_rect(box, Color(Counterform.GRAPHITE_DEEP, 0.7))
+		draw_rect(box, c if have > 0 else Color(c, 0.35), false, 3.0 if pouch.holding else 1.5)
+		draw_string(font, box.position + Vector2(15, 32), "V", HORIZONTAL_ALIGNMENT_LEFT, -1, 20,
+			Counterform.DUST_WHITE if have > 0 else Color(Counterform.DUST_WHITE, 0.4))
+		if pouch.holding and sel == "frag":
+			var left := 1.0 - pouch.cook / float(info.fuse)
+			draw_rect(Rect2(box.position + Vector2(0, 50), Vector2(48 * left, 4)), Counterform.SULFUR if left > 0.35 else FpUi.enemy_color())
+		draw_string(font, Vector2(58, 26), "%s ×%d" % [info.name, have], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(Counterform.DUST_WHITE, 0.95))
+		var x := 58.0
+		for id in Throwables.IDS:
+			var ic: Color = Throwables.info(id).color
+			var n := pouch.count(id)
+			var r := Rect2(Vector2(x, 36), Vector2(26, 16))
+			draw_rect(r, Color(ic, 0.85 if n > 0 else 0.18) if id != sel else ic)
+			draw_string(font, r.position + Vector2(9, 13), str(n), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Counterform.GRAPHITE_DEEP)
+			if id == "kick" and n < int(Throwables.info("kick").count):
+				draw_rect(Rect2(r.position + Vector2(0, 17), Vector2(26 * pouch.kick_progress(), 2)), ic)
+			x += 30.0
+		draw_string(font, Vector2(58 + 5 * 30 + 2, 49), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Counterform.DUST_WHITE, 0.6))

@@ -310,6 +310,12 @@ func _ram(m: Main) -> void:
 	bot.team = 1
 	bot.frozen = false
 	bot.passive = true
+	# Standing still: the map's plan lies under this test floor (C12 put cover and lifts on
+	# it), so a bot walking that plan would wander off.
+	var nav := bot.nav
+	var wps := bot.waypoints
+	bot.nav = null
+	bot.waypoints = []
 	bot.health = Bot.MAX_HEALTH
 	bot.global_position = Vector3(0, Y + 0.1, 26)
 	bot.velocity = Vector3.ZERO
@@ -321,6 +327,8 @@ func _ram(m: Main) -> void:
 	check(bot.health <= Bot.MAX_HEALTH - Ram.DAMAGE and bot.health > Bot.MAX_HEALTH - Ram.DAMAGE - 10.0, "RAM: the charge hits for %.0f+ (bot %.0f)" % [Ram.DAMAGE, bot.health])
 	check(p.move != Player.Move.CHARGE and p.global_position.z > 25.0, "RAM: the charge stops on them")
 	bot.frozen = true
+	bot.nav = nav
+	bot.waypoints = wps
 	_park(bot)
 	# The stagger on us: a wide cone and no scope, but we can still move and shoot.
 	var before := p.current_spread()

@@ -275,6 +275,11 @@ func _claims(tm: TeamMatch, me: Player) -> void:
 	tm._claim.rpc_id(1, bot.id, make.call(bot.global_position + Vector3(0, 1, 0), tm.my_id))
 	var landed := await _until(func() -> bool: return bot.health <= hp - 9.5, 3.0)
 	check(landed, "a fair hit passed the host's judge (bot hp %.0f → %.0f)" % [hp, bot.health])
+	# C12: a frag thrown here goes off on the host's bot: its blast goes through the judge too.
+	var before := bot.health
+	Deploy.spawn("throw", me, {"kind": "frag", "from": bot.global_position + Vector3(0.8, 0.4, 0), "vel": Vector3.ZERO, "fuse": 0.05})
+	var blasted := await _until(func() -> bool: return bot.health <= before - 20.0 or not bot.alive, 3.0)
+	check(blasted, "a thrown frag hurts the host's bot through the judge (bot hp %.0f → %.0f)" % [before, bot.health])
 	me.global_position = home
 
 
