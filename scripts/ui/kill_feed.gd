@@ -63,6 +63,48 @@ func add_kill(killer: String, killer_side: int, gun_name: String, build: Diction
 	t.tween_callback(row.queue_free)
 
 
+## 超規卡 (C11): a card taken with a kill, right under the kill: "A 奪走【X】← B".
+func add_steal(killer: String, killer_side: int, card_name: String, tint: Color, victim: String,
+		victim_side: int, involves_you := false) -> void:
+	var row := PanelContainer.new()
+	var bg := Color(Faultprint.ui_paper, 0.82) if not involves_you else Color(Faultprint.YELLOW, 0.88)
+	var ink := Faultprint.CARBON if involves_you else Faultprint.ui_ink
+	var sb := FpUi.panel(bg, ink, 8, 2)
+	sb.border_color = tint
+	sb.border_width_left = 6
+	row.add_theme_stylebox_override("panel", sb)
+	row.size_flags_horizontal = Control.SIZE_SHRINK_END
+	row.mouse_filter = MOUSE_FILTER_IGNORE
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	row.add_child(h)
+	h.add_child(_name(killer, killer_side, ink))
+	h.add_child(FpUi.label("奪走", 13, ink, FpUi.bold()))
+	var tag := FpUi.label(" %s " % card_name, 14, Faultprint.CARBON, FpUi.bold())
+	var tag_box := PanelContainer.new()
+	var tb := FpUi.panel(tint, Color.TRANSPARENT, 4)
+	tb.content_margin_left = 3
+	tb.content_margin_right = 3
+	tb.content_margin_top = 1
+	tb.content_margin_bottom = 1
+	tag_box.add_theme_stylebox_override("panel", tb)
+	tag_box.add_child(tag)
+	tag_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(tag_box)
+	h.add_child(FpUi.label("←", 16, ink, FpUi.bold()))
+	h.add_child(_name(victim, victim_side, ink))
+	add_child(row)
+	move_child(row, 0)
+	while get_child_count() > MAX_LINES + 2:
+		var last := get_child(get_child_count() - 1)
+		remove_child(last)
+		last.queue_free()
+	var t := row.create_tween()
+	t.tween_interval(LIFE)
+	t.tween_property(row, "modulate:a", 0.0, 0.4)
+	t.tween_callback(row.queue_free)
+
+
 func _name(text: String, side: int, ink: Color) -> Control:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)

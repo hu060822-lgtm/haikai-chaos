@@ -121,6 +121,14 @@ func set_build(new_build: Dictionary, gun_name := "") -> void:
 	version = version_of(build)
 
 
+## 超規卡 (C11): new cards on the gun in hand, keeping its rounds and its state.
+func set_cards(cards: Array) -> void:
+	build = Augments.stamp(build, cards)
+	stats = Arsenal.stats(build)
+	ammo = mini(ammo, int(stats.mag))
+	klass = PrintFx.weapon_class(stats)
+
+
 static func version_of(b: Dictionary) -> int:
 	var c := Arsenal.clean(b)
 	return absi(hash(var_to_str([c.frame, c.parts, c.tune])))

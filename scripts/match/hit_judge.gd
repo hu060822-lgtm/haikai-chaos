@@ -115,6 +115,9 @@ func took(id: String, amount: float, victim_effects: Dictionary, wire: Dictionar
 	var low := amount
 	if victim_effects.has("guard"):
 		low *= 1.0 - float(victim_effects.guard)
+	if victim_effects.has("glass"):
+		low *= float(victim_effects.glass)
+	low = Augments.taken(low, victim_effects)
 	ledger[id] = float(ledger.get(id, 100.0)) - maxf(low, 0.0)
 	last_hit[id] = wire
 	if float(ledger[id]) < -LEDGER_SLACK and not _under.has(id):
@@ -151,6 +154,9 @@ func _judge(shooter_id: String, shooter_peer: int, victim_id: String, wire: Dict
 	var stats := Arsenal.stats(build)
 	var dmg := float(wire.get("damage", 0.0))
 	var cap := maxf(Weapon.pvp_damage(stats) * Weapon.HEAD_MULT * 3.0, Weapon.KILL_BLAST * 2.0) + 5.0
+	if not (stats.get("cards", []) as Array).is_empty():
+		# Cards stack multipliers (glass, last round, first shot...): far more room.
+		cap *= 4.0
 	if dmg < 0.0 or dmg > cap:
 		return "damage %.0f over the gun's %.0f" % [dmg, cap]
 	if not _spend(shooter_id, stats, now):

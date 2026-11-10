@@ -369,7 +369,8 @@ func _unhandled_input(event: InputEvent) -> void:
 ## the bench, the death screen or the results.
 func mouse_free() -> bool:
 	return _title.visible or lobby.visible or settings_menu.visible or bench.visible or death.visible \
-		or results != null or not player.alive
+		or results != null or not player.alive \
+		or (team_match != null and team_match.rules is CardRules and team_match.rules.picking())
 
 
 ## Back to playing (a respawn, a match or round starting): unless a menu is open, in which
@@ -386,6 +387,9 @@ func _try_bench() -> void:
 	if team_match != null and team_match.rules != null:
 		if not team_match.rules.can_buy():
 			hud.show_hint("預算戰：只有每回合開頭的備戰時間能改槍")
+			return
+		if team_match.rules is CardRules and team_match.rules.picking():
+			hud.show_hint("先選一張超規卡")
 			return
 		bench.kit = player.kit_id
 		bench.kit_locked = false

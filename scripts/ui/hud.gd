@@ -313,6 +313,7 @@ func _process(delta: float) -> void:
 	_hp_bar.set_value(hp / Player.MAX_HEALTH)
 	_move.text = "%s  %d" % [Player.MOVE_NAMES[player.move], roundi(player.flat_speed())]
 	_dash.dash = player.dash_ready()
+	_dash.dash_cap = player.dash_cap()
 	_dash.kicks = player.kicks_left()
 	_dash.max_kicks = player.max_kicks()
 	_dash.queue_redraw()
@@ -387,6 +388,7 @@ class HealthBar:
 class Pips:
 	extends Control
 	var dash := 1.0
+	var dash_cap := Player.DASH_CHARGES
 	var kicks := 0
 	var max_kicks := 0
 
@@ -396,7 +398,7 @@ class Pips:
 	func _draw() -> void:
 		var y := size.y / 2.0
 		# One bar per dash charge; the one refilling is dim.
-		for i in int(Player.DASH_CHARGES):
+		for i in int(dash_cap):
 			var fill := clampf(dash - i, 0.0, 1.0)
 			var x := i * 24.0
 			draw_rect(Rect2(Vector2(x, y - 3), Vector2(21, 6)), Color(0, 0, 0, 0.35))

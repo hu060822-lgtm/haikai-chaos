@@ -97,8 +97,8 @@ func _ready() -> void:
 	player.display_name = str(NetSession.roster.get(net.my_id(), {}).get("name", NetSession.my_name))
 	time_left = float(NetSession.config.get("minutes", 8)) * 60.0
 	var mode := str(NetSession.config.get("mode", "patch"))
-	if mode == "rounds" or mode == "bomb":
-		rules = BombRules.new() if mode == "bomb" else RoundRules.new()
+	if mode == "rounds" or mode == "bomb" or mode == "cards":
+		rules = BombRules.new() if mode == "bomb" else (CardRules.new() if mode == "cards" else RoundRules.new())
 		rules.tm = self
 		add_child(rules)
 	record = MatchLog.new(mode, str(NetSession.config.get("map", "")), net.is_host())

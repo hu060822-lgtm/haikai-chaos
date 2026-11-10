@@ -72,6 +72,11 @@ func target() -> int:
 	return int(NetSession.config.get("rounds", 5))
 
 
+## (hook) Seconds of build at the start of a round.
+func build_time() -> float:
+	return BUILD_TIME
+
+
 func fighting() -> bool:
 	return phase == "fight"
 
@@ -189,7 +194,7 @@ func _round_start(n: int, new_wins: Array, new_money: Dictionary, new_builds: Di
 	money = new_money.duplicate()
 	builds = new_builds.duplicate(true)
 	phase = "build"
-	phase_left = BUILD_TIME
+	phase_left = build_time()
 	zone_open = false
 	hold = [-1, 0.0]
 	_show_ring(false)
@@ -218,7 +223,7 @@ func _round_start(n: int, new_wins: Array, new_money: Dictionary, new_builds: Di
 			tm.versions[b.id] = b.weapon.version
 			tm._spawned.rpc(b.id, xf.origin, b.rotation.y, b.weapon.build, b.weapon.name)
 			i += 1
-	main.hud.show_hint("第 %d 回合　備戰 %d 秒：Tab 打開工作台買零件（資金 $%d）" % [n, int(BUILD_TIME), my_money()], 5.0)
+	main.hud.show_hint("第 %d 回合　備戰 %d 秒：Tab 打開工作台買零件（資金 $%d）" % [n, int(build_time()), my_money()], 5.0)
 	_round_began()
 	tm.score_changed.emit()
 
