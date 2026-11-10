@@ -30,6 +30,7 @@ func _init() -> void:
 	await _bounce(m)
 	await _cook(m)
 	await _flash(m)
+	await _smoke(m)
 	await _sticky(m)
 	await _mines(m)
 	await _kick(m)
@@ -296,6 +297,32 @@ func _mines(m: Main) -> void:
 	await physics_frame
 	check(not is_instance_valid(own) or own.is_queued_for_deletion(), "mine: a new round clears it")
 	_park(b)
+
+
+# --- Smoke (C13) -----------------------------------------------------------------------
+
+func _smoke(m: Main) -> void:
+	var p := m.player
+	_place(p, Vector3(-20, Y + 0.1, 10), 0.0)
+	await _wait(0.1)
+	var g := _throw(p, "smoke", Vector3(0, Y + 1.5, 0), Vector3(0, 2, 3))
+	check(g != null and g.danger() == 0.0, "smoke: thrown (bots don't run from it)")
+	await _wait(0.6)
+	check(Deploy.objects().filter(func(n: Node) -> bool: return n is SmokeCloud).is_empty(), "smoke: no cloud before the fuse")
+	await _wait(Throwables.info("smoke").fuse - 0.6 + 0.1)
+	var clouds: Array = Deploy.objects().filter(func(n: Node) -> bool: return n is SmokeCloud)
+	check(clouds.size() == 1, "smoke: it puts up a cloud")
+	if clouds.is_empty():
+		return
+	var s: SmokeCloud = clouds[0]
+	check(absf(s.to.y - Y) < 0.3 and s.radius == float(Throwables.info("smoke").radius), "smoke: on the floor where it rolled, %.1f m wide" % s.radius)
+	await _wait(SmokeCloud.GROW + 0.1)
+	var c := s.global_position + Vector3(0, SmokeCloud.LIFT, 0)
+	check(Deploy.sight_blocked(c + Vector3(-10, 0, 0), c + Vector3(10, 0, 0)), "smoke: nobody sees through it")
+	Deploy.reset_round()
+	await physics_frame
+	check(not is_instance_valid(s) or s.is_queued_for_deletion(), "smoke: a new round clears it")
+	_clear()
 
 
 # --- Kick ------------------------------------------------------------------------------

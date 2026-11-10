@@ -93,6 +93,10 @@ static func _stream(id: String) -> AudioStreamWAV:
 		"lift_move": w = _make(1.0, 0.85, 90.0, 110.0, 2.0, 0.5)
 		"cover_hit": w = _make(0.08, 0.7, 500.0, 300.0, 40.0, 0.9)
 		"cover_break": w = _make(0.8, 0.9, 120.0, 40.0, 5.0, 1.0)
+		"melee_swing": w = _make(0.16, 0.95, 700.0, 250.0, 18.0, 0.0)
+		"melee_hit": w = _make(0.14, 0.6, 160.0, 70.0, 30.0, 0.7)
+		"melee_stab": w = _make(0.2, 0.5, 260.0, 90.0, 20.0, 0.5)
+		"melee_thud": w = _make(0.12, 0.7, 120.0, 60.0, 34.0, 0.9)
 		_: w = _make(0.1, 0.5, 300.0, 200.0, 30.0)
 	_cache[id] = w
 	return w

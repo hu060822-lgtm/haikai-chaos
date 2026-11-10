@@ -97,6 +97,8 @@ var _flank_left := 0.0
 ## throwing (中等 throws frags at where it lost you, 困難 also stickies and flashes; all
 ## of them jump away from a live grenade).
 var pouch: Pouch
+## C13: a melee weapon, swung at anyone who gets right up close.
+var melee: MeleeArm
 var _blind := 0.0
 var _throw_think := 0.0
 
@@ -154,6 +156,9 @@ func spawn(at: Vector3, seed_value: int) -> void:
 	if pouch == null:
 		pouch = Pouch.new(self)
 	pouch.refill()
+	if melee == null:
+		melee = MeleeArm.new(self, Melee.IDS[randi() % Melee.IDS.size()])  # not rng (see below)
+	melee.cancel()
 	_blind = 0.0
 	_throw_think = randf_range(1.0, 3.0)  # not rng: keep the bot's own sequence as it was
 	_stagger = 0.0
@@ -224,7 +229,8 @@ func _use_ability() -> void:
 			elif sees and hurt_within(1.0) and rng.randf() < 0.3:
 				ability.press()
 		"veil":
-			if sees and d > 14.0 and (hurt_within(1.5) or rng.randf() < 0.05):
+			# 霧行者: a smoke wall across the line it's being shot along, while it moves.
+			if sees and d > 8.0 and flat_speed() > 3.0 and (hurt_within(1.5) or rng.randf() < 0.04):
 				ability.press()
 		"bulwark":
 			if sees and d > 8.0 and (health < 60.0 or weapon.is_reloading()) and rng.randf() < 0.5:
@@ -355,6 +361,9 @@ func _physics_process(delta: float) -> void:
 			_throw_think = 0.4
 			_dodge()
 			_use_throw()
+	if melee != null:
+		melee.tick(delta)
+		_use_melee()
 	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_flash = maxf(_flash - delta, 0.0)
@@ -623,6 +632,9 @@ func _think_cover(delta: float) -> void:
 		weapon.start_reload()
 	if ability != null and ability.can_use() and (kit_id == "veil" or kit_id == "bulwark"):
 		ability.press()
+	elif level != BotLevel.EASY and pouch != null and pouch.count("smoke") > 0 and not pouch.holding and _blind <= 0.0:
+		# C13: a smoke from the belt between it and the threat, then off to cover.
+		_lob("smoke", global_position.lerp(target.global_position, 0.3))
 
 
 ## The best nearby spot the target can't see and it can walk straight to, or INF.
@@ -772,7 +784,18 @@ func _look_for_target() -> void:
 		_listen()
 
 
+## Swings when the one it's fighting is within reach (and not blind or told to hold fire).
+func _use_melee() -> void:
+	if passive or frozen or _blind > 0.0 or not melee.ready() or not _see or target == null or not is_instance_valid(target):
+		return
+	var d := global_position.distance_to(target.global_position)
+	if d < Melee.reach(melee.id) - 0.3:
+		melee.press()
+
+
 func _try_shoot() -> void:
+	if melee != null and melee.busy():
+		return
 	var held := true
 	var just := weapon.cooldown <= 0.0
 	if weapon.stats.kind == "charge":

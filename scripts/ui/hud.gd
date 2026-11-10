@@ -150,7 +150,7 @@ func _ready() -> void:
 	_belt.anchor_top = 1.0
 	_belt.anchor_bottom = 1.0
 	_belt.offset_left = 124
-	_belt.offset_right = 344
+	_belt.offset_right = 470
 	_belt.offset_top = -86
 	_belt.offset_bottom = -24
 	_belt.mouse_filter = MOUSE_FILTER_IGNORE
@@ -253,6 +253,7 @@ Q 衝刺閃避（衝刺中跳 = 衝刺跳）　空中低頭看地面按蹲 = 重
 左鍵 開火　右鍵 瞄準　R 換彈　B 射擊模式
 F 職業技能（工作台左上選職業）　G 死亡畫面抄槍
 V 投擲物：按住看拋物線（破片手雷會開始倒數），放開丟出；按住右鍵放開＝輕拋　X 換下一種
+Z 近戰（工作台選武器）：跑越快打越痛；戰術刀背刺一刀斃命
 E 開關門（門可以打爆）；閃黃燈的閘門幾秒後會輪替開關
 Tab 輕按 = 改槍工作台，按住 = 記分板
 F2 敵我顏色　F3 機器人開火　F4 移動除錯　F5 鏡頭效果
@@ -764,4 +765,13 @@ class ThrowBadge:
 			if id == "kick" and n < int(Throwables.info("kick").count):
 				draw_rect(Rect2(r.position + Vector2(0, 17), Vector2(26 * pouch.kick_progress(), 2)), ic)
 			x += 30.0
-		draw_string(font, Vector2(58 + 5 * 30 + 2, 49), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Counterform.DUST_WHITE, 0.6))
+		draw_string(font, Vector2(58 + Throwables.IDS.size() * 30 + 2, 49), "X", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(Counterform.DUST_WHITE, 0.6))
+		# C13: the melee weapon, Z.
+		if player.melee != null:
+			var mi := Melee.info(player.melee.id)
+			var mx := 58.0 + Throwables.IDS.size() * 30 + 22.0
+			var mbox := Rect2(Vector2(mx, 6), Vector2(30, 30))
+			draw_rect(mbox, Color(Counterform.GRAPHITE_DEEP, 0.7))
+			draw_rect(mbox, mi.color if player.melee.ready() else Color(mi.color, 0.35), false, 1.5)
+			draw_string(font, mbox.position + Vector2(9, 21), "Z", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Counterform.DUST_WHITE)
+			draw_string(font, Vector2(mx, 52), str(mi.name), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(Counterform.DUST_WHITE, 0.85))

@@ -86,6 +86,13 @@ func _ready() -> void:
 			_mesh.mesh = LowPoly.blob(0.08, Vector3(1, 0.9, 1), 0)
 			mat.emission_enabled = true
 			mat.emission = c * 0.5
+		"smoke":
+			var can := CylinderMesh.new()
+			can.top_radius = 0.06
+			can.bottom_radius = 0.06
+			can.height = 0.22
+			_mesh.mesh = can
+			mat.albedo_color = Color("#6f7780")
 		"mine":
 			var puck := CylinderMesh.new()
 			puck.top_radius = 0.11
@@ -360,7 +367,7 @@ func _fizzle() -> void:
 
 ## Live and about to go off within `seconds`: how far to stay away (bots dodge), else 0.
 func danger(seconds := 1.6) -> float:
-	if state == State.DONE or kind in ["flash", "kick", "mine"]:
+	if state == State.DONE or kind in ["flash", "kick", "mine", "smoke"]:
 		return 0.0
 	if fuse - t > seconds:
 		return 0.0
@@ -381,6 +388,17 @@ func explode(at: Vector3) -> void:
 		"flash":
 			_flash_fx(root, at)
 			_blind_all(at)
+		"smoke":
+			# Every machine flew the same canister to the same spot: each grows the cloud
+			# itself (registered like VEIL's, so sight checks and a new round find it).
+			Sfx.play(self, "smoke_pop", -2.0, 60.0)
+			var floor_at := at
+			var space := get_world_3d().direct_space_state
+			var down := space.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3(0, 0.3, 0), at - Vector3(0, 6, 0), Geo.WORLD))
+			if not down.is_empty():
+				floor_at = down.position
+			Deploy.create(root, "smoke", uid + "s", owner_id, {"from": at, "to": floor_at, "flight": 0.02,
+				"team": team, "radius": radius, "life": float(info.life), "canister": false})
 		"kick":
 			Sfx.play(self, "kick_boom", -2.0, 70.0)
 			PrintFx.landing(root, at, 1.4, true)

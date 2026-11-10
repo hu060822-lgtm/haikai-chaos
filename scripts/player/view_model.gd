@@ -64,6 +64,12 @@ var _scale := SCALE
 var _jolt := Vector3.ZERO
 var _jolt_speed := Vector3.ZERO
 var _air_lag := 0.0
+## C13: the melee weapon, out only while a swing runs (swing()).
+var _melee: Node3D
+var _melee_id := ""
+var _swing := 0.0
+var _swing_total := 1.0
+var _swing_windup := 0.1
 ## The weapon camera (set by the player) and the world camera it rides on.
 var weapon_cam: Camera3D
 var world_cam: Camera3D
@@ -311,6 +317,64 @@ func kick(recoil: float, _flash := 1.0) -> void:
 		_cycle = _cycle_total
 
 
+## A melee swing of `id` lasting `seconds` (wind-up included): the gun dips out of the way
+## and the weapon comes across the view (a stab, a chop, a throw of the chain, a punch).
+func swing(id: String, seconds: float) -> void:
+	if _melee_id != id or _melee == null:
+		if _melee != null:
+			_melee.queue_free()
+		_melee = MeleeModels.build(id, true)
+		_melee.scale = Vector3.ONE * (1.3 if id in ["knife", "sickle", "fist"] else 1.0)
+		_melee_id = id
+		add_child(_melee)
+	_swing_total = maxf(seconds, 0.05)
+	_swing = _swing_total
+	_swing_windup = clampf(float(Melee.info(id).windup) / _swing_total, 0.08, 0.5)
+	_melee.visible = true
+
+
+func swinging() -> bool:
+	return _swing > 0.0
+
+
+## The melee weapon's place in view space at swing progress `k` (0..1): [position, rotation].
+func _swing_pose(k: float) -> Array:
+	var w := _swing_windup
+	var hit := w + 0.1
+	# Chops (axe, sledge, baton): up over the right shoulder, down and across to the left.
+	var rest_p := Vector3(0.3, -0.42, -0.4)
+	var rest_r := Vector3(0.6, -0.2, -0.3)
+	var up_p := Vector3(0.26, -0.22, -0.42)
+	var up_r := Vector3(1.1, -0.3, -0.3)
+	var end_p := Vector3(0.1, -0.19, -0.42)
+	var end_r := Vector3(-0.15, 0.75, 0.2)
+	match _melee_id:
+		"knife":
+			up_p = Vector3(0.2, -0.2, -0.32)
+			up_r = Vector3(0.3, 0.9, 0.0)
+			end_p = Vector3(0.12, -0.12, -0.42)
+			end_r = Vector3(0.2, 1.05, 0.0)
+		"fist":
+			up_p = Vector3(0.18, -0.2, -0.25)
+			up_r = Vector3(0.0, 0.1, 0.0)
+			end_p = Vector3(0.06, -0.12, -0.5)
+			end_r = Vector3(0.0, 0.0, 0.0)
+		"sickle":
+			up_p = Vector3(0.22, -0.18, -0.32)
+			up_r = Vector3(1.0, -0.2, 0.0)
+			end_p = Vector3(0.05, -0.1, -1.2)
+			end_r = Vector3(0.2, 0.4, 0.0)
+	if k < w:
+		var e := smoothstep(0.0, 1.0, k / w)
+		return [rest_p.lerp(up_p, e), rest_r.lerp(up_r, e)]
+	if k < hit:
+		var e := smoothstep(0.0, 1.0, (k - w) / (hit - w))
+		return [up_p.lerp(end_p, e), up_r.lerp(end_r, e)]
+	# Follow through, held for a moment, then down out of view.
+	var e := smoothstep(0.0, 1.0, (k - 0.7) / 0.3) if k > 0.7 else 0.0
+	return [end_p.lerp(rest_p + Vector3(0, -0.3, 0), e), end_r.lerp(rest_r, e)]
+
+
 func reload(seconds: float, empty := false) -> void:
 	_reload = seconds
 	_reload_total = maxf(seconds, 0.01)
@@ -400,6 +464,19 @@ func update_pose(delta: float, p: Dictionary) -> void:
 	_seat = move_toward(_seat, 0.0, delta * 9.0)
 	pos.y += _seat * 0.012
 	rot.x += _seat * 0.06
+	if _swing > 0.0:
+		_swing = maxf(_swing - delta, 0.0)
+		var k := 1.0 - _swing / _swing_total
+		var dip := smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.82, 1.0, k))
+		pos += Vector3(0.04, -0.22, 0.06) * dip
+		rot += Vector3(-0.5, 0.2, 0.0) * dip
+		if _melee != null:
+			var pose := _swing_pose(k)
+			_melee.position = pose[0]
+			_melee.rotation = pose[1]
+			_melee.visible = _swing > 0.0
+	elif _melee != null and _melee.visible:
+		_melee.visible = false
 	_rig.position = pos
 	_rig.rotation = rot
 	if _gun != null:

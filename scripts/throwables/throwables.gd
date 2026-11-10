@@ -4,6 +4,7 @@ class_name Throwables
 ##
 ##   frag    破片手雷  bounces, blows up FUSE seconds after the pin (hold to cook it)
 ##   flash   閃光彈    blinds whoever is looking at it, thrower included
+##   smoke   煙霧彈    (C13) bounces, then puts up a cloud nobody sees through (SmokeCloud)
 ##   sticky  黏彈      sticks to the first thing it touches, a wall or a person
 ##   mine    絆雷      sticks where it lands: on a wall it draws a laser line, on a floor
 ##                     it waits for someone to step close; one shot pops it
@@ -13,7 +14,7 @@ class_name Throwables
 ## on its own (KICK_REFILL). Throw key V (or the middle mouse button), next one X; hold
 ## V to see the arc, let go to throw, hold aim while letting go for a short toss.
 
-const IDS := ["frag", "flash", "sticky", "mine", "kick"]
+const IDS := ["frag", "flash", "smoke", "sticky", "mine", "kick"]
 const DEFAULT := "frag"
 ## How hard everything leaves the hand, m/s, plus a bit of loft; and how much of your own
 ## speed it takes with it (throwing from a slide throws far).
@@ -34,6 +35,10 @@ const INFO := {
 		"color": Color("#E9E4D4"),
 		"use": "丟出 1.1 秒後爆閃：看著它的人（不分敵我，包括你自己）白畫面最多 2.4 秒。",
 		"counter": "轉頭背對它就只會白一下；牆和轉角完全擋得住。"},
+	"smoke": {"name": "煙霧彈", "tag": "SMOKE", "count": 1, "fuse": 1.2, "radius": 4.8, "damage": 0.0,
+		"color": Color("#9AA5B1"), "life": 9.0,
+		"use": "丟出 1.2 秒後（會彈、會滾）展開成半徑 4.8 m 的煙團，持續 9 秒。雙方都看不穿。",
+		"counter": "爆炸和重踩會把煙吹開 1.5 秒；煙團頂上和邊緣都能架槍；它總會散。"},
 	"sticky": {"name": "黏彈", "tag": "STICKY", "count": 1, "fuse": 1.4, "radius": 3.4, "damage": 125.0,
 		"color": Color("#7FC86B"),
 		"use": "碰到的第一個東西就黏上去（牆、地板、人），1.4 秒後爆炸。",
