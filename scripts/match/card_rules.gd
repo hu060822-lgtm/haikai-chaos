@@ -18,6 +18,9 @@ extends RoundRules
 
 const BUILD := 22.0
 const REROLLS := 2
+const LOAN := 2500
+const LOAN_RATE := 400
+const BOUNTY := 300
 
 ## id -> [card ids] (the host's word; everyone gets copies).
 var cards := {}
@@ -31,6 +34,7 @@ var my_rerolls := REROLLS
 var picker: CardPicker
 var strip: CardStrip
 var _behind := -1
+var _loan_from := {}      # host: id -> the round its 高利貸 was taken
 var _card_rng := RandomNumberGenerator.new()
 
 
@@ -84,9 +88,14 @@ func _before_round() -> void:
 		if not rerolls.has(id):
 			rerolls[id] = REROLLS
 		var held: Array = cards[id]
+		# 高利貸: the interest, every round after the one it was taken.
+		if "loan_shark" in held and round_no > int(_loan_from.get(id, 0)):
+			money[id] = maxi(int(money.get(id, 0)) - LOAN_RATE, 0)
 		if held.size() >= Augments.MAX_CARDS:
 			continue
 		var n := Augments.OFFER_BEHIND if _behind >= 0 and tm.team_of(id) == _behind else Augments.OFFER
+		if "collector" in held:
+			n += 1
 		offers[id] = Augments.offer(_card_rng, held, n)
 	# Bots pick at once, so their guns go out with the new card on.
 	for b in tm.bots():
@@ -95,6 +104,7 @@ func _before_round() -> void:
 			offers.erase(b.id)
 			if pick != "":
 				(cards[b.id] as Array).append(pick)
+				_rule_picked(b.id, pick, cards[b.id])
 	for id in builds:
 		builds[id] = Augments.stamp(builds[id], cards_of(id))
 
@@ -147,9 +157,35 @@ func _host_pick(id: String, card: String) -> void:
 	if card in held or held.size() >= Augments.MAX_CARDS:
 		return
 	held.append(card)
+	_rule_picked(id, card, held)
 	cards[id] = held
 	builds[id] = Augments.stamp(builds.get(id, Arsenal.STARTER), held)
 	_sync.rpc(cards, "pick", id, card)
+
+
+## Host: what a 規則卡 does the moment it's taken (C11.1).
+func _rule_picked(id: String, card: String, held: Array) -> void:
+	match card:
+		"gambler":
+			held.erase("gambler")
+			for c in Augments.offer(_card_rng, held + ["gambler"], 2):
+				if held.size() < Augments.MAX_CARDS:
+					held.append(c)
+		"collector":
+			rerolls[id] = int(rerolls.get(id, 0)) + 1
+		"loan_shark":
+			_loan_from[id] = round_no
+			money[id] = mini(int(money.get(id, 0)) + LOAN, MAX_MONEY)
+			_paid.rpc(money, {}, 0)
+		"mirror":
+			var pool := []
+			for other in cards:
+				if tm.team_of(str(other)) >= 0 and tm.team_of(str(other)) != tm.team_of(id):
+					for c in cards[other]:
+						if not c in held and not c in pool:
+							pool.append(c)
+			if not pool.is_empty() and held.size() < Augments.MAX_CARDS:
+				held.append(pool[_card_rng.randi_range(0, pool.size() - 1)])
 
 
 @rpc("any_peer", "reliable")
@@ -253,6 +289,10 @@ func _sync(table: Dictionary, event: String, who: String, card: String, other :=
 				hud.callout("奪走【%s】" % c.name, "從 %s 身上" % tm._name_of(other), Augments.color(str(c.kind)))
 			elif other == tm.my_id:
 				tm.main.death.set_note("你的【%s】被 %s 奪走了" % [c.name, tm._name_of(who)])
+		"burn":
+			var c := Augments.card(card)
+			if who == tm.my_id:
+				hud.callout("怨靈燒掉了【%s】" % c.name, "%s 死前的詛咒" % tm._name_of(other), Augments.color("rule"))
 	for k in Augments.resonances(mine):
 		if not k in before_res:
 			hud.callout("共鳴：%s" % Augments.RESONANCE[k].name, Augments.RESONANCE[k].desc, Augments.color(k))
@@ -272,22 +312,35 @@ func on_death(victim_id: String, wire: Dictionary) -> void:
 		return
 	var theirs: Array = cards_of(victim_id)
 	var mine: Array = cards_of(killer)
-	if mine.size() >= Augments.MAX_CARDS:
+	if "bounty_hunter" in mine:
+		money[killer] = mini(int(money.get(killer, 0)) + BOUNTY, MAX_MONEY)
+		_paid.rpc(money, {}, 0)
+	# Work it all out first (each _sync replaces the table), then tell everyone.
+	var events := []
+	# 怨靈: the killer loses one at random (unless it's insured).
+	if "grudge" in theirs and not "insured" in mine and not mine.is_empty():
+		var burnt := str(mine[_card_rng.randi_range(0, mine.size() - 1)])
+		mine.erase(burnt)
+		events.append(["burn", burnt])
+	if not "insured" in theirs:
+		for i in (2 if "thief" in mine else 1):
+			if mine.size() >= Augments.MAX_CARDS:
+				break
+			var can := []
+			for c in theirs:
+				if not c in mine:
+					can.append(c)
+			if can.is_empty():
+				break
+			var card := str(can[_card_rng.randi_range(0, can.size() - 1)])
+			theirs.erase(card)
+			mine.append(card)
+			events.append(["steal", card])
+	_restamp(killer, victim_id)
+	if events.is_empty():
 		return
-	var can := []
-	for c in theirs:
-		if not c in mine:
-			can.append(c)
-	if can.is_empty():
-		return
-	var card := str(can[_card_rng.randi_range(0, can.size() - 1)])
-	theirs.erase(card)
-	mine.append(card)
-	cards[victim_id] = theirs
-	cards[killer] = mine
-	builds[victim_id] = Augments.stamp(builds.get(victim_id, Arsenal.STARTER), theirs)
-	builds[killer] = Augments.stamp(builds.get(killer, Arsenal.STARTER), mine)
-	_sync.rpc(cards, "steal", killer, card, victim_id)
+	for e in events:
+		_sync.rpc(cards, str(e[0]), killer, str(e[1]), victim_id)
 
 
 func _round_ended() -> void:
@@ -298,6 +351,12 @@ func _round_over(winner: int, why: String) -> void:
 	if phase == "fight":
 		_behind = 1 - winner if winner >= 0 else -1
 	super(winner, why)
+
+
+func _restamp(a: String, b: String) -> void:
+	for id in [a, b]:
+		builds[id] = Augments.stamp(builds.get(id, Arsenal.STARTER), cards_of(id))
+	tm.score_changed.emit()
 
 
 # --- Buying keeps the cards ------------------------------------------------------------

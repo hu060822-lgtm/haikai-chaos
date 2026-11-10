@@ -58,7 +58,7 @@ func _ready() -> void:
 		_reroll_btn.disabled = true
 		reroll.emit())
 	foot.add_child(_reroll_btn)
-	foot.add_child(FpUi.label("點一張卡，或按 1～%d" % Augments.OFFER_BEHIND, 16, Color(Counterform.DUST_WHITE, 0.7), FpUi.body()))
+	foot.add_child(FpUi.label("點一張卡，或按數字鍵", 16, Color(Counterform.DUST_WHITE, 0.7), FpUi.body()))
 	_held = FpUi.label("", 15, Color(Counterform.DUST_WHITE, 0.75), FpUi.body())
 	_held.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_held.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -96,7 +96,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var k: int = (event as InputEventKey).keycode
-	if k >= KEY_1 and k <= KEY_4:
+	if k >= KEY_1 and k <= KEY_5:
 		var i := k - KEY_1
 		if i < _hand.size():
 			get_viewport().set_input_as_handled()
@@ -164,9 +164,10 @@ func _card_button(id: String, index: int, held: Array) -> Control:
 	spacer.mouse_filter = MOUSE_FILTER_IGNORE
 	v.add_child(spacer)
 	var have := int(Augments.counts(held).get(kind, 0))
-	var note := "→ 共鳴：%s" % Augments.RESONANCE[kind].name if have + 1 == Augments.RESONANCE_AT else \
-		("同類第 %d 張" % (have + 1))
-	var n := FpUi.label(note, 14, tint if have + 1 == Augments.RESONANCE_AT else Color(Counterform.DUST_WHITE, 0.5), FpUi.bold())
+	var lights := Augments.RESONANCE.has(kind) and have + 1 == Augments.RESONANCE_AT
+	var note := ("→ 共鳴：%s" % Augments.RESONANCE[kind].name) if lights else \
+		("改的是這場比賽的規則" if kind == "rule" else "同類第 %d 張" % (have + 1))
+	var n := FpUi.label(note, 14, tint if lights else Color(Counterform.DUST_WHITE, 0.5), FpUi.bold())
 	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(_mouse_off(n))
 	return b
@@ -203,6 +204,14 @@ class CardGlyph:
 				for i in 3:
 					var x := -30.0 + i * 22.0
 					draw_polyline(PackedVector2Array([c + Vector2(x, -22), c + Vector2(x + 18, 0), c + Vector2(x, 22)]), Color(tint, 0.45 + i * 0.27), 4.0)
+			"rule":
+				# A die, tipped: the match itself is the thing being rolled.
+				var pts := PackedVector2Array()
+				for i in 5:
+					pts.append(c + Vector2(30, 0).rotated(-PI / 4.0 + i * PI / 2.0))
+				draw_polyline(pts, tint, 3.0)
+				for o in [Vector2(-10, -10), Vector2(10, 10), Vector2(0, 0), Vector2(10, -10), Vector2(-10, 10)]:
+					draw_circle(c + o, 3.5, tint)
 			_:
 				draw_line(c + Vector2(0, -30), c + Vector2(0, 26), tint, 3.0)
 				draw_line(c + Vector2(-34, -18), c + Vector2(34, -26), tint, 3.0)

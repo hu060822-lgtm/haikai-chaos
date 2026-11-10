@@ -262,6 +262,8 @@ func _physics_process(delta: float) -> void:
 	_slow = maxf(_slow - delta, 0.0)
 	_flash = maxf(_flash - delta, 0.0)
 	marked = maxf(marked - delta, 0.0)
+	if weapon != null and weapon.stats.effects.get("beacon", false):
+		marked = maxf(marked, 0.5)
 	if _burn > 0.0:
 		_burn -= delta
 		_damage(6.0 * delta, _burn_info)

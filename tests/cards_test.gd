@@ -54,7 +54,7 @@ func _wait(seconds: float) -> void:
 
 func _cards() -> void:
 	var kinds := Augments.counts(Augments.CARDS.keys())
-	check(Augments.CARDS.size() >= 45, "%d cards (槍 %d／身法 %d／交易 %d)" % [Augments.CARDS.size(), kinds.gun, kinds.move, kinds.trade])
+	check(Augments.CARDS.size() == 100, "%d cards (槍 %d／身法 %d／交易 %d／規則 %d)" % [Augments.CARDS.size(), kinds.gun, kinds.move, kinds.trade, kinds.rule])
 	var trades_priced := true
 	for id in Augments.CARDS:
 		var c: Dictionary = Augments.CARDS[id]
@@ -103,6 +103,15 @@ func _cards() -> void:
 	check(is_equal_approx(float(j.ledger.p9), 35.0), "the host's ledger counts 鐵皮 too")
 	var one := Arsenal.stats(Augments.stamp(Arsenal.STARTER, ["one_and_done"]))
 	check(int(one.mag) == 1, "一發入魂 leaves one round")
+	# C11.1: cards that change what the gun is.
+	var gren := Arsenal.stats(Augments.stamp(Arsenal.STARTER, ["grenadier"]))
+	check(gren.kind == "lob" and gren.effects.has("explode"), "榴彈化 turns the revolver into a grenade launcher")
+	var auto := Arsenal.stats(Augments.stamp(Arsenal.STARTER, ["full_auto"]))
+	check(auto.modes[0] == "auto" and auto.auto, "全自動化 makes any gun hold-to-fire")
+	check(Arsenal.stats(Augments.stamp(Arsenal.STARTER, ["railgun"])).kind == "charge", "電磁砲 charges")
+	check(Augments.resonances(["bounce_rounds", "needle", "chameleon"]) == ["gun"], "百變 counts toward every resonance")
+	var air := Arsenal.stats(Augments.stamp(Arsenal.STARTER, ["double_jump", "triple_jump", "moonwalk"]))
+	check(int(air.effects.air_jump) == 3 and is_equal_approx(float(air.effects.gravity), 0.6), "air jumps add up, gravity multiplies")
 	# Offers never repeat a held card.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
@@ -206,6 +215,7 @@ func _match() -> void:
 	rules.phase_left = 0.05
 	var dealt := await _until(func() -> bool: return rules.my_cards().size() == n + 1, 2.0)
 	check(dealt and not rules.picking(), "no pick in time: one is dealt at random")
+	await _rules(tm, rules, enemies)
 	# Cards stay through a death.
 	var keep := rules.my_cards().duplicate()
 	me.health = 1.0
@@ -214,3 +224,40 @@ func _match() -> void:
 	var lost := keep.size() - rules.my_cards().size()
 	check(lost <= 1, "a death loses at most the one card taken (%d)" % lost)
 	m.net.leave()
+
+
+## The 規則卡 (C11.1), driven on the host directly.
+func _rules(tm: TeamMatch, rules: CardRules, enemies: Array) -> void:
+	var me := tm.my_id
+	var n := rules.my_cards().size()
+	rules.offers[me] = ["gambler"]
+	rules._host_pick(me, "gambler")
+	await process_frame
+	check(rules.my_cards().size() == n + 2 and not "gambler" in rules.my_cards(), "賭桌 turns into two random cards")
+	(rules.cards[me] as Array).erase("loan_shark")
+	var cash := rules.my_money()
+	rules.offers[me] = ["loan_shark"]
+	rules._host_pick(me, "loan_shark")
+	await process_frame
+	check(rules.my_money() == mini(cash + CardRules.LOAN, RoundRules.MAX_MONEY), "高利貸 pays out at once ($%d -> $%d, cards %s)" % [cash, rules.my_money(), str(rules.my_cards())])
+	# 慣竊: two cards from one kill.
+	var a: Bot = enemies[0]
+	var b: Bot = enemies[1]
+	(rules.cards[me] as Array).append("thief")
+	var loot := []
+	for id in Augments.CARDS:
+		if not id in rules.my_cards() and Augments.kind_of(id) == "gun" and loot.size() < 2:
+			loot.append(id)
+	rules.cards[a.id] = loot.duplicate()
+	rules._sync.rpc(rules.cards, "", "", "")
+	var before := rules.my_cards().size()
+	_kill(tm, a.id)
+	await _until(func() -> bool: return rules.my_cards().size() == before + 2, 1.5)
+	check(rules.my_cards().size() == before + 2 and rules.cards_of(a.id).is_empty(), "慣竊 takes two cards with one kill (%d -> %d, victim %s, alive %s)" % [before, rules.my_cards().size(), str(rules.cards_of(a.id)), str(a.alive)])
+	# 保險箱 + 怨靈: nothing taken, and we lose one.
+	rules.cards[b.id] = ["insured", "grudge", "frost"]
+	rules._sync.rpc(rules.cards, "", "", "")
+	before = rules.my_cards().size()
+	_kill(tm, b.id)
+	await _until(func() -> bool: return rules.my_cards().size() != before, 1.5)
+	check(rules.my_cards().size() == before - 1 and rules.cards_of(b.id).size() == 3, "保險箱 keeps the victim's cards, 怨靈 burns one of ours")
