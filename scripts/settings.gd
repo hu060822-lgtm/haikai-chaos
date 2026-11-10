@@ -15,6 +15,7 @@ static var music_vol := 0.7     # 0..1
 static var sfx_vol := 1.0
 static var relay_url := ""      # the relay server (wss://…); empty = the built-in one
 static var kit := "anchor"     # the class (C6), Kit ids
+static var melee := Melee.DEFAULT
 static var look := 3            # Faultprint.LOOKS: 0-2 the print looks, 3 Counterform (official)
 static var aim_assist := true  # C7: a light aim assist (Player._aim_assist)
 static var bot_level := 1       # C9: practice bots' difficulty (BotLevel: 0 簡單, 1 中等, 2 困難)
@@ -38,6 +39,7 @@ static func load_all() -> void:
 		sfx_vol = clampf(float(cfg.get_value("audio", "sfx", sfx_vol)), 0.0, 1.0)
 		relay_url = str(cfg.get_value("net", "relay", relay_url))
 		kit = Kit.valid(str(cfg.get_value("game", "kit", kit)))
+		melee = Melee.valid(str(cfg.get_value("game", "melee", melee)))
 		aim_assist = bool(cfg.get_value("game", "aim_assist", aim_assist))
 		bot_level = clampi(int(cfg.get_value("game", "bot_level", bot_level)), 0, 2)
 	CameraFx.load_settings()
@@ -58,6 +60,7 @@ static func save() -> void:
 	cfg.set_value("audio", "sfx", sfx_vol)
 	cfg.set_value("net", "relay", relay_url)
 	cfg.set_value("game", "kit", kit)
+	cfg.set_value("game", "melee", melee)
 	cfg.set_value("game", "aim_assist", aim_assist)
 	cfg.set_value("game", "bot_level", bot_level)
 	cfg.save(FILE)

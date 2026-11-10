@@ -11,6 +11,7 @@ extends Control
 signal closed(build: Dictionary, gun_name: String)
 ## A class picked on the bench (C6). Only at home: out in the field the row is locked.
 signal kit_chosen(id: String)
+signal melee_chosen(id: String)
 
 ## Numbers shown, and which way is better (+1 higher, -1 lower).
 const STAT_ROWS := [
@@ -48,6 +49,10 @@ var kit := Kit.DEFAULT
 var kit_locked := false
 var _kit_buttons := {}
 var _kit_desc: Label
+## C13: the melee weapon (近戰鍵 Z), any time: it's not a class.
+var melee := Melee.DEFAULT
+var _melee_buttons := {}
+var _melee_desc: Label
 ## The build the bench opened on (what you own).
 var opened_on := {}
 var _rng := RandomNumberGenerator.new()
@@ -113,6 +118,21 @@ func _ready() -> void:
 	_kit_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_kit_desc.custom_minimum_size = Vector2(300, 0)
 	left.add_child(_kit_desc)
+	left.add_child(FpUi.label("近戰武器（近戰鍵 Z）", 14, Faultprint.SLATE, FpUi.bold()))
+	var melee_row := HBoxContainer.new()
+	melee_row.add_theme_constant_override("separation", 2)
+	left.add_child(melee_row)
+	for id in Melee.IDS:
+		var mb := FpUi.button(Melee.info(id).name, 11)
+		mb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mb.tooltip_text = "%s｜%s：%s" % [Melee.info(id).name, Melee.info(id).tag, Melee.info(id).use]
+		mb.pressed.connect(func() -> void: _on_melee(id))
+		melee_row.add_child(mb)
+		_melee_buttons[id] = mb
+	_melee_desc = FpUi.label("", 12, Faultprint.ui_ink, FpUi.body())
+	_melee_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_melee_desc.custom_minimum_size = Vector2(300, 0)
+	left.add_child(_melee_desc)
 	var frame_row := HBoxContainer.new()
 	frame_row.add_theme_constant_override("separation", 4)
 	left.add_child(frame_row)
@@ -228,6 +248,7 @@ func open(current: Dictionary, current_name: String, in_field := false) -> void:
 	_frame_mode = false
 	visible = true
 	_refresh_kit()
+	_refresh_melee()
 	_refresh()
 
 
@@ -250,6 +271,22 @@ func _refresh_kit() -> void:
 	var i := Kit.info(kit)
 	_kit_desc.text = "%s %s｜%s\n%s\n反制：%s%s" % [i.name, i.tag, i.ability, i.use, i.counter,
 		"\n（在野外：回重生區才能換職業）" if kit_locked else ""]
+
+
+func _on_melee(id: String) -> void:
+	melee = Melee.valid(id)
+	_refresh_melee()
+	melee_chosen.emit(melee)
+
+
+func _refresh_melee() -> void:
+	for id in _melee_buttons:
+		var b: Button = _melee_buttons[id]
+		var on: bool = id == melee
+		var c: Color = Melee.info(id).color
+		b.add_theme_stylebox_override("normal", FpUi.panel(c if on else Faultprint.ui_paper, Faultprint.ui_ink, 4, 3 if on else 2))
+	var i := Melee.info(melee)
+	_melee_desc.text = "%s %s｜%.0f 傷害・%.1f m\n%s\n反制：%s" % [i.name, i.tag, i.damage, i.reach, i.use, i.counter]
 
 
 func close() -> void:

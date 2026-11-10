@@ -6,7 +6,7 @@ class_name Kit
 ##   anchor   勾索手  a grappling line you swing on and let go of (Anchor)
 ##   decoy    誘餌者  a fake runner with footsteps and fake shots (Decoy)
 ##   bulwark  堡壘師  a small cover panel: facing one way, a few seconds, breakable (Barricade)
-##   veil     煙幕師  a smoke cloud that blocks sight for both sides (SmokeCloud)
+##   veil     霧行者  a wall of smoke along the way you run (VeilTrail; C13)
 ##   ram      破門者  a charge that runs until it hits someone or something (Ram)
 
 const IDS := ["anchor", "decoy", "bulwark", "veil", "ram"]
@@ -27,10 +27,10 @@ const INFO := {
 		"color": Color("#E0B04A"), "pitch": "一小段安全時間",
 		"use": "按 F 在面前立起一面 4 m 寬、2.8 m 高的護盾牆（0.5 秒升起），擋子彈 8 秒或 500 傷害。可以累積兩次，連放兩面。",
 		"counter": "只擋一個方向，繞到側面就沒用；打爆它、或讓破門者撞碎；不能移動。"},
-	"veil": {"name": "煙幕師", "tag": "VEIL", "ability": "煙幕彈", "charges": 2, "cooldown": 18.0,
-		"color": Color("#9AA5B1"), "pitch": "改變雙方的視線",
-		"use": "按 F 往準心方向拋出煙幕彈，落地展開成半徑 5.5 m、高約 5 m 的煙團，持續 10 秒。",
-		"counter": "雙方都看不穿；爆炸和重踩會把煙吹開 1.5 秒；煙團頂上和邊緣都能架槍。"},
+	"veil": {"name": "霧行者", "tag": "VEIL", "ability": "霧行", "charges": 2, "cooldown": 16.0,
+		"color": Color("#9AA5B1"), "pitch": "跑過的路就是煙牆",
+		"use": "按 F 開始霧行 3.5 秒：你跑過的路每 2.4 m 留下一團小煙（半徑 2.3 m，持續 7 秒），期間移動速度 +15%。滑過空地＝把通道切成兩半；牆跑＝煙掛在牆上半空。再按 F 提早結束。可以累積兩次。",
+		"counter": "煙牆的起點和方向就是你的去向；爆炸和重踩一樣吹得開；站著不動就不會出煙。"},
 	"ram": {"name": "破門者", "tag": "RAM", "ability": "衝撞", "charges": 1, "cooldown": 10.0,
 		"color": Color("#E06C4A"), "pitch": "停不下來的衝撞",
 		"use": "按 F 蓄力 0.12 秒後向前猛衝，直到撞到人或障礙物才停：跟著你面朝的方向轉彎，越跑越快沒有上限。撞到的人 20 傷害起跳（越快越痛）並失衡 0.5 秒；撞碎薄牆和護盾牆。再按 F 提早停下，按跳＝衝撞跳（保留速度）。",
@@ -58,7 +58,7 @@ static func make(id: String, user: Node3D) -> Ability:
 		"anchor": a = Anchor.new()
 		"decoy": a = DecoyThrow.new()
 		"bulwark": a = BulwarkDeploy.new()
-		"veil": a = VeilThrow.new()
+		"veil": a = VeilTrail.new()
 		_: a = Ram.new()
 	a.kit = valid(id)
 	a.user = user

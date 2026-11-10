@@ -190,6 +190,8 @@ func ability_fx(what: String, data: Dictionary) -> void:
 		"rope_off":
 			_hook = Vector3.INF
 			_hook_flying = false
+		"melee":
+			Sfx.play(self, "melee_swing", -8.0, 30.0)
 		"ram":
 			Sfx.play(self, "ram_wind", -4.0)
 			get_tree().create_timer(Ram.WIND).timeout.connect(func() -> void:

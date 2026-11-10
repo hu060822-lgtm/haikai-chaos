@@ -33,6 +33,8 @@ const DEFAULT_RTT := 0.15
 const HIT_SLACK := 1.3
 ## A blast's centre can be this far from its victim.
 const BLAST_REACH := 9.0
+## A swing may land this much past its weapon's reach (both bodies moving, the cone).
+const MELEE_SLACK := 2.5
 ## How far the shot's origin may be from the shooter's eye.
 const ORIGIN_SLACK := 3.5
 const EYE := 1.5
@@ -151,6 +153,8 @@ func _judge(shooter_id: String, shooter_peer: int, victim_id: String, wire: Dict
 		blocked: Callable) -> String:
 	if wire.has("throw"):
 		return _judge_throw(victim_id, wire, now - rewind_of(shooter_peer), now)
+	if wire.has("melee"):
+		return _judge_melee(shooter_id, victim_id, wire, now - rewind_of(shooter_peer), now)
 	if build.is_empty():
 		return "unknown gun"
 	var stats := Arsenal.stats(build)
@@ -213,6 +217,25 @@ func _judge_throw(victim_id: String, wire: Dictionary, t0: float, now: float) ->
 		near = minf(near, _to_line(point, p))
 	if near > BLAST_REACH:
 		return "the victim wasn't there (%.1f m off)" % near
+	return ""
+
+
+## A melee swing (C13): no more than that weapon does, and the swinger close enough to reach
+## the victim at some moment of the rewound window.
+func _judge_melee(shooter_id: String, victim_id: String, wire: Dictionary, t0: float, now: float) -> String:
+	var id := str(wire.get("melee", ""))
+	if not Melee.INFO.has(id):
+		return "unknown melee weapon"
+	var dmg := float(wire.get("damage", 0.0))
+	var cap := Melee.max_damage(id) + 1.0
+	if dmg < 0.0 or dmg > cap:
+		return "damage %.0f over the melee weapon's %.0f" % [dmg, cap]
+	var near := INF
+	for a in positions(shooter_id, t0, now):
+		for b in positions(victim_id, t0, now):
+			near = minf(near, (a as Vector3).distance_to(b))
+	if near > Melee.reach(id) + MELEE_SLACK:
+		return "too far for a swing (%.1f m)" % near
 	return ""
 
 

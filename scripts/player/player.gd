@@ -67,6 +67,8 @@ var ability: Ability
 ## Throwables (C12): the belt, how long the screen stays white from a flash, and the arc
 ## shown while the throw key is held.
 var pouch: Pouch
+## C13: the melee weapon on the melee key (MeleeArm).
+var melee: MeleeArm
 var flash_left := 0.0
 var _arc: ThrowArc
 var mobility := 1.0
@@ -201,6 +203,8 @@ func _ready() -> void:
 		set_kit(Settings.kit)
 	if pouch == null:
 		pouch = Pouch.new(self)
+	if melee == null:
+		set_melee(Settings.melee)
 	_arc = ThrowArc.new()
 	add_child(_arc)
 
@@ -249,6 +253,13 @@ func set_kit(id: String) -> void:
 		ability.cancel()
 	kit_id = Kit.valid(id)
 	ability = Kit.make(kit_id, self)
+
+
+## Takes melee weapon `id` (C13).
+func set_melee(id: String) -> void:
+	if melee != null:
+		melee.cancel()
+	melee = MeleeArm.new(self, id)
 
 
 ## Where abilities are aimed from: the camera.
@@ -304,6 +315,8 @@ func spawn_at(xform: Transform3D) -> void:
 		ability.refill()
 	if pouch != null:
 		pouch.refill()
+	if melee != null:
+		melee.cancel()
 	flash_left = 0.0
 	# Every movement timer back to its start, so a respawn behaves the same every time.
 	_buffer = 0.0
@@ -454,6 +467,10 @@ func _physics_process(delta: float) -> void:
 		elif input_enabled and Input.is_action_just_released("ability"):
 			ability.release()
 	_throwing(delta)
+	if melee != null:
+		melee.tick(delta)
+		if _want("melee", true) and move != Move.MANTLE and move != Move.CHARGE and (pouch == null or not pouch.holding):
+			melee.press()
 	match move:
 		Move.GRAPPLE, Move.CHARGE:
 			ability.move_frame(self, delta, wish)
@@ -573,7 +590,7 @@ func _wish_dir() -> Vector3:
 
 
 func _speed_mult() -> float:
-	return mobility * (0.6 if _slow > 0.0 else 1.0) * (RUSH if _rush > 0.0 else 1.0)
+	return mobility * (0.6 if _slow > 0.0 else 1.0) * (RUSH if _rush > 0.0 else 1.0) * (VeilTrail.HASTE if ability is VeilTrail and ability.busy else 1.0)
 
 
 func _flat() -> Vector3:
@@ -1459,8 +1476,9 @@ func _weapon_frame(delta: float) -> void:
 		_on_reload(true)
 	if _want("fire_mode", true):
 		weapon.cycle_mode()
-	var held := _want("fire") and move != Move.MANTLE and move != Move.CHARGE
-	var just := _want("fire", true) and move != Move.MANTLE and move != Move.CHARGE
+	var swinging := melee != null and melee.busy()
+	var held := _want("fire") and move != Move.MANTLE and move != Move.CHARGE and not swinging
+	var just := _want("fire", true) and move != Move.MANTLE and move != Move.CHARGE and not swinging
 	var released := Input.is_action_just_released("fire")
 	if weapon.wants_fire(held, just, released):
 		_shoot()
@@ -1735,6 +1753,8 @@ func _die(info: Dictionary) -> void:
 		ability.cancel()
 	if pouch != null:
 		pouch.cancel(true)
+	if melee != null:
+		melee.cancel()
 	if _arc != null:
 		_arc.hide_arc()
 	_set_move(Move.GROUND, "死亡")

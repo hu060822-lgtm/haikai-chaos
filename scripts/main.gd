@@ -121,6 +121,7 @@ func _ready() -> void:
 	bench = Bench.new()
 	bench.closed.connect(_on_bench_closed)
 	bench.kit_chosen.connect(_on_kit_chosen)
+	bench.melee_chosen.connect(_on_melee_chosen)
 	_ui.add_child(bench)
 	death = DeathScreen.new()
 	death.respawn_requested.connect(_respawn)
@@ -397,6 +398,7 @@ func _try_bench() -> void:
 			hud.show_hint("先選一張超規卡")
 			return
 		bench.kit = player.kit_id
+		bench.melee = player.melee.id
 		bench.kit_locked = false
 		bench.open(player.weapon.build, player.weapon.name, false)
 		hud.visible = false   # the money line sits where the score bar is
@@ -408,11 +410,19 @@ func _try_bench() -> void:
 		hud.show_hint("戰鬥中不能改槍：%.1f 秒沒有交火，或回到重生區" % player.combat_left)
 		return
 	bench.kit = player.kit_id
+	bench.melee = player.melee.id
 	bench.kit_locked = team_match != null and not SafeZone.is_safe(player.global_position, player.team)
 	bench.open(player.weapon.build, player.weapon.name, not SafeZone.is_safe(player.global_position, player.team))
 	player.input_enabled = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_viewport().set_input_as_handled()
+
+
+func _on_melee_chosen(id: String) -> void:
+	player.set_melee(id)
+	Settings.melee = player.melee.id
+	Settings.save()
+	hud.show_hint("近戰武器：%s（按 Z）" % Melee.label(id), 3.0)
 
 
 func _on_kit_chosen(id: String) -> void:

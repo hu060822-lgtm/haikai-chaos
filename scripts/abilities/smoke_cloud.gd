@@ -1,8 +1,10 @@
 class_name SmokeCloud
 extends Node3D
-## VEIL's smoke (C6). The canister flies the arc its thrower worked out (`from` → `to` in
-## `flight` seconds, the same on every machine), then the cloud swells to a dome RADIUS
-## wide and HEIGHT tall over the landing point and holds for LIFE seconds.
+## Smoke (C6). The canister flies the arc its thrower worked out (`from` → `to` in `flight`
+## seconds, the same on every machine), then the cloud swells to a dome `radius` wide and
+## `height` tall over the landing point and holds for `life` seconds (RADIUS / HEIGHT / LIFE
+## unless the deploy says otherwise: C13's belt smoke grenade and 霧行者's trail of small
+## puffs are SmokeClouds too).
 ##
 ## Fair both ways: nobody sees through it, players or bots (Deploy.sight_blocked), and
 ## inside it the screen goes grey for everyone. Its edge is sharp and its top is open, so
@@ -19,6 +21,11 @@ const FADE := 1.0
 const BLOWN := 1.5
 const PUFFS := 14
 
+var radius := RADIUS
+var height := HEIGHT
+var life := LIFE
+var puffs := PUFFS
+var _show_canister := true
 var uid := ""
 var owner_id := ""
 var team := 0
@@ -39,7 +46,12 @@ var _rng := RandomNumberGenerator.new()
 func setup(data: Dictionary) -> void:
 	from = data.get("from", Vector3.ZERO)
 	to = data.get("to", Vector3.ZERO)
-	flight = maxf(float(data.get("flight", 0.6)), 0.05)
+	flight = maxf(float(data.get("flight", 0.6)), 0.02)
+	radius = float(data.get("radius", RADIUS))
+	height = float(data.get("height", minf(HEIGHT, radius * 0.75)))
+	life = float(data.get("life", LIFE))
+	puffs = int(data.get("puffs", PUFFS))
+	_show_canister = bool(data.get("canister", true))
 	_rng.seed = hash(uid)
 
 
@@ -58,6 +70,7 @@ func _ready() -> void:
 	cm.emission_enabled = true
 	cm.emission = Kit.info("veil").color * 0.4
 	_canister.material_override = cm
+	_canister.visible = _show_canister
 	add_child(_canister)
 	_cloud = Node3D.new()
 	_cloud.position = Vector3(0, LIFT, 0)
@@ -81,7 +94,7 @@ func _ready() -> void:
 	_cloud.add_child(_body)
 	_puff_mat = _mat.duplicate()
 	_puff_mat.albedo_color = Color(0.82, 0.83, 0.85, 0.75)
-	for i in PUFFS:
+	for i in puffs:
 		var p := MeshInstance3D.new()
 		var ps := SphereMesh.new()
 		ps.radius = 1.0
@@ -94,9 +107,9 @@ func _ready() -> void:
 		var a := _rng.randf() * TAU
 		var up := _rng.randf_range(-0.2, 0.9)
 		var r := _rng.randf_range(0.55, 0.85)
-		p.position = Vector3(cos(a) * RADIUS * r, up * HEIGHT, sin(a) * RADIUS * r)
+		p.position = Vector3(cos(a) * radius * r, up * height, sin(a) * radius * r)
 		p.set_meta("base", p.position)
-		p.set_meta("size", _rng.randf_range(1.6, 2.6))
+		p.set_meta("size", _rng.randf_range(1.6, 2.6) * clampf(radius / RADIUS, 0.45, 1.0))
 		p.set_meta("spin", _rng.randf_range(0.2, 0.6) * (1.0 if _rng.randf() < 0.5 else -1.0))
 		_cloud.add_child(p)
 		_puffs.append(p)
@@ -115,8 +128,8 @@ func _physics_process(delta: float) -> void:
 		Sfx.play(self, "smoke_pop", -2.0)
 	var k := scale_now()
 	_cloud.scale = Vector3.ONE * maxf(k, 0.01)
-	_body.scale = Vector3(RADIUS, HEIGHT, RADIUS)
-	var fade := clampf((flight + LIFE - t) / FADE, 0.0, 1.0)
+	_body.scale = Vector3(radius, height, radius)
+	var fade := clampf((flight + life - t) / FADE, 0.0, 1.0)
 	var thin := 1.0 - 0.7 * clampf(_blown / 0.4, 0.0, 1.0)
 	_mat.albedo_color.a = 0.9 * fade * thin
 	_puff_mat.albedo_color.a = 0.75 * fade * thin
@@ -126,7 +139,7 @@ func _physics_process(delta: float) -> void:
 		var spin := float(p.get_meta("spin"))
 		p.position = base.rotated(Vector3.UP, age * spin * 0.15) + Vector3(0, sin(age * 0.7 + base.x) * 0.25, 0)
 		p.scale = Vector3.ONE * float(p.get_meta("size")) * (1.0 + 0.08 * sin(age * 1.3 + base.z))
-	if t >= flight + LIFE:
+	if t >= flight + life:
 		queue_free()
 
 
@@ -148,14 +161,14 @@ func scale_now() -> float:
 
 
 func live() -> bool:
-	return t >= flight and t < flight + LIFE - FADE * 0.5
+	return t >= flight and t < flight + life - FADE * 0.5
 
 
-func blow(at: Vector3, radius: float) -> void:
+func blow(at: Vector3, blast_r: float) -> void:
 	if not live():
 		return
 	var c := global_position + Vector3(0, LIFT, 0)
-	if at.distance_to(c) <= RADIUS + radius:
+	if at.distance_to(c) <= self.radius + blast_r:
 		_blown = BLOWN
 
 
@@ -164,7 +177,7 @@ func _unit(p: Vector3) -> Vector3:
 	var c := global_position + Vector3(0, LIFT, 0)
 	var k := maxf(scale_now(), 0.01)
 	var d := p - c
-	return Vector3(d.x / (RADIUS * k), d.y / (HEIGHT * k), d.z / (RADIUS * k))
+	return Vector3(d.x / (radius * k), d.y / (height * k), d.z / (radius * k))
 
 
 ## Does the cloud hide `b` from `a`? A line that passes well inside it (not just grazing
@@ -182,9 +195,9 @@ func blocks(a: Vector3, b: Vector3) -> bool:
 
 ## 0..1: how deep `p` is in the cloud.
 func density_at(p: Vector3) -> float:
-	if t < flight or t >= flight + LIFE:
+	if t < flight or t >= flight + life:
 		return 0.0
-	var fade := clampf((flight + LIFE - t) / FADE, 0.0, 1.0)
+	var fade := clampf((flight + life - t) / FADE, 0.0, 1.0)
 	var thin := 0.3 if _blown > 0.0 else 1.0
 	return clampf((1.0 - _unit(p).length()) * 4.0, 0.0, 1.0) * fade * thin
 

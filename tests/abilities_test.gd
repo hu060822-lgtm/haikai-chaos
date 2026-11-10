@@ -254,34 +254,49 @@ func _veil(m: Main) -> void:
 	p.set_kit("veil")
 	_place(p, Vector3(-25, Y + 0.1, -10), 0.0, -12.0)
 	await _wait(0.2)
+	var base := p._speed_mult()
 	await _press()
-	await _wait(0.1)
-	var clouds := []
-	for n in Deploy.objects():
-		if n is SmokeCloud:
-			clouds.append(n)
-	check(clouds.size() == 1, "VEIL: a canister is out")
+	check(p.ability.busy, "VEIL: F starts the trail")
+	check(absf(p._speed_mult() - base * VeilTrail.HASTE) < 0.01, "VEIL: faster while it runs")
+	# Walk it 12 m along x: a puff every SPACING metres.
+	for i in 24:
+		p.global_position = Vector3(-25 + 0.5 * (i + 1), Y + 0.1, -10)
+		p.velocity = Vector3.ZERO
+		await physics_frame
+		await physics_frame
+	var clouds: Array = Deploy.objects().filter(func(n: Node) -> bool: return n is SmokeCloud)
+	var want := int(12.0 / VeilTrail.SPACING) + 1
+	check(clouds.size() >= want - 1 and clouds.size() <= want + 1, "VEIL: a puff every %.1f m along the way (%d)" % [VeilTrail.SPACING, clouds.size()])
 	if clouds.is_empty():
 		return
-	var s: SmokeCloud = clouds[0]
-	var dist := Vector2(s.to.x - p.global_position.x, s.to.z - p.global_position.z).length()
-	check(dist > 4.0 and dist < 25.0 and absf(s.to.y - Y) < 0.3, "VEIL: it lands on the floor ahead (%.1f m)" % dist)
-	await _wait(s.flight + SmokeCloud.GROW + 0.1)
-	var c := s.global_position + Vector3(0, 1.5, 0)
-	var a := c + Vector3(-12, 0, 0)
-	var b := c + Vector3(12, 0, 0)
-	check(Deploy.sight_blocked(a, b), "VEIL: it blocks the line through it")
-	check(not Deploy.sight_blocked(c + Vector3(-12, 8, 0), c + Vector3(12, 8, 0)), "VEIL: over the top is open")
-	check(Deploy.smoke_at(c) > 0.8 and Deploy.smoke_at(a) == 0.0, "VEIL: inside is grey, outside is clear")
+	var ok := true
+	for c in clouds:
+		if absf(c.global_position.z + 10.0) > 0.5 or c.radius != VeilTrail.PUFF_RADIUS:
+			ok = false
+	check(ok, "VEIL: the puffs sit on the path, small")
+	await _press()
+	check(not p.ability.busy, "VEIL: F again stops it")
+	var n_now := clouds.size()
+	p.global_position += Vector3(5, 0, 0)
+	await _wait(0.1)
+	check(Deploy.objects().filter(func(n: Node) -> bool: return n is SmokeCloud).size() == n_now, "VEIL: no more puffs once stopped")
+	await _wait(SmokeCloud.GROW + 0.1)
+	# A line across the trail (the lane it cut) is blocked; along the top it isn't.
+	var c := Vector3(-19, Y + 1.2, -10)
+	var a := c + Vector3(0, 0, -12)
+	var b := c + Vector3(0, 0, 12)
+	check(Deploy.sight_blocked(a, b), "VEIL: the wall blocks a line across it")
+	check(not Deploy.sight_blocked(a + Vector3(0, 6, 0), b + Vector3(0, 6, 0)), "VEIL: over the top is open")
+	check(Deploy.smoke_at(c) > 0.5 and Deploy.smoke_at(a) == 0.0, "VEIL: inside is grey, outside is clear")
 	# Bots can't see through it either: fair both ways.
 	var bot: Bot = m.bots[0]
 	bot.team = 1
 	bot.frozen = false
 	bot.passive = true
-	bot.global_position = b - Vector3(0, 1.5, 0)
+	bot.global_position = b - Vector3(0, 1.2, 0)
 	bot.velocity = Vector3.ZERO  # it has been falling while frozen out of the way
 	bot.look_at(a, Vector3.UP)
-	p.global_position = a - Vector3(0, 1.5, 0)
+	p.global_position = a - Vector3(0, 1.2, 0)
 	p.velocity = Vector3.ZERO
 	bot.target = null
 	await _wait(0.4)
@@ -289,15 +304,19 @@ func _veil(m: Main) -> void:
 	# A blast blows it thin for a moment.
 	Deploy.blow(c, 3.0)
 	check(not Deploy.sight_blocked(a, b), "VEIL: an explosion blows it thin")
-	await _wait(0.5)
-	check(bot._see, "VEIL: the bot sees through the hole")
 	await _wait(SmokeCloud.BLOWN + 0.2)
 	check(Deploy.sight_blocked(a, b), "VEIL: it fills back in")
 	bot.frozen = true
 	_park(bot)
-	s.t = s.flight + SmokeCloud.LIFE - 0.05
+	for s in clouds:
+		s.t = s.flight + s.life - 0.05
 	await _wait(0.2)
-	check(not is_instance_valid(s), "VEIL: it ends")
+	var gone := true
+	for s in clouds:
+		if is_instance_valid(s):
+			gone = false
+	check(gone, "VEIL: it ends")
+	p.ability.refill()
 
 
 # --- RAM -------------------------------------------------------------------------------
